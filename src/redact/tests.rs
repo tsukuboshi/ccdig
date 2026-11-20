@@ -191,6 +191,22 @@ fn token_cases() -> Vec<Case> {
             "***REDACTED*** https://***REDACTED***",
         ),
         case(
+            "Slack incoming webhook followed by more path",
+            format!("https://hooks.slack.com/services/{}/notes", fake(56)),
+            "https://***REDACTED***/notes",
+        ),
+        case(
+            "Slack workflow webhook with a long path",
+            format!(
+                "post to https://hooks.slack.com/workflows/{}/{}/{}/{} now",
+                fake(11),
+                fake(11),
+                fake(18),
+                fake(24)
+            ),
+            "post to https://***REDACTED*** now",
+        ),
+        case(
             "JWT",
             format!("token eyJ{}.eyJ{}.{} expired", fake(20), fake(20), fake(20)),
             "token ***REDACTED*** expired",
