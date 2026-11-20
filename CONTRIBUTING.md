@@ -23,6 +23,7 @@ cargo test --locked
 cargo deny check
 taplo fmt --check
 rumdl check .
+.github/scripts/check-readme-sync.sh
 ```
 
 Every clippy group, `restriction` included, is denied in
@@ -42,6 +43,10 @@ when you do.
 - Keep commits focused, with a message that makes sense on its own.
 - Add a line to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md)
   for any user-visible change.
+- [README.md](README.md) is the source and [README.ja.md](README.ja.md) its
+  translation. Change both in the same pull request;
+  `.github/scripts/check-readme-sync.sh` fails when their structure, code,
+  links, or numbers differ.
 
 ## Test fixtures must be synthetic
 
