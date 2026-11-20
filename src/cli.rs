@@ -549,7 +549,7 @@ fn execute(
             types,
         } => {
             let kinds = record_types(&types);
-            let assistant = kinds.replies || kinds.calls || kinds.results;
+            let assistant = kinds.reads_assistant();
             for (given, applies, flag, needed) in [
                 (
                     !tools.is_empty(),
@@ -677,10 +677,26 @@ fn mask_kinds(value: &OsStr) -> Result<Vec<MaskKind>, Failure> {
     let text = value.to_string_lossy();
     text.split(',')
         .map(|name| {
-            MaskKind::from_str(name.trim(), false)
-                .map_err(|_unknown| Failure::EnvMask(name.trim().to_owned()))
+            MaskKind::from_str(name.trim(), false).map_err(|_unknown| Failure::EnvMask {
+                known: mask_names(),
+                name: name.trim().to_owned(),
+            })
         })
         .collect()
+}
+
+/// The names `--mask` takes, as `a, b, or c`.
+fn mask_names() -> String {
+    let names: Vec<String> = MaskKind::value_variants()
+        .iter()
+        .filter_map(ValueEnum::to_possible_value)
+        .map(|value| value.get_name().to_owned())
+        .collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{}, or {last}", rest.join(", ")),
+        Some((last, _)) => last.clone(),
+        None => String::new(),
+    }
 }
 
 /// Checks the digest limits and converts them.

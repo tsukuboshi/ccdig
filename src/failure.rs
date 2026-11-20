@@ -14,8 +14,13 @@ pub enum Failure {
     #[error("--max-prompt-chars must be less than --max-session-chars")]
     DigestPromptLimitTooLarge,
     /// `CCDIG_MASK` names a mask `--mask` does not know.
-    #[error("CCDIG_MASK: unknown mask {0:?}: use email, ip, or user")]
-    EnvMask(String),
+    #[error("CCDIG_MASK: unknown mask {name:?}: use {known}")]
+    EnvMask {
+        /// The masks `--mask` takes, listed.
+        known: String,
+        /// The unknown name.
+        name: String,
+    },
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),

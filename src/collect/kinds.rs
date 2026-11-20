@@ -66,6 +66,14 @@ pub struct Results {
     calls: HashMap<String, Call>,
 }
 
+impl Types {
+    /// Whether any of the kinds is on an assistant line, or needs one, as
+    /// a result needs its call.
+    pub const fn reads_assistant(self) -> bool {
+        self.replies || self.calls || self.results
+    }
+}
+
 impl Records {
     /// Picks the kinds in `types`.
     pub fn new(types: Types) -> Self {
@@ -83,8 +91,12 @@ impl Pick for Records {
         let mut turns: Vec<(usize, Turn)> = Vec::new();
         match entry.role {
             Role::User => {
-                // `wants` may have accepted the line for its results only.
-                if self.types.prompts && classify(entry) == Reason::Human {
+                // With results picked too, `wants` may have accepted the line
+                // for its results only. A prompt is never on a line with a
+                // result, as `classify` turns such a line down, so the
+                // prompt's block index 0 cannot clash with a result's in the
+                // check for resumed copies.
+                if self.types.prompts && (!self.types.results || classify(entry) == Reason::Human) {
                     let prompts = Prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, Turn::Prompt(prompt))));
                 }
@@ -111,7 +123,7 @@ impl Pick for Records {
 
     fn roles(&self) -> Roles {
         Roles {
-            assistant: self.types.replies || self.types.calls || self.types.results,
+            assistant: self.types.reads_assistant(),
             user: self.types.prompts || self.types.results,
         }
     }
