@@ -4,8 +4,11 @@
 # Translation is not checked; the structure and every literal are. Both
 # files are split at their headings, and each pair of sections must have the
 # same code blocks, table sizes, list item counts, inline code, and link
-# targets, and the Japanese section must hold every number of the English
-# one. Comment lines in sh blocks may be translated.
+# targets, each as often, and the Japanese section must hold every number
+# of the English one. Comments in shell blocks may be translated.
+#
+# Not read: setext headings, reference-style links, HTML links, `1)` items,
+# HTML comments, and link targets with parentheses in them.
 #
 # Usage: .github/scripts/check-readme-sync.sh [README.md README.ja.md]
 
@@ -21,6 +24,16 @@ program=$(
 	cat <<'AWK'
 function emit(item) { printf "%03d\t%s\n", sec, item }
 
+# A link target without its title. In README.ja.md, a link to either README
+# is named as README.md names it, so the language link and anchors match.
+function target(value) {
+  sub(/[ \t].*$/, "", value)
+  if (!swap) return value
+  if (match(value, /^README\.md(#|$)/)) return "README.ja.md" substr(value, 10)
+  if (match(value, /^README\.ja\.md(#|$)/)) return "README.md" substr(value, 13)
+  return value
+}
+
 # Takes the text of `text` from `opener` to `closer` out, one span at a time,
 # and returns what is left with each span replaced by a space.
 function spans(text, opener, closer, kind, skip,    out, i, j, rest, value) {
@@ -30,7 +43,7 @@ function spans(text, opener, closer, kind, skip,    out, i, j, rest, value) {
     j = index(rest, closer)
     if (j == 0) break
     value = substr(rest, 1, j - 1)
-    if (swap && value == "README.md") value = "README.ja.md"
+    if (kind == "link") value = target(value)
     emit(kind ": " value)
     out = out substr(text, 1, i - 1) " "
     text = substr(rest, j + length(closer))
@@ -56,19 +69,33 @@ function flush(    t, text) {
 
 BEGIN { emit("title: (before the first heading)") }
 
-fenced && /^[ \t]*```/ { fenced = 0; next }
-fenced {
+# A fence closes on a line of at least as many of its own characters.
+fence != "" {
+  text = $0
+  sub(/^[ \t]+/, "", text)
+  if (index(text, fence) == 1 && text ~ /^(`+|~+)[ \t]*$/) {
+    fence = ""
+    next
+  }
   line++
-  code = (lang == "sh" && /^[ \t]*#/) ? "#" : $0
+  shell = lang ~ /^(sh|bash|shell|zsh)$/
+  code = $0
+  if (shell && text ~ /^#/) code = "#"
+  else if (shell) sub(/[ \t]+#.*$/, " #", code)
   emit(sprintf("code %02d line %04d: %s", blocks, line, code))
   next
 }
-/^[ \t]*```/ {
-  fenced = 1
+{
+  text = $0
+  sub(/^[ \t]+/, "", text)
+}
+match(text, /^(```+|~~~+)/) {
+  fence = substr(text, 1, RLENGTH)
   blocks++
   line = 0
-  lang = $0
-  sub(/^[ \t]*```/, "", lang)
+  lang = substr(text, RLENGTH + 1)
+  sub(/^[ \t]+/, "", lang)
+  sub(/[ \t].*$/, "", lang)
   emit(sprintf("code %02d: language %s", blocks, lang == "" ? "(none)" : lang))
   in_table = 0
   next
@@ -85,8 +112,6 @@ fenced {
 }
 
 {
-  text = $0
-  sub(/^[ \t]+/, "", text)
   if (text ~ /^\|/) {
     if (!in_table) { tables++; rows[tables] = 0 }
     rows[tables]++
@@ -98,7 +123,7 @@ fenced {
   } else {
     in_table = 0
   }
-  if (text ~ /^- /) {
+  if (text ~ /^[-*+] /) {
     bullets++
     text = substr(text, 3)
   } else if (match(text, /^[0-9]+\. /)) {
@@ -112,8 +137,16 @@ END { flush() }
 AWK
 )
 
+outline() {
+	LC_ALL=C awk -v swap="$2" "$program" "$1"
+}
+
+# The outline in order, with an item that repeats in a section numbered
+# from its second time on, so a translation must keep it as often.
 skeleton() {
-	LC_ALL=C awk -v swap="$2" "$program" "$1" | LC_ALL=C sort -u
+	outline "$1" "$2" |
+		LC_ALL=C awk '{ n = ++seen[$0]; print (n > 1 ? $0 " (#" n ")" : $0) }' |
+		LC_ALL=C sort
 }
 
 # The items of a skeleton with the section titles, which are translated,
@@ -123,7 +156,7 @@ items() {
 }
 
 levels() {
-	skeleton "$1" "$2" | awk -F '\t' '
+	outline "$1" "$2" | awk -F '\t' '
     $2 ~ /^heading: / { sub(/^heading: /, "", $2); printf "%s ", $2 }'
 }
 
@@ -156,7 +189,11 @@ awk -F '\t' -v ja="$ja_name" '
     if ($2 ~ /^title: /) title[$1 + 0] = substr($2, 8)
     next
   }
-  { printf "%s: section %d `%s`: only in %s: %s\n", ja, $2 + 0, title[$2 + 0], $1, $3 }
-' <(skeleton "$en" 0) <(printf '%s\n' "$drifts") >&2
+  {
+    item = $0
+    sub(/^[^\t]*\t[^\t]*\t/, "", item)
+    printf "%s: section %d `%s`: only in %s: %s\n", ja, $2 + 0, title[$2 + 0], $1, item
+  }
+' <(outline "$en" 0) <(printf '%s\n' "$drifts") >&2
 echo "$en_name is the source; update $ja_name to match it." >&2
 exit 1
