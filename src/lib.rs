@@ -25,6 +25,14 @@ mod failure;
     )
 )]
 mod redact;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the collector that calls this comes in a later stage"
+    )
+)]
+mod select;
 #[cfg(test)]
 mod testing;
 #[cfg_attr(

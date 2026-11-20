@@ -15,7 +15,7 @@ const MAX_FRACTION_DIGITS: usize = 9;
 
 /// A whole-day span in a time zone, both days included. A missing bound is
 /// open.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct DayRange {
     /// The first instant of `--since`, included.
     from: Option<Timestamp>,

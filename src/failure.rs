@@ -3,6 +3,9 @@
 /// An error that stops a command. The message is printed after `ccdig: `.
 #[derive(Debug, thiserror::Error)]
 pub enum Failure {
+    /// `--grep` is not a valid regular expression.
+    #[error("parse grep: {0}")]
+    Grep(#[source] regex::Error),
     /// `--since` is not a calendar day.
     #[error("parse since: {0}")]
     Since(String),
