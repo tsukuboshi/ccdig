@@ -12,12 +12,6 @@ use crate::render::record::{Head, Kind, Prompt, Reply, Source, ToolCall, ToolRes
 use crate::transcript::entry::{Block, Entry, Role};
 use crate::transcript::reader::Roles;
 
-/// The roles of the kinds read from assistant lines only.
-const ASSISTANT: Roles = Roles {
-    assistant: true,
-    user: false,
-};
-
 /// What a result needs of the call it answers.
 struct Call {
     /// The arguments, as the model wrote them.
@@ -69,10 +63,7 @@ impl Pick for Prompts {
     }
 
     fn roles(&self) -> Roles {
-        Roles {
-            assistant: false,
-            user: true,
-        }
+        Roles::USER
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
@@ -102,7 +93,7 @@ impl Pick for Replies {
     }
 
     fn roles(&self) -> Roles {
-        ASSISTANT
+        Roles::ASSISTANT
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
@@ -138,10 +129,7 @@ impl Pick for Results {
     }
 
     fn roles(&self) -> Roles {
-        Roles {
-            assistant: true,
-            user: true,
-        }
+        Roles::BOTH
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
@@ -197,7 +185,7 @@ impl Pick for Tools {
     }
 
     fn roles(&self) -> Roles {
-        ASSISTANT
+        Roles::ASSISTANT
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {

@@ -179,6 +179,24 @@ pub struct Roles {
     pub user: bool,
 }
 
+impl Roles {
+    /// Assistant messages only, for replies and tool calls.
+    pub const ASSISTANT: Self = Self {
+        assistant: true,
+        user: false,
+    };
+    /// Both, for tool results and the calls they answer.
+    pub const BOTH: Self = Self {
+        assistant: true,
+        user: true,
+    };
+    /// User messages only, for prompts.
+    pub const USER: Self = Self {
+        assistant: false,
+        user: true,
+    };
+}
+
 /// Opens the transcript at `path` for reading with `Lines`.
 ///
 /// # Errors

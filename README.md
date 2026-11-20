@@ -194,8 +194,10 @@ in code spans.
 - ccdig is a Rust rewrite of
   [promptdig](https://github.com/tsukuboshi/promptdig). `prompts`,
   `sessions`, and `digest` print the same output as promptdig 0.1.0,
-  except that a URL with a port and a query but no path, such as
-  `https://host:8443?email=a@b.com`, is no longer masked.
+  except for two URL forms that promptdig masked by mistake: a port
+  followed by a query or fragment, such as
+  `https://host:8443?email=a@b.com`, and a colon in a query, such as
+  `https://host?at=10:30@noon`.
 
 ## Getting help
 

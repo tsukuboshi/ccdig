@@ -10,7 +10,7 @@
 //! spell out the ASCII classes: `[\t\n\x0C\r ]`, `[0-9A-Za-z_]`, `[0-9]`, and
 //! `(?-u:\b)`.
 
-use regex::Regex;
+use regex::{Captures, Regex};
 use serde_json::Value;
 
 /// Starts every prefix rule. It is used instead of `\b` because `_` is a word
@@ -113,14 +113,16 @@ const RULES: [(&str, Replacement); 15] = [
         Replacement::KeepPrefix,
     ),
     // The password in a URL's userinfo, such as postgres://app:secret@host or
-    // redis://:secret@host. It runs to the last '@' before the path, query,
-    // or fragment, so a password containing '@' is masked whole while
-    // ?email=a@b.com after the host does not match, with or without a path.
-    // promptdig stopped only at '/'. The user and host stay so the prompt
-    // still says what it connects to.
+    // redis://:secret@host. It runs to the last '@' before the path, so a
+    // password containing '@', '?', or '#' is masked whole; a '/' in the
+    // path stops it, so ?email=a@b.com after the path does not match. The
+    // user may not contain '?' or '#', and a port followed by a query or
+    // fragment, as in host:8443?email=a@b.com, is left alone; promptdig
+    // masked both. The user and host stay so the prompt still says what it
+    // connects to.
     (
-        r"(://[^/\t\n\x0C\r :@]*:)[^\t\n\x0C\r /?#]*@",
-        Replacement::KeepPrefixBeforeAt,
+        r"(://[^/\t\n\x0C\r :@?#]*:)([^\t\n\x0C\r /]*)@",
+        Replacement::UrlPassword,
     ),
     // PEM and PGP private keys, through the END line or, when the paste was
     // cut off, to the end of the text.
@@ -135,16 +137,19 @@ const RULES: [(&str, Replacement); 15] = [
 enum Replacement {
     /// The first capture group, then the marker.
     KeepPrefix,
-    /// The first capture group, the marker, then `@`.
-    KeepPrefixBeforeAt,
     /// The marker alone.
     Marker,
+    /// The first capture group, the marker, then `@`, unless the second
+    /// capture group is a port followed by a query or fragment.
+    UrlPassword,
 }
 
 /// One pattern and its replacement.
 struct Rule {
     /// The secret to find.
     pattern: Regex,
+    /// Whether a match that is a port and a query stays as it is.
+    port_guard: bool,
     /// The replacement text, in `regex` replacement syntax.
     replacement: String,
 }
@@ -166,10 +171,13 @@ impl Redactor {
             .map(|&(pattern, replacement)| {
                 Ok(Rule {
                     pattern: Regex::new(pattern)?,
+                    port_guard: matches!(replacement, Replacement::UrlPassword),
                     replacement: match replacement {
                         Replacement::Marker => MARKER.to_owned(),
                         Replacement::KeepPrefix => format!("${{1}}{MARKER}"),
-                        Replacement::KeepPrefixBeforeAt => format!("${{1}}{MARKER}@"),
+                        Replacement::UrlPassword => {
+                            format!("${{1}}{MARKER}@")
+                        }
                     },
                 })
             })
@@ -181,10 +189,22 @@ impl Redactor {
     pub fn redact(&self, text: &str) -> (String, bool) {
         let mut masked = text.to_owned();
         for rule in &self.rules {
-            masked = rule
-                .pattern
-                .replace_all(&masked, rule.replacement.as_str())
-                .into_owned();
+            masked = if rule.port_guard {
+                rule.pattern
+                    .replace_all(&masked, |captures: &Captures<'_>| {
+                        let group = |index| captures.get(index).map_or("", |found| found.as_str());
+                        if is_port_then_query(group(2)) {
+                            group(0).to_owned()
+                        } else {
+                            format!("{}{MARKER}@", group(1))
+                        }
+                    })
+                    .into_owned()
+            } else {
+                rule.pattern
+                    .replace_all(&masked, rule.replacement.as_str())
+                    .into_owned()
+            };
         }
         let changed = masked != text;
         (masked, changed)
@@ -218,6 +238,13 @@ impl Redactor {
             Value::Null | Value::Bool(_) | Value::Number(_) => false,
         }
     }
+}
+
+/// Whether `text`, read as a URL password, is a port number followed by a
+/// query or fragment instead.
+fn is_port_then_query(text: &str) -> bool {
+    let rest = text.trim_start_matches(|ch: char| ch.is_ascii_digit());
+    rest.len() < text.len() && rest.starts_with(['?', '#'])
 }
 
 #[cfg(test)]

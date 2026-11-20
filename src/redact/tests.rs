@@ -266,6 +266,20 @@ fn url_cases() -> Vec<Case> {
             "open https://example.com:8443?email=a@b.com or https://example.com:8443#x@y",
         ),
         case(
+            "a password may hold '?' or '#'",
+            format!(
+                "mysql://root:p#{}@db:3306/app and postgres://app:a?{}@host/db",
+                fake(8),
+                fake(8)
+            ),
+            "mysql://root:***REDACTED***@db:3306/app and postgres://app:***REDACTED***@host/db",
+        ),
+        case(
+            "a colon in a query is not a user",
+            "at https://example.com?at=10:30@noon or https://github.com/x#L1:2@y".to_owned(),
+            "at https://example.com?at=10:30@noon or https://github.com/x#L1:2@y",
+        ),
+        case(
             "a password before a query is still masked",
             format!("dial redis://:{}@cache:6379?db=0", fake(12)),
             "dial redis://:***REDACTED***@cache:6379?db=0",

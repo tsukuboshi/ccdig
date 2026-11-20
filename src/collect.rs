@@ -182,7 +182,8 @@ impl Spot<'_> {
 ///
 /// # Errors
 ///
-/// When `root` cannot be listed or a file time cannot be shown.
+/// When `root` cannot be listed. A file whose modification time cannot be
+/// shown is skipped with a warning.
 pub fn collect<P, F>(
     root: &Path,
     subagents: bool,

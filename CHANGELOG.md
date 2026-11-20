@@ -28,8 +28,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `version` prints `ccdig v0.1.0` from the crate version.
-- A URL password now ends at `?` and `#` as well as `/`, so
-  `https://host:8443?email=a@b.com` is no longer masked as a password.
+- A port followed by a query or fragment
+  (`https://host:8443?email=a@b.com`) and a colon in a query
+  (`https://host?at=10:30@noon`) are no longer masked as a URL password.
+  A password containing `?` or `#` is still masked.
 - Help text and the details of flag errors follow clap; the `ccdig:` prefix
   and the exit status 1 are kept.
 
