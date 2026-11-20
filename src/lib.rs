@@ -1,6 +1,14 @@
 //! ccdig digs prompts, replies, tool calls, and tool results out of Claude
 //! Code session transcripts.
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the collector that calls this comes in a later stage"
+    )
+)]
+mod redact;
 #[cfg(test)]
 mod testing;
 #[cfg_attr(
