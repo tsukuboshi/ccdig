@@ -37,9 +37,12 @@ pub enum Failure {
         #[source]
         source: io::Error,
     },
-    /// `--mask home` is given and there is no home directory to mask.
-    #[error("mask home: HOME is not set")]
-    MaskHome,
+    /// `--mask user` is given and `$HOME` names no user.
+    #[error("mask user: HOME is not set or has no last part")]
+    MaskUser,
+    /// `--no-mask` is given with `--mask` or `--mask-file`.
+    #[error("--no-mask cannot be used with --mask or --mask-file")]
+    MaskWithNoMask,
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]
     Rules(#[source] regex::Error),

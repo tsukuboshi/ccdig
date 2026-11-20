@@ -33,8 +33,8 @@ pub struct Corpus<T> {
 /// block's index in the line.
 type FileRecords<'file, T> = (&'file SessionFile, Stamp, Vec<(usize, T)>);
 
-/// The masking applied to what is printed: the built-in rules unless
-/// `--no-redact`, and the masks `--mask` and `--mask-file` ask for.
+/// The masking applied to what is printed: the built-in rules and the masks
+/// `--mask` and `--mask-file` ask for, or none under `--no-mask`.
 pub struct Mask(Option<Redactor>);
 
 /// One kind of record and how it is picked out of transcript lines. A
@@ -132,16 +132,16 @@ impl Mask {
             .map_or_else(|| field.to_owned(), |rules| rules.meta(field))
     }
 
-    /// The built-in rules unless `off`, and the masks in `extra`.
+    /// The built-in rules and the masks in `extra`, or none when `off`.
     ///
     /// # Errors
     ///
     /// When the rules do not compile, which is a bug.
     pub fn new(off: bool, extra: ExtraMasks) -> Result<Self, Failure> {
-        if off && extra.is_empty() {
+        if off {
             return Ok(Self(None));
         }
-        Redactor::with(!off, extra)
+        Redactor::with(extra)
             .map(|rules| Self(Some(rules)))
             .map_err(Failure::Rules)
     }

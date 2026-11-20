@@ -177,9 +177,9 @@ fn the_digest_matches_the_golden() -> TestResult {
 }
 
 #[test]
-fn no_redact_leaves_the_secret_as_typed() -> TestResult {
+fn no_mask_leaves_the_secret_as_typed() -> TestResult {
     let out = History::new("root")?
-        .run_week(&["prompts", "--no-redact"])
+        .run_week(&["prompts", "--no-mask"])
         .out;
     check_eq(
         &out.contains("AWS_SECRET_ACCESS_KEY=EXAMPLEEXAMPLEEXAMPLE"),
@@ -188,6 +188,17 @@ fn no_redact_leaves_the_secret_as_typed() -> TestResult {
     )?;
     check_eq(&out.contains(r#""redacted":true"#), &false, "no redaction")?;
     Ok(())
+}
+
+/// The user name from `$HOME` when it is one the tests can use: made of
+/// the characters a project directory name keeps or turns into `-`.
+fn usable_user() -> Option<(String, String)> {
+    let home = env::var("HOME").ok()?;
+    let user = super::user_name(&home)?;
+    let parent = home.trim_end_matches('/').strip_suffix(&user)?.to_owned();
+    user.chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+        .then_some((parent, user))
 }
 
 /// A history with one prompt that holds an email address, the home
@@ -199,10 +210,7 @@ fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     // The JSON string of the home directory, without its quotes.
     let escaped = serde_json::to_string(&home)?;
     let quoted = escaped.trim_matches('"');
-    let project: String = home
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-        .collect();
+    let project = encoded(&home);
     let prompt = format!(
         r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{quoted}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {quoted}/blog on 10.1.2.3 for corp-hidden"}}}}"#
     );
@@ -216,52 +224,81 @@ fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     Ok((history, values.to_string_lossy().into_owned()))
 }
 
-/// Whether `$HOME` is one `--mask home` can be tested with.
-fn home_is_usable() -> bool {
-    env::var("HOME").is_ok_and(|home| home.len() > 1)
+/// `path` as Claude Code names a project directory after it.
+fn encoded(path: &str) -> String {
+    path.chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect()
 }
 
 #[test]
-fn mask_hides_emails_the_home_directory_and_ips_and_mask_file_hides_its_values() -> TestResult {
-    if !home_is_usable() {
+fn mask_hides_emails_the_user_name_and_ips_and_mask_file_hides_its_values() -> TestResult {
+    let Some((parent, _)) = usable_user() else {
         return Ok(());
-    }
+    };
     let (history, values) = history_with_personal_data()?;
     let ran = history.run_week(&[
         "prompts",
         "--session",
         "mmmm",
         "--mask",
-        "email,home",
+        "email,user",
         "--mask",
         "ip",
         "--mask-file",
         &values,
     ]);
     check_eq(&ran.code, &0, "exit")?;
+    let cwd = format!("{parent}***REDACTED***/blog");
     check_eq(
-        &ran.out.contains(
-            r#""text":"mail ***REDACTED*** about ~/blog on ***REDACTED*** for ***REDACTED***""#,
-        ),
+        &ran.out.contains(&format!(
+            r#""text":"mail ***REDACTED*** about {cwd} on ***REDACTED*** for ***REDACTED***""#
+        )),
         &true,
-        "text",
+        &ran.out,
     )?;
-    check_eq(&ran.out.contains(r#""cwd":"~/blog""#), &true, "cwd")?;
-    check_eq(&ran.out.contains(r#""project":"~-blog""#), &true, "project")?;
+    check_eq(
+        &ran.out.contains(&format!(r#""cwd":"{cwd}""#)),
+        &true,
+        "cwd",
+    )?;
+    let project = format!("{}***REDACTED***-blog", encoded(&parent));
+    check_eq(
+        &ran.out.contains(&format!(r#""project":"{project}""#)),
+        &true,
+        "project",
+    )?;
     check_eq(&ran.out.contains(r#""redacted":true"#), &true, "redacted")?;
     let sessions = history
-        .run_week(&["sessions", "--session", "mmmm", "--mask", "home"])
+        .run_week(&["sessions", "--session", "mmmm", "--mask", "user"])
         .out;
     check_eq(
-        &sessions.contains(r#""cwd":"~/blog""#),
+        &sessions.contains(&format!(r#""cwd":"{cwd}""#)),
         &true,
         "session cwd",
     )?;
     check_eq(
-        &sessions.contains(r#""project":"~-blog""#),
+        &sessions.contains(&format!(r#""project":"{project}""#)),
         &true,
         "session project",
     )?;
+    Ok(())
+}
+
+#[test]
+fn the_user_name_is_the_last_part_of_the_home_directory() -> TestResult {
+    check_eq(
+        &super::user_name("/Users/alice.b"),
+        &Some("alice.b".to_owned()),
+        "plain",
+    )?;
+    check_eq(
+        &super::user_name("/home/alice/"),
+        &Some("alice".to_owned()),
+        "trailing slash",
+    )?;
+    check_eq(&super::user_name("/"), &None, "root")?;
+    check_eq(&super::user_name(""), &None, "empty")?;
     Ok(())
 }
 
@@ -272,23 +309,6 @@ fn without_mask_the_personal_data_stays() -> TestResult {
     check_eq(&out.contains("bob@example.com"), &true, "email")?;
     check_eq(&out.contains("10.1.2.3"), &true, "ip")?;
     check_eq(&out.contains("corp-hidden"), &true, "value")?;
-    Ok(())
-}
-
-#[test]
-fn mask_still_applies_under_no_redact() -> TestResult {
-    let (history, _) = history_with_personal_data()?;
-    let out = history
-        .run_week(&[
-            "prompts",
-            "--session",
-            "mmmm",
-            "--no-redact",
-            "--mask",
-            "email",
-        ])
-        .out;
-    check_eq(&out.contains("mail ***REDACTED*** about"), &true, "email")?;
     Ok(())
 }
 
@@ -335,27 +355,19 @@ fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
 }
 
 #[test]
-fn no_redact_with_a_mask_leaves_a_credential_key_in_a_tool_input() -> TestResult {
+fn no_mask_with_a_mask_is_an_error() -> TestResult {
     let history = History::new("root")?;
-    history.write(
-        "-Users-alice-blog/pppp.jsonl",
-        fixture_time()?,
-        &[r#"{"type":"assistant","uuid":"p-1","sessionId":"pppp","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_p1","name":"Bash","input":{"password":"hunter2hunter2"}}]}}"#],
-    )?;
-    let out = history
-        .run_week(&[
-            "tools",
-            "--session",
-            "pppp",
-            "--no-redact",
-            "--mask",
-            "email",
-        ])
-        .out;
-    check_eq(&out.contains("hunter2hunter2"), &true, &out)?;
+    for args in [
+        ["prompts", "--no-mask", "--mask", "email"],
+        ["prompts", "--no-mask", "--mask-file", "x.txt"],
+    ] {
+        let ran = history.run_week(&args);
+        check_eq(&(ran.code != 0), &true, args[3])?;
+        check_eq(&ran.out.is_empty(), &true, args[3])?;
+        check_eq(&ran.err.contains("--no-mask"), &true, &ran.err)?;
+    }
     Ok(())
 }
-
 #[test]
 fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
     let history = History::new("root")?;

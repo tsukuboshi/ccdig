@@ -684,22 +684,19 @@ fn redact_json_reports_no_change_when_nothing_matches() -> TestResult {
     Ok(())
 }
 
-/// The extra masks on, with `/Users/alice` as the home directory and two
-/// values from a mask file.
+/// The extra masks on, with `alice.b` as the user name and three values
+/// from a mask file.
 fn extra_redactor() -> Result<Redactor, regex::Error> {
-    Redactor::with(
-        true,
-        ExtraMasks {
-            emails: true,
-            home: Some("/Users/alice".to_owned()),
-            ips: true,
-            values: vec![
-                "corp-internal".to_owned(),
-                "corp-internal.example".to_owned(),
-                "RED".to_owned(),
-            ],
-        },
-    )
+    Redactor::with(ExtraMasks {
+        emails: true,
+        ips: true,
+        user: Some("alice.b".to_owned()),
+        values: vec![
+            "corp-internal".to_owned(),
+            "corp-internal.example".to_owned(),
+            "RED".to_owned(),
+        ],
+    })
 }
 
 /// The rows for the masks that `--mask` and `--mask-file` turn on.
@@ -716,19 +713,19 @@ fn extra_cases() -> Vec<Case> {
             "git clone git@github.com:alice/blog.git",
         ),
         case(
-            "home directory",
-            "cd /Users/alice/blog && ls /Users/alice".to_owned(),
-            "cd ~/blog && ls ~",
+            "user name in a path and with other separators or case",
+            "cd /Users/alice.b/blog by Alice-B in users-alice_b-x".to_owned(),
+            "cd /Users/***REDACTED***/blog by ***REDACTED*** in users-***REDACTED***-x",
         ),
         case(
-            "another user's directory stays",
-            "ls /Users/alicex/blog".to_owned(),
-            "ls /Users/alicex/blog",
+            "a longer name or a part of the user name stays",
+            "ls /Users/alice.bx and malice.b and alice".to_owned(),
+            "ls /Users/alice.bx and malice.b and alice",
         ),
         case(
             "project directory name",
-            "-Users-alice-blog".to_owned(),
-            "~-blog",
+            "-Users-alice-b-blog".to_owned(),
+            "-Users-***REDACTED***-blog",
         ),
         case(
             "IPv4 address",
@@ -793,26 +790,11 @@ fn extra_masks_apply_only_when_asked_for() -> TestResult {
 }
 
 #[test]
-fn extra_masks_apply_without_the_built_in_rules() -> TestResult {
-    let only_extra = Redactor::with(
-        false,
-        ExtraMasks {
-            emails: true,
-            ..ExtraMasks::default()
-        },
-    )?;
-    let key = key_id();
-    let (got, _) = only_extra.redact(&format!("{key} alice@example.com"));
-    check_eq(&got, &format!("{key} ***REDACTED***"), "only extra")?;
-    Ok(())
-}
-
-#[test]
 fn meta_applies_only_the_masks_asked_for() -> TestResult {
     let extra = extra_redactor()?;
     check_eq(
-        &extra.meta("/Users/alice/.claude/projects/-Users-alice-blog/s.jsonl"),
-        &"~/.claude/projects/~-blog/s.jsonl".to_owned(),
+        &extra.meta("/Users/alice.b/.claude/projects/-Users-alice-b-blog/s.jsonl"),
+        &"/Users/***REDACTED***/.claude/projects/-Users-***REDACTED***-blog/s.jsonl".to_owned(),
         "path",
     )?;
     let key = key_id();
@@ -826,39 +808,5 @@ fn meta_applies_only_the_masks_asked_for() -> TestResult {
         &"/Users/alice/x".to_owned(),
         "nothing asked for",
     )?;
-    Ok(())
-}
-
-#[test]
-fn a_home_directory_with_a_trailing_slash_is_shortened() -> TestResult {
-    let redactor = Redactor::with(
-        false,
-        ExtraMasks {
-            home: Some("/Users/alice/".to_owned()),
-            ..ExtraMasks::default()
-        },
-    )?;
-    let (got, _) = redactor.redact("cd /Users/alice/blog in -Users-alice-blog");
-    check_eq(got.as_str(), "cd ~/blog in ~-blog", "trailing slash")?;
-    Ok(())
-}
-
-#[test]
-fn without_the_built_in_rules_a_credential_key_stays() -> TestResult {
-    let redactor = Redactor::with(
-        false,
-        ExtraMasks {
-            emails: true,
-            ..ExtraMasks::default()
-        },
-    )?;
-    let mut value = json!({"password": "hunter2hunter2"});
-    let changed = redactor.redact_json(&mut value);
-    check_eq(
-        &value,
-        &json!({"password": "hunter2hunter2"}),
-        "key rule off",
-    )?;
-    check_eq(&changed, &false, "changed")?;
     Ok(())
 }

@@ -63,9 +63,9 @@ ccdig results --tool Bash --errors --subagents --format md
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
-# One session as a thread to share, with emails, the home directory, IP
-# addresses, and the values in a file masked too
-ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file secrets.txt
+# One session as a thread to share, with emails, IP addresses, the user
+# name, and the values in a file masked too
+ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
 ```
 
 ### Commands
@@ -105,8 +105,8 @@ ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file s
 records that match any value. The shared flags go before or after the
 command. `--tz` defaults to the system time zone (`TZ`, else
 `/etc/localtime`). `--root` sets the transcript root (default
-`~/.claude/projects`), and `--no-redact` turns the built-in masking off.
-`--mask` and `--mask-file` add masks, described under Redaction.
+`~/.claude/projects`). `--mask` and `--mask-file` add masks, and
+`--no-mask` turns all masking off; see Masking.
 
 `--grep` searches the text as it will be printed: after masking, so a
 secret cannot be found by its value. It reads the prompt or reply text, a
@@ -174,9 +174,10 @@ session. A directory or file that cannot be read, and lines that cannot be
 decoded, have no timestamp, or exceed 64 MiB, are skipped and reported on
 stderr while the rest of the output is still written.
 
-## Redaction
+## Masking
 
-On by default. Matches are replaced with `***REDACTED***`:
+Always on unless `--no-mask` is given. Matches are replaced with
+`***REDACTED***`:
 
 - AWS credentials: `AWS_SECRET_ACCESS_KEY`-style names with `=` or `:`,
   credentials files, `aws sts` JSON (`SecretAccessKey`, `SessionToken`),
@@ -210,23 +211,27 @@ On by default. Matches are replaced with `***REDACTED***`:
 Session titles, every string in a tool's input, and tool results are
 masked too.
 
-More masks are off by default and can be added to any command, even with
-`--no-redact`:
+More masks are off by default and can be added to any command:
 
 | Flag | Masks |
 | --- | --- |
 | `--mask email` | Email addresses, but not an SSH remote such as `git@github.com:` |
-| `--mask home` | `$HOME` as `~`, in text and in `cwd`, `project` (`-Users-alice-blog` becomes `~-blog`), and file paths |
 | `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more |
+| `--mask user` | The user name, the last part of `$HOME`, in any case and with any of `.`, `_`, and `-` between its parts, so also in a project directory name such as `-Users-alice-b-blog` |
 | `--mask-file FILE` | Each non-empty line of the file, trimmed, wherever it appears, as typed (case matters) |
 
 `--mask` takes a comma-separated list and is repeatable, as in
-`--mask email,home`, and so is `--mask-file`. These masks also apply to
+`--mask email,user`, and so is `--mask-file`. These masks also apply to
 the fields that are not text: `project`, `cwd`, `git_branch`, file paths,
 `tool`, `model`, `subagent`, `command`, and the warnings on stderr. The
 keys of a tool's input stay as they are. An IPv4 rule cannot tell a bare
 version number such as `1.2.3.4` from an address, so it masks that too;
-one after a letter or a dot, as in `v1.2.3.4`, stays.
+one after a letter or a dot, as in `v1.2.3.4`, stays. A part of the user
+name alone, such as a first name, stays; add it to a mask file.
+
+`--no-mask` prints everything as it was written, secrets included, for
+checking the masks on your own machine. It cannot be combined with
+`--mask` or `--mask-file`.
 
 The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a

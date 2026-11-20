@@ -255,11 +255,11 @@ struct Rule {
 pub struct ExtraMasks {
     /// Mask email addresses.
     pub emails: bool,
-    /// The home directory to shorten to `~`, in paths and in project
-    /// directory names.
-    pub home: Option<String>,
     /// Mask IP addresses.
     pub ips: bool,
+    /// The user name to mask, with any of `.`, `_`, and `-` between its
+    /// parts and in any case, as in a path or a project directory name.
+    pub user: Option<String>,
     /// Values to mask wherever they appear.
     pub values: Vec<String>,
 }
@@ -269,10 +269,10 @@ struct ExtraRules {
     /// Email addresses; an SSH remote such as `git@github.com:alice/x`
     /// stays.
     email: Option<Regex>,
-    /// The home directory and its project directory form, each to `~`.
-    home: Option<(String, String)>,
     /// IPv4 and IPv6 addresses.
     ip: Option<(Regex, Regex)>,
+    /// The user name, with its boundary as `${1}`.
+    user: Option<Regex>,
     /// The values, matched longest first so one that holds another is
     /// masked whole.
     values: Option<AhoCorasick>,
@@ -280,29 +280,18 @@ struct ExtraRules {
 
 /// The compiled masking rules, applied in order.
 pub struct Redactor {
-    /// Whether the built-in rules apply, including the credential keys of
-    /// a tool's input.
-    built_in: bool,
     /// The masks asked for, applied before the rules.
     extra: ExtraRules,
     /// Each later rule sees the output of the earlier ones.
     rules: Vec<Rule>,
 }
 
-impl ExtraMasks {
-    /// Whether no mask is asked for.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        !self.emails && self.home.is_none() && !self.ips && self.values.is_empty()
-    }
-}
-
 impl ExtraRules {
-    /// Applies the masks to `text`: the home directory first, then email
-    /// and IP addresses, so that a value inside one cannot split it, and
-    /// the values last, around the markers already placed.
+    /// Applies the masks to `text`: email and IP addresses first, so that
+    /// a user name or a value inside one cannot split it, then the user
+    /// name, and the values last, around the markers already placed.
     fn apply(&self, text: &str) -> String {
-        let mut masked = self.shorten_home(text.to_owned());
+        let mut masked = text.to_owned();
         if let Some(ref pattern) = self.email {
             masked = replace_unless_followed(pattern, &masked, |_, after| is_ssh_path(after));
         }
@@ -325,6 +314,11 @@ impl ExtraRules {
                         < MIN_IPV6_GROUPS
             });
         }
+        if let Some(ref pattern) = self.user {
+            masked = replace_unless_followed(pattern, &masked, |_, after| {
+                after.starts_with(|ch: char| ch.is_ascii_alphanumeric())
+            });
+        }
         match self.values {
             Some(ref values) => replace_values(values, &masked),
             None => masked,
@@ -338,24 +332,18 @@ impl ExtraRules {
             .into_iter()
             .filter(|value| !value.is_empty())
             .collect();
-        let trimmed = extra
-            .home
-            .map(|home| home.trim_end_matches('/').to_owned())
-            .filter(|home| !home.is_empty());
         Ok(Self {
             email: extra.emails.then(|| Regex::new(EMAIL)).transpose()?,
-            home: trimmed.map(|home| {
-                let encoded = home
-                    .chars()
-                    .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-                    .collect();
-                (home, encoded)
-            }),
             ip: if extra.ips {
                 Some((Regex::new(IPV4)?, Regex::new(IPV6)?))
             } else {
                 None
             },
+            user: extra
+                .user
+                .filter(|name| !name.is_empty())
+                .map(|name| Regex::new(&user_pattern(&name)))
+                .transpose()?,
             values: if values.is_empty() {
                 None
             } else {
@@ -369,16 +357,6 @@ impl ExtraRules {
                 )
             },
         })
-    }
-
-    /// Shortens the home directory, and its project directory form such as
-    /// `-Users-alice`, to `~` where a path separator or the end follows.
-    fn shorten_home(&self, text: String) -> String {
-        let Some((ref home, ref encoded)) = self.home else {
-            return text;
-        };
-        let once = shorten(&text, home, '/');
-        shorten(&once, encoded, '-')
     }
 }
 
@@ -461,7 +439,7 @@ impl Redactor {
     /// test compiles them so it surfaces before release.
     #[cfg(test)]
     pub fn new() -> Result<Self, regex::Error> {
-        Self::with(true, ExtraMasks::default())
+        Self::with(ExtraMasks::default())
     }
 
     /// Masks secrets in `text` and reports whether it changed anything.
@@ -495,7 +473,6 @@ impl Redactor {
                 let mut changed = false;
                 for (key, field) in fields.iter_mut() {
                     if let Value::String(ref mut text) = *field
-                        && self.built_in
                         && key.is_ascii()
                         && name::masks(key, text)
                     {
@@ -511,15 +488,13 @@ impl Redactor {
         }
     }
 
-    /// Compiles the rules, or none when `built_in` is off, and the masks
-    /// `extra` asks for.
+    /// Compiles the rules and the masks `extra` asks for.
     ///
     /// # Errors
     ///
     /// When a fixed pattern does not compile, which is a bug in this file.
-    pub fn with(built_in: bool, extra: ExtraMasks) -> Result<Self, regex::Error> {
-        let patterns = if built_in { RULES.as_slice() } else { &[] };
-        let rules = patterns
+    pub fn with(extra: ExtraMasks) -> Result<Self, regex::Error> {
+        let rules = RULES
             .iter()
             .map(|&(pattern, replacement)| {
                 Ok(Rule {
@@ -534,7 +509,6 @@ impl Redactor {
             })
             .collect::<Result<Vec<_>, regex::Error>>()?;
         Ok(Self {
-            built_in,
             extra: ExtraRules::new(extra)?,
             rules,
         })
@@ -610,24 +584,21 @@ fn replace_unless_followed(
         .into_owned()
 }
 
-/// Replaces `prefix` in `text` with `~` where `separator` or the end of a
-/// path follows it.
-fn shorten(text: &str, prefix: &str, separator: char) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(prefix) {
-        let after = rest
-            .get(at.saturating_add(prefix.len())..)
-            .unwrap_or_default();
-        let continues =
-            |ch: char| ch != separator && (ch.is_alphanumeric() || matches!(ch, '.' | '_' | '-'));
-        let ends = !after.chars().next().is_some_and(continues);
-        out.push_str(rest.get(..at).unwrap_or_default());
-        out.push_str(if ends { "~" } else { prefix });
-        rest = after;
-    }
-    out.push_str(rest);
-    out
+/// The pattern for the user name `name`: case-insensitive, with any of `.`,
+/// `_`, and `-` where it has one, after the start or a character that is
+/// not a letter or a digit, captured as `${1}`.
+fn user_pattern(name: &str) -> String {
+    let body: String = name
+        .chars()
+        .map(|ch| {
+            if matches!(ch, '.' | '_' | '-') {
+                "[._-]".to_owned()
+            } else {
+                regex::escape(ch.encode_utf8(&mut [0; 4]))
+            }
+        })
+        .collect();
+    format!("(?i)(^|[^0-9A-Za-z])({body})")
 }
 
 /// The value at the start of `rest`, read through at most `limit` bytes.

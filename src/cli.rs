@@ -3,7 +3,7 @@
 
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 use clap::{Args, CommandFactory as _, Parser, Subcommand, ValueEnum};
@@ -173,12 +173,12 @@ struct Common {
     /// (repeatable).
     #[arg(long = "mask-file", value_name = "FILE")]
     mask_files: Vec<PathBuf>,
-    /// Also mask these: email, home, or ip (comma-separated, repeatable).
+    /// Also mask these: email, ip, or user (comma-separated, repeatable).
     #[arg(long = "mask", value_name = "KIND", value_delimiter = ',')]
     masks: Vec<MaskKind>,
-    /// Do not mask secrets.
+    /// Do not mask anything, secrets included.
     #[arg(long)]
-    no_redact: bool,
+    no_mask: bool,
     /// Keep projects whose directory name or cwd contains this
     /// (repeatable).
     #[arg(long = "project", value_name = "SUBSTRING")]
@@ -206,10 +206,10 @@ struct Common {
 enum MaskKind {
     /// Email addresses.
     Email,
-    /// The home directory, shortened to `~`.
-    Home,
     /// IPv4 and IPv6 addresses.
     Ip,
+    /// The user name, the last part of `$HOME`.
+    User,
 }
 
 /// The output formats of the record subcommands.
@@ -286,7 +286,7 @@ impl Common {
             &root,
             narrowing.subagents,
             &query,
-            &Mask::new(self.no_redact, self.extra_masks()?)?,
+            &Mask::new(self.no_mask, self.extra_masks()?)?,
             new_picker,
         )?;
         if let Some(limit) = self.limit {
@@ -298,6 +298,9 @@ impl Common {
 
     /// The masks `--mask` and `--mask-file` ask for.
     fn extra_masks(&self) -> Result<ExtraMasks, Failure> {
+        if self.no_mask && !(self.masks.is_empty() && self.mask_files.is_empty()) {
+            return Err(Failure::MaskWithNoMask);
+        }
         let mut values = Vec::new();
         for path in &self.mask_files {
             let read = fs::read_to_string(path).map_err(|source| Failure::MaskFile {
@@ -313,20 +316,16 @@ impl Common {
                     .map(str::to_owned),
             );
         }
-        let home = if self.masks.contains(&MaskKind::Home) {
-            Some(
-                env::var("HOME")
-                    .ok()
-                    .filter(|home| !home.is_empty())
-                    .ok_or(Failure::MaskHome)?,
-            )
+        let user = if self.masks.contains(&MaskKind::User) {
+            let home = env::var("HOME").unwrap_or_default();
+            Some(user_name(&home).ok_or(Failure::MaskUser)?)
         } else {
             None
         };
         Ok(ExtraMasks {
             emails: self.masks.contains(&MaskKind::Email),
-            home,
             ips: self.masks.contains(&MaskKind::Ip),
+            user,
             values,
         })
     }
@@ -356,7 +355,7 @@ impl Common {
             limit: later.limit.or(self.limit),
             mask_files: self.mask_files,
             masks: self.masks,
-            no_redact: self.no_redact || later.no_redact,
+            no_mask: self.no_mask || later.no_mask,
             projects: self.projects,
             root: later.root.or(self.root),
             sessions: self.sessions,
@@ -527,6 +526,15 @@ where
     let (corpus, zone) = flags.collect(narrowing, new_picker)?;
     let out = format.write(&corpus.records, |records| markdown(records, &zone))?;
     Ok((out, corpus.warnings))
+}
+
+/// The user name in `home`: its last part, or `None` for an empty or root
+/// directory or a name that is not UTF-8.
+fn user_name(home: &str) -> Option<String> {
+    Path::new(home.trim_end_matches('/'))
+        .file_name()?
+        .to_str()
+        .map(str::to_owned)
 }
 
 /// Checks the digest limits and converts them.
