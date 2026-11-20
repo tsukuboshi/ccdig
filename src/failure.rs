@@ -28,6 +28,18 @@ pub enum Failure {
     /// The history root cannot be listed.
     #[error("list projects: {0}")]
     ListProjects(#[source] io::Error),
+    /// The `--mask-file` cannot be read.
+    #[error("read mask file {path}: {source}")]
+    MaskFile {
+        /// The file given to `--mask-file`.
+        path: String,
+        /// Why it could not be read.
+        #[source]
+        source: io::Error,
+    },
+    /// `--mask home` is given and there is no home directory to mask.
+    #[error("mask home: HOME is not set")]
+    MaskHome,
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]
     Rules(#[source] regex::Error),

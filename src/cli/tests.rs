@@ -3,6 +3,7 @@
 mod kinds;
 
 use core::error::Error;
+use std::env;
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -186,6 +187,112 @@ fn no_redact_leaves_the_secret_as_typed() -> TestResult {
         "secret shown",
     )?;
     check_eq(&out.contains(r#""redacted":true"#), &false, "no redaction")?;
+    Ok(())
+}
+
+/// A history with one prompt that holds an email address, the home
+/// directory, an IP address, and a value for `--mask-file`, in a project
+/// under the home directory. Returns it with the mask file's path.
+fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
+    let history = History::new("root")?;
+    let home = env::var("HOME")?;
+    let project: String = home
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect();
+    let prompt = format!(
+        r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{home}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {home}/blog on 10.1.2.3 for corp-hidden"}}}}"#
+    );
+    history.write(
+        &format!("{project}-blog/mmmm.jsonl"),
+        fixture_time()?,
+        &[&prompt],
+    )?;
+    let values = history.root.with_file_name("mask.txt");
+    fs::write(&values, "corp-hidden\n\n")?;
+    Ok((history, values.to_string_lossy().into_owned()))
+}
+
+#[test]
+fn mask_hides_emails_the_home_directory_and_ips_and_mask_file_hides_its_values() -> TestResult {
+    let (history, values) = history_with_personal_data()?;
+    let ran = history.run_week(&[
+        "prompts",
+        "--session",
+        "mmmm",
+        "--mask",
+        "email,home",
+        "--mask",
+        "ip",
+        "--mask-file",
+        &values,
+    ]);
+    check_eq(&ran.code, &0, "exit")?;
+    check_eq(
+        &ran.out.contains(
+            r#""text":"mail ***REDACTED*** about ~/blog on ***REDACTED*** for ***REDACTED***""#,
+        ),
+        &true,
+        "text",
+    )?;
+    check_eq(&ran.out.contains(r#""cwd":"~/blog""#), &true, "cwd")?;
+    check_eq(&ran.out.contains(r#""project":"~-blog""#), &true, "project")?;
+    check_eq(&ran.out.contains(r#""redacted":true"#), &true, "redacted")?;
+    let sessions = history
+        .run_week(&["sessions", "--session", "mmmm", "--mask", "home"])
+        .out;
+    check_eq(
+        &sessions.contains(r#""cwd":"~/blog""#),
+        &true,
+        "session cwd",
+    )?;
+    check_eq(
+        &sessions.contains(r#""project":"~-blog""#),
+        &true,
+        "session project",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn without_mask_the_personal_data_stays() -> TestResult {
+    let (history, _) = history_with_personal_data()?;
+    let out = history.run_week(&["prompts", "--session", "mmmm"]).out;
+    check_eq(&out.contains("bob@example.com"), &true, "email")?;
+    check_eq(&out.contains("10.1.2.3"), &true, "ip")?;
+    check_eq(&out.contains("corp-hidden"), &true, "value")?;
+    Ok(())
+}
+
+#[test]
+fn mask_still_applies_under_no_redact() -> TestResult {
+    let (history, _) = history_with_personal_data()?;
+    let out = history
+        .run_week(&[
+            "prompts",
+            "--session",
+            "mmmm",
+            "--no-redact",
+            "--mask",
+            "email",
+        ])
+        .out;
+    check_eq(&out.contains("mail ***REDACTED*** about"), &true, "email")?;
+    Ok(())
+}
+
+#[test]
+fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
+    let history = History::new("root")?;
+    let unknown = history.run_week(&["prompts", "--mask", "phone"]);
+    check_eq(&(unknown.code != 0), &true, "unknown mask")?;
+    let missing = history.run_week(&["prompts", "--mask-file", "/nonexistent/mask.txt"]);
+    check_eq(&(missing.code != 0), &true, "missing file")?;
+    check_eq(
+        &missing.err.contains("/nonexistent/mask.txt"),
+        &true,
+        "names the file",
+    )?;
     Ok(())
 }
 

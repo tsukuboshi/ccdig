@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use super::{MARKER, Redactor};
+use super::{ExtraMasks, MARKER, Redactor};
 use crate::testing::{TestResult, check_eq};
 
 /// One row of the table: a name, the input, and the expected output.
@@ -681,5 +681,123 @@ fn redact_json_reports_no_change_when_nothing_matches() -> TestResult {
     let before = value.clone();
     check_eq(&redactor.redact_json(&mut value), &false, "changed")?;
     check_eq(&value, &before, "untouched input")?;
+    Ok(())
+}
+
+/// The extra masks on, with `/Users/alice` as the home directory and two
+/// values from a mask file.
+fn extra_redactor() -> Result<Redactor, regex::Error> {
+    Redactor::with(
+        true,
+        ExtraMasks {
+            emails: true,
+            home: Some("/Users/alice".to_owned()),
+            ips: true,
+            values: vec![
+                "corp-internal".to_owned(),
+                "corp-internal.example".to_owned(),
+            ],
+        },
+    )
+}
+
+/// The rows for the masks that `--mask` and `--mask-file` turn on.
+fn extra_cases() -> Vec<Case> {
+    vec![
+        case(
+            "email address",
+            "mail alice.b+ci@mail.example.co.jp now".to_owned(),
+            "mail ***REDACTED*** now",
+        ),
+        case(
+            "SSH remote is not an email address",
+            "git clone git@github.com:alice/blog.git".to_owned(),
+            "git clone git@github.com:alice/blog.git",
+        ),
+        case(
+            "home directory",
+            "cd /Users/alice/blog && ls /Users/alice".to_owned(),
+            "cd ~/blog && ls ~",
+        ),
+        case(
+            "another user's directory stays",
+            "ls /Users/alicex/blog".to_owned(),
+            "ls /Users/alicex/blog",
+        ),
+        case(
+            "project directory name",
+            "-Users-alice-blog".to_owned(),
+            "~-blog",
+        ),
+        case(
+            "IPv4 address",
+            "ssh 10.0.12.34 and 192.168.1.255:8080".to_owned(),
+            "ssh ***REDACTED*** and ***REDACTED***:8080",
+        ),
+        case(
+            "loopback, unspecified, broadcast, versions, and non-addresses stay",
+            "127.0.0.1 0.0.0.0 255.255.255.255 v1.2.3.4 1.2.3.4.5 300.1.1.1".to_owned(),
+            "127.0.0.1 0.0.0.0 255.255.255.255 v1.2.3.4 1.2.3.4.5 300.1.1.1",
+        ),
+        case(
+            "IPv6 address",
+            "ping 2001:db8::1 and fe80:0:0:0:0:0:0:1a".to_owned(),
+            "ping ***REDACTED*** and ***REDACTED***",
+        ),
+        case(
+            "IPv6 loopback, times, and paths stay",
+            "::1 at 12:30:45 in std::fs and a::b".to_owned(),
+            "::1 at 12:30:45 in std::fs and a::b",
+        ),
+        case(
+            "values from the mask file, longest first",
+            "host corp-internal.example for corp-internal".to_owned(),
+            "host ***REDACTED*** for ***REDACTED***",
+        ),
+    ]
+}
+
+#[test]
+fn extra_masks_apply_only_when_asked_for() -> TestResult {
+    let extra = extra_redactor()?;
+    let plain = Redactor::new()?;
+    for row in extra_cases() {
+        let (got, changed) = extra.redact(&row.input);
+        check_eq(got.as_str(), row.want.as_str(), row.name)?;
+        check_eq(&changed, &(row.input != row.want), row.name)?;
+        let (untouched, _) = plain.redact(&row.input);
+        check_eq(untouched.as_str(), row.input.as_str(), row.name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn extra_masks_apply_without_the_built_in_rules() -> TestResult {
+    let only_extra = Redactor::with(
+        false,
+        ExtraMasks {
+            emails: true,
+            ..ExtraMasks::default()
+        },
+    )?;
+    let key = key_id();
+    let (got, _) = only_extra.redact(&format!("{key} alice@example.com"));
+    check_eq(&got, &format!("{key} ***REDACTED***"), "only extra")?;
+    Ok(())
+}
+
+#[test]
+fn path_masks_only_the_home_directory() -> TestResult {
+    let extra = extra_redactor()?;
+    check_eq(
+        &extra.path("/Users/alice/.claude/projects/-Users-alice-blog/s.jsonl"),
+        &"~/.claude/projects/~-blog/s.jsonl".to_owned(),
+        "path",
+    )?;
+    check_eq(
+        &Redactor::new()?.path("/Users/alice/x"),
+        &"/Users/alice/x".to_owned(),
+        "path without home",
+    )?;
     Ok(())
 }

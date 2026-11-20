@@ -1,12 +1,12 @@
 //! The command line: the flags, the subcommands, and how help, output, and
 //! errors are written.
 
-use std::env;
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
+use std::{env, fs};
 
-use clap::{Args, CommandFactory as _, Parser, Subcommand};
+use clap::{Args, CommandFactory as _, Parser, Subcommand, ValueEnum};
 use jiff::tz::TimeZone;
 use serde::Serialize;
 
@@ -14,6 +14,7 @@ use crate::classify::human::FILTER_VERSION;
 use crate::collect::kinds::{Prompts, Replies, Results, Tools};
 use crate::collect::{Corpus, Mask, Pick, collect};
 use crate::failure::Failure;
+use crate::redact::ExtraMasks;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{document, lines};
 use crate::render::markdown;
@@ -155,6 +156,12 @@ struct Common {
     /// Print at most this many records.
     #[arg(long, value_name = "N")]
     limit: Option<usize>,
+    /// Also mask each non-empty line of this file wherever it appears.
+    #[arg(long, value_name = "FILE")]
+    mask_file: Option<PathBuf>,
+    /// Also mask these: email, home, or ip (comma-separated, repeatable).
+    #[arg(long = "mask", value_name = "KIND", value_delimiter = ',')]
+    masks: Vec<MaskKind>,
     /// Do not mask secrets.
     #[arg(long)]
     no_redact: bool,
@@ -178,6 +185,17 @@ struct Common {
     /// Last day to include, YYYY-MM-DD (record time, in --tz).
     #[arg(long, value_name = "DAY")]
     until: Option<String>,
+}
+
+/// What `--mask` can ask to mask besides the built-in rules.
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum MaskKind {
+    /// Email addresses.
+    Email,
+    /// The home directory, shortened to `~`.
+    Home,
+    /// IPv4 and IPv6 addresses.
+    Ip,
 }
 
 /// The output formats of the record subcommands.
@@ -254,7 +272,7 @@ impl Common {
             &root,
             narrowing.subagents,
             &query,
-            &Mask::new(self.no_redact)?,
+            &Mask::new(self.no_redact, self.extra_masks()?)?,
             new_picker,
         )?;
         if let Some(limit) = self.limit {
@@ -262,6 +280,39 @@ impl Common {
             corpus.sessions.truncate(limit);
         }
         Ok((corpus, zone))
+    }
+
+    /// The masks `--mask` and `--mask-file` ask for.
+    fn extra_masks(&self) -> Result<ExtraMasks, Failure> {
+        let values = match self.mask_file {
+            Some(ref path) => fs::read_to_string(path)
+                .map_err(|source| Failure::MaskFile {
+                    path: path.display().to_string(),
+                    source,
+                })?
+                .lines()
+                .map(str::trim_end)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            None => Vec::new(),
+        };
+        let home = if self.masks.contains(&MaskKind::Home) {
+            Some(
+                env::var("HOME")
+                    .ok()
+                    .filter(|home| !home.is_empty())
+                    .ok_or(Failure::MaskHome)?,
+            )
+        } else {
+            None
+        };
+        Ok(ExtraMasks {
+            emails: self.masks.contains(&MaskKind::Email),
+            home,
+            ips: self.masks.contains(&MaskKind::Ip),
+            values,
+        })
     }
 
     /// `--root`, or `~/.claude/projects`.
@@ -280,11 +331,14 @@ impl Common {
         self.branches.extend(later.branches);
         self.projects.extend(later.projects);
         self.sessions.extend(later.sessions);
+        self.masks.extend(later.masks);
         Self {
             branches: self.branches,
             grep: later.grep.or(self.grep),
             ignore_case: self.ignore_case || later.ignore_case,
             limit: later.limit.or(self.limit),
+            mask_file: later.mask_file.or(self.mask_file),
+            masks: self.masks,
             no_redact: self.no_redact || later.no_redact,
             projects: self.projects,
             root: later.root.or(self.root),

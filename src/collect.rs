@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::failure::Failure;
-use crate::redact::Redactor;
+use crate::redact::{ExtraMasks, Redactor};
 use crate::render::record::{AGENT, Head, Record, Session};
 use crate::select::{Facts, Query};
 use crate::text::clean_text;
@@ -33,8 +33,8 @@ pub struct Corpus<T> {
 /// block's index in the line.
 type FileRecords<'file, T> = (&'file SessionFile, Stamp, Vec<(usize, T)>);
 
-/// The masking applied to what is printed: the rules, or none under
-/// `--no-redact`.
+/// The masking applied to what is printed: the built-in rules unless
+/// `--no-redact`, and the masks `--mask` and `--mask-file` ask for.
 pub struct Mask(Option<Redactor>);
 
 /// One kind of record and how it is picked out of transcript lines. A
@@ -120,18 +120,25 @@ impl Mask {
             .is_some_and(|rules| rules.redact_json(value))
     }
 
-    /// The rules, or none when `off`.
+    /// The built-in rules unless `off`, and the masks in `extra`.
     ///
     /// # Errors
     ///
     /// When the rules do not compile, which is a bug.
-    pub fn new(off: bool) -> Result<Self, Failure> {
-        if off {
+    pub fn new(off: bool, extra: ExtraMasks) -> Result<Self, Failure> {
+        if off && extra.is_empty() {
             return Ok(Self(None));
         }
-        Redactor::new()
+        Redactor::with(!off, extra)
             .map(|rules| Self(Some(rules)))
             .map_err(Failure::Rules)
+    }
+
+    /// Shortens the home directory in `path` when `--mask home` asks for it.
+    pub fn path(&self, path: &str) -> String {
+        self.0
+            .as_ref()
+            .map_or_else(|| path.to_owned(), |rules| rules.path(path))
     }
 
     /// Masks `text`, reporting whether anything changed.
@@ -266,13 +273,13 @@ where
             .then_with(|| left_file.modified.cmp(&right_file.modified))
             .then_with(|| walk::bytes(&left_file.path).cmp(walk::bytes(&right_file.path)))
     });
-    Ok(gather(sessions, warnings))
+    Ok(gather(sessions, warnings, mask))
 }
 
 /// Keeps each record once across sessions, in session order, and builds
 /// the session records. A resumed or forked session starts with a copy of
 /// earlier entries, IDs included; the first session in order wins.
-fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>) -> Corpus<T>
+fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>, mask: &Mask) -> Corpus<T>
 where
     T: Select,
 {
@@ -299,10 +306,10 @@ where
             agent: AGENT,
             id: head.session_id.clone(),
             title: head.session_title.clone(),
-            project: file.project.clone(),
+            project: head.project.clone(),
             cwd: head.cwd.clone(),
             git_branch: head.git_branch.clone(),
-            file: file.path.to_string_lossy().into_owned(),
+            file: mask.path(&file.path.to_string_lossy()),
             // UTC keeps the output the same on every machine.
             mtime: modified,
             started_at: head.timestamp,
@@ -381,7 +388,11 @@ where
     // end up in one.
     let (masked_title, _) = mask.text(&title);
     for pair in &mut records {
-        pair.1.head_mut().session_title.clone_from(&masked_title);
+        let head = pair.1.head_mut();
+        head.session_title.clone_from(&masked_title);
+        // After the filters, so --project still matches the real paths.
+        head.cwd = mask.path(&head.cwd);
+        head.project = mask.path(&head.project);
     }
     let stats = lines.stats();
     Ok(Read {

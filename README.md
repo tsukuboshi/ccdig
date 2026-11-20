@@ -62,6 +62,10 @@ ccdig results --tool Bash --errors --subagents --format md
 
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
+
+# Prompts with emails, the home directory, IP addresses, and the values in
+# a file masked too
+ccdig prompts --mask email,home,ip --mask-file secrets.txt
 ```
 
 ### Commands
@@ -100,7 +104,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 records that match any value. The shared flags go before or after the
 command. `--tz` defaults to the system time zone (`TZ`, else
 `/etc/localtime`). `--root` sets the transcript root (default
-`~/.claude/projects`), and `--no-redact` turns masking off.
+`~/.claude/projects`), and `--no-redact` turns the built-in masking off.
+`--mask` and `--mask-file` add masks, described under Redaction.
 
 `--grep` searches the text as it will be printed: after masking, so a
 secret cannot be found by its value. It reads the prompt or reply text, a
@@ -201,6 +206,21 @@ On by default. Matches are replaced with `***REDACTED***`:
 
 Session titles, every string in a tool's input, and tool results are
 masked too.
+
+More masks are off by default and can be added to any command, even with
+`--no-redact`:
+
+| Flag | Masks |
+| --- | --- |
+| `--mask email` | Email addresses, but not an SSH remote such as `git@github.com:` |
+| `--mask home` | `$HOME` as `~`, in text and in `cwd`, `project` (`-Users-alice-blog` becomes `~-blog`), and file paths |
+| `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more other than `::1` |
+| `--mask-file FILE` | Each non-empty line of the file, wherever it appears |
+
+`--mask` takes a comma-separated list and is repeatable, as in
+`--mask email,home`. An IPv4 rule cannot tell a bare version number such
+as `1.2.3.4` from an address, so it masks that too; one after a letter or
+a dot, as in `v1.2.3.4`, stays.
 
 The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a
