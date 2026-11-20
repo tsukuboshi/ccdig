@@ -259,6 +259,17 @@ fn url_cases() -> Vec<Case> {
                 .to_owned(),
             "see https://user@example.com and https://example.com:8080/path?email=a@b.com",
         ),
+        case(
+            "a query or fragment without a path is not a password",
+            "open https://example.com:8443?email=a@b.com or https://example.com:8443#x@y"
+                .to_owned(),
+            "open https://example.com:8443?email=a@b.com or https://example.com:8443#x@y",
+        ),
+        case(
+            "a password before a query is still masked",
+            format!("dial redis://:{}@cache:6379?db=0", fake(12)),
+            "dial redis://:***REDACTED***@cache:6379?db=0",
+        ),
     ]
 }
 

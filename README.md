@@ -193,7 +193,9 @@ in code spans.
 - Claude Code only.
 - ccdig is a Rust rewrite of
   [promptdig](https://github.com/tsukuboshi/promptdig). `prompts`,
-  `sessions`, and `digest` print the same output as promptdig 0.1.0.
+  `sessions`, and `digest` print the same output as promptdig 0.1.0,
+  except that a URL with a port and a query but no path, such as
+  `https://host:8443?email=a@b.com`, is no longer masked.
 
 ## Getting help
 

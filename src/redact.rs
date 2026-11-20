@@ -113,12 +113,13 @@ const RULES: [(&str, Replacement); 15] = [
         Replacement::KeepPrefix,
     ),
     // The password in a URL's userinfo, such as postgres://app:secret@host or
-    // redis://:secret@host. It runs to the last '@' before the path, so a
-    // password containing '@' is masked whole; a '/' in the path stops it,
-    // so ?email=a@b.com after the host does not match. The user and host
-    // stay so the prompt still says what it connects to.
+    // redis://:secret@host. It runs to the last '@' before the path, query,
+    // or fragment, so a password containing '@' is masked whole while
+    // ?email=a@b.com after the host does not match, with or without a path.
+    // promptdig stopped only at '/'. The user and host stay so the prompt
+    // still says what it connects to.
     (
-        r"(://[^/\t\n\x0C\r :@]*:)[^\t\n\x0C\r /]*@",
+        r"(://[^/\t\n\x0C\r :@]*:)[^\t\n\x0C\r /?#]*@",
         Replacement::KeepPrefixBeforeAt,
     ),
     // PEM and PGP private keys, through the END line or, when the paste was
