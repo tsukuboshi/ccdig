@@ -1,4 +1,4 @@
-//! Reading every transcript under the root into the records of one kind:
+//! Reading every transcript under the root into the records a picker picks:
 //! list, read, pick, mask, filter, and drop resumed copies.
 
 pub mod kinds;
@@ -72,14 +72,15 @@ pub trait Select: Record {
     fn labels_mut(&mut self) -> Vec<&mut String>;
 }
 
-/// The facts the filters see that only some kinds have.
+/// The facts the filters see that only some kinds have, `None` for a kind
+/// without them.
 pub struct Extra<'record> {
     /// Whether a tool reported a failure.
-    pub is_error: bool,
+    pub is_error: Option<bool>,
     /// The skill running at the time.
-    pub skill: &'record str,
+    pub skill: Option<&'record str>,
     /// The tool's name.
-    pub tool: &'record str,
+    pub tool: Option<&'record str>,
 }
 
 /// Where an entry is, for building its records.

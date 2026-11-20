@@ -1,14 +1,14 @@
 //! Tests for the writers, against golden files.
 
-use core::slice;
-
 use jiff::tz::TimeZone;
 use serde_json::json;
 
 use super::digest::{Limits, digest};
 use super::json::{document, lines};
 use super::markdown;
-use super::record::{AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult};
+use super::record::{
+    AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult, Turn,
+};
 use crate::failure::Failure;
 use crate::testing::{TestResult, check_eq, golden};
 use crate::when::{Stamp, load_zone};
@@ -97,6 +97,11 @@ fn sample_session() -> Result<Session, String> {
     })
 }
 
+/// `prompts` as the records `ccdig records --type prompt` writes.
+fn prompt_turns(prompts: Vec<Prompt>) -> Vec<Turn> {
+    prompts.into_iter().map(Turn::Prompt).collect()
+}
+
 /// Asia/Tokyo, where the Markdown samples show their times.
 fn tokyo() -> Result<TimeZone, Failure> {
     load_zone("Asia/Tokyo")
@@ -104,12 +109,15 @@ fn tokyo() -> Result<TimeZone, Failure> {
 
 #[test]
 fn prompts_as_json_lines() -> TestResult {
-    golden("render/prompts.jsonl.golden", &lines(&sample_prompts()?)?)
+    golden(
+        "render/prompts.jsonl.golden",
+        &lines(&prompt_turns(sample_prompts()?))?,
+    )
 }
 
 #[test]
 fn prompts_as_a_json_document() -> TestResult {
-    let prompts = sample_prompts()?;
+    let prompts = prompt_turns(sample_prompts()?);
     golden(
         "render/prompts.json.golden",
         &document("strict-v2", prompts.get(..1).ok_or("no prompts")?)?,
@@ -144,7 +152,7 @@ fn prompts_as_markdown() -> TestResult {
     });
     golden(
         "render/prompts.md.golden",
-        &markdown::prompts(&prompts, &tokyo()?)?,
+        &markdown::records(&prompt_turns(prompts), &tokyo()?)?,
     )
 }
 
@@ -167,11 +175,11 @@ fn sessions_as_a_markdown_table() -> TestResult {
 #[test]
 fn markdown_groups_by_file_not_by_session_id() -> TestResult {
     let head = blog_head("2026-10-13T01:00:00Z")?;
-    let out = markdown::prompts(
-        &[
+    let out = markdown::records(
+        &prompt_turns(vec![
             bare_prompt(head.clone(), "/a.jsonl", "one"),
             bare_prompt(head, "/b.jsonl", "two"),
-        ],
+        ]),
         &TimeZone::UTC,
     )?;
     check_eq(&out.matches("\n## ").count(), &2, "session headings")?;
@@ -286,23 +294,19 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         ..result.clone()
     };
     let zone = tokyo()?;
-    golden(
-        "kinds/replies.jsonl.golden",
-        &lines(slice::from_ref(&reply))?,
-    )?;
+    let replies = [Turn::Reply(reply)];
+    golden("kinds/replies.jsonl.golden", &lines(&replies)?)?;
     golden(
         "kinds/replies.md.golden",
-        &markdown::replies(&[reply], &zone)?,
+        &markdown::records(&replies, &zone)?,
     )?;
-    golden("kinds/tools.jsonl.golden", &lines(slice::from_ref(&call))?)?;
-    golden(
-        "kinds/tools.md.golden",
-        &markdown::tool_calls(&[call], &zone)?,
-    )?;
-    let results = [result, orphan];
+    let calls = [Turn::Call(call)];
+    golden("kinds/tools.jsonl.golden", &lines(&calls)?)?;
+    golden("kinds/tools.md.golden", &markdown::records(&calls, &zone)?)?;
+    let results = [Turn::Result(result), Turn::Result(orphan)];
     golden("kinds/results.jsonl.golden", &lines(&results)?)?;
     golden(
         "kinds/results.md.golden",
-        &markdown::tool_results(&results, &zone)?,
+        &markdown::records(&results, &zone)?,
     )
 }

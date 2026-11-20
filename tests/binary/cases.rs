@@ -14,10 +14,12 @@ fn ccdig(args: &[&str], tz: &str) -> io::Result<Output> {
         .output()
 }
 
-/// The `prompts` arguments for the sample week, plus `extra`.
+/// The arguments listing the prompts of the sample week, plus `extra`.
 fn week(root: &str, extra: &[&'static str]) -> Vec<String> {
     let mut args: Vec<String> = [
-        "prompts",
+        "records",
+        "--type",
+        "prompt",
         "--root",
         root,
         "--since",
@@ -58,10 +60,10 @@ fn day_boundaries_follow_the_time_zone() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn an_error_exits_1_with_one_line_on_stderr() -> Result<(), Box<dyn Error>> {
-    let output = ccdig(&["prompts", "--format", "xml"], "UTC")?;
+    let output = ccdig(&["records", "--type", "prompt", "--format", "xml"], "UTC")?;
     let stderr = String::from_utf8(output.stderr)?;
     if output.status.code() != Some(1_i32)
-        || !stderr.starts_with("ccdig: unknown --format")
+        || !stderr.starts_with("ccdig: invalid value 'xml' for '--format <FORMAT>'")
         || stderr.lines().count() != 1
     {
         return Err(format!("status {:?}, stderr {stderr:?}", output.status).into());
@@ -98,7 +100,16 @@ fn tools_print_the_untruncated_input_with_credentials_masked() -> Result<(), Box
             "\n",
         ),
     )?;
-    let output = ccdig(&["tools", "--root", &root.path().to_string_lossy()], "UTC")?;
+    let output = ccdig(
+        &[
+            "records",
+            "--type",
+            "call",
+            "--root",
+            &root.path().to_string_lossy(),
+        ],
+        "UTC",
+    )?;
     let stdout = String::from_utf8(output.stdout)?;
     let want = r#""input":{"command":"mysql --password=***REDACTED*** -e 'select 1'"}"#;
     if !output.status.success() || !stdout.contains(want) {

@@ -150,7 +150,7 @@ fn time(text: &str) -> Result<SystemTime, jiff::Error> {
 
 #[test]
 fn prompts_as_json_lines_match_the_golden() -> TestResult {
-    let ran = History::new("root")?.run_week(&["prompts"]);
+    let ran = History::new("root")?.run_week(&["records", "--type", "prompt"]);
     check_eq(&ran.code, &0, "exit")?;
     golden("cli/prompts.jsonl.golden", &ran.out)
 }
@@ -179,7 +179,7 @@ fn the_digest_matches_the_golden() -> TestResult {
 #[test]
 fn no_mask_leaves_the_secret_as_typed() -> TestResult {
     let out = History::new("root")?
-        .run_week(&["prompts", "--no-mask"])
+        .run_week(&["records", "--type", "prompt", "--no-mask"])
         .out;
     check_eq(
         &out.contains("AWS_SECRET_ACCESS_KEY=EXAMPLEEXAMPLEEXAMPLE"),
@@ -238,7 +238,9 @@ fn mask_hides_emails_the_user_name_and_ips_and_mask_file_hides_its_values() -> T
     };
     let (history, values) = history_with_personal_data()?;
     let ran = history.run_week(&[
-        "prompts",
+        "records",
+        "--type",
+        "prompt",
         "--session",
         "mmmm",
         "--mask",
@@ -305,7 +307,9 @@ fn the_user_name_is_the_last_part_of_the_home_directory() -> TestResult {
 #[test]
 fn without_mask_the_personal_data_stays() -> TestResult {
     let (history, _) = history_with_personal_data()?;
-    let out = history.run_week(&["prompts", "--session", "mmmm"]).out;
+    let out = history
+        .run_week(&["records", "--type", "prompt", "--session", "mmmm"])
+        .out;
     check_eq(&out.contains("bob@example.com"), &true, "email")?;
     check_eq(&out.contains("10.1.2.3"), &true, "ip")?;
     check_eq(&out.contains("corp-hidden"), &true, "value")?;
@@ -335,7 +339,7 @@ fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
         let ran = history.run_week(&[
             "--mask-file",
             &values_path,
-            "conversation",
+            "records",
             "--project",
             "corp-hidden",
             "--mask-file",
@@ -358,8 +362,22 @@ fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
 fn no_mask_with_a_mask_is_an_error() -> TestResult {
     let history = History::new("root")?;
     for args in [
-        ["prompts", "--no-mask", "--mask", "email"],
-        ["prompts", "--no-mask", "--mask-file", "x.txt"],
+        [
+            "records",
+            "--type",
+            "prompt",
+            "--no-mask",
+            "--mask",
+            "email",
+        ],
+        [
+            "records",
+            "--type",
+            "prompt",
+            "--no-mask",
+            "--mask-file",
+            "x.txt",
+        ],
     ] {
         let ran = history.run_week(&args);
         check_eq(&(ran.code != 0), &true, args[3])?;
@@ -371,9 +389,15 @@ fn no_mask_with_a_mask_is_an_error() -> TestResult {
 #[test]
 fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
     let history = History::new("root")?;
-    let unknown = history.run_week(&["prompts", "--mask", "phone"]);
+    let unknown = history.run_week(&["records", "--type", "prompt", "--mask", "phone"]);
     check_eq(&(unknown.code != 0), &true, "unknown mask")?;
-    let missing = history.run_week(&["prompts", "--mask-file", "/nonexistent/mask.txt"]);
+    let missing = history.run_week(&[
+        "records",
+        "--type",
+        "prompt",
+        "--mask-file",
+        "/nonexistent/mask.txt",
+    ]);
     check_eq(&(missing.code != 0), &true, "missing file")?;
     check_eq(
         &missing.err.contains("/nonexistent/mask.txt"),
@@ -401,17 +425,23 @@ fn history_with_a_conversation() -> Result<History, Box<dyn Error>> {
     Ok(history)
 }
 
-#[test]
-fn conversation_lists_prompts_replies_and_tool_calls_in_order() -> TestResult {
-    let ran = history_with_a_conversation()?.run_week(&["conversation", "--session", "cccc"]);
-    check_eq(&ran.code, &0, "exit")?;
-    let types: Vec<&str> = ran
-        .out
-        .lines()
+/// The `type` of each JSON line in `out`.
+fn types(out: &str) -> Vec<&str> {
+    out.lines()
         .filter_map(|line| line.split(r#""type":""#).nth(1))
         .filter_map(|rest| rest.split('"').next())
-        .collect();
-    check_eq(&types, &vec!["prompt", "reply", "tool", "prompt"], "order")?;
+        .collect()
+}
+
+#[test]
+fn records_list_prompts_replies_and_calls_in_order_by_default() -> TestResult {
+    let ran = history_with_a_conversation()?.run_week(&["records", "--session", "cccc"]);
+    check_eq(&ran.code, &0, "exit")?;
+    check_eq(
+        &types(&ran.out),
+        &vec!["prompt", "reply", "call", "prompt"],
+        "order",
+    )?;
     check_eq(&ran.out.contains("private musing"), &false, "thinking")?;
     check_eq(&ran.out.contains("a.md"), &false, "tool result")?;
     check_eq(
@@ -423,12 +453,45 @@ fn conversation_lists_prompts_replies_and_tool_calls_in_order() -> TestResult {
 }
 
 #[test]
-fn conversation_in_markdown_reads_as_one_thread() -> TestResult {
+fn type_picks_the_kinds_of_record() -> TestResult {
+    let history = history_with_a_conversation()?;
+    for (args, want) in [
+        (&["--type", "prompt"][..], vec!["prompt", "prompt"]),
+        (
+            &["--type", "prompt,result"][..],
+            vec!["prompt", "result", "prompt"],
+        ),
+        (
+            &["--type", "call", "--type", "reply"][..],
+            vec!["reply", "call"],
+        ),
+        (&["--type", "call,result"][..], vec!["call", "result"]),
+    ] {
+        let mut full = vec!["records", "--session", "cccc"];
+        full.extend_from_slice(args);
+        let ran = history.run_week(&full);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&types(&ran.out), &want, &args.join(" "))?;
+    }
+    let unknown = history.run_week(&["records", "--type", "thinking"]);
+    check_eq(&unknown.code, &1, "unknown type")?;
+    check_eq(
+        &unknown
+            .err
+            .starts_with("ccdig: invalid value 'thinking' for '--type"),
+        &true,
+        &unknown.err,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn records_in_markdown_read_as_one_thread() -> TestResult {
     let out = history_with_a_conversation()?
-        .run_week(&["conversation", "--session", "cccc", "--format", "md"])
+        .run_week(&["records", "--session", "cccc", "--format", "md"])
         .out;
     let positions: Vec<Option<usize>> = [
-        "# Conversation",
+        "# Records",
         "## List posts",
         "- Prompt\n\n```text\nlist the posts",
         "- Reply\n\n```text\nListing them.",
@@ -451,7 +514,9 @@ fn conversation_in_markdown_reads_as_one_thread() -> TestResult {
 fn project_matches_the_directory_name_or_the_cwd() -> TestResult {
     let history = History::new("root")?;
     for project in ["alice-work-notes", "work/notes"] {
-        let out = history.run_week(&["prompts", "--project", project]).out;
+        let out = history
+            .run_week(&["records", "--type", "prompt", "--project", project])
+            .out;
         check_eq(&line_count(&out), &1, project)?;
         check_eq(&out.contains("64 KiB"), &true, project)?;
     }
@@ -463,7 +528,9 @@ fn shared_flags_go_before_or_after_the_subcommand_and_add_up() -> TestResult {
     let ran = History::new("root")?.run_week(&[
         "--project",
         "alice-blog",
-        "prompts",
+        "records",
+        "--type",
+        "prompt",
         "--project",
         "notes",
     ]);
@@ -476,23 +543,33 @@ fn bad_flags_fail_with_one_line() -> TestResult {
     let history = History::new("root")?;
     for (args, prefix) in [
         (
-            &["prompts", "--format", "xml"][..],
-            "ccdig: unknown --format",
+            &["records", "--type", "prompt", "--format", "xml"][..],
+            "ccdig: invalid value 'xml' for '--format <FORMAT>'",
         ),
         (
-            &["prompts", "--since", "2026/10/13"][..],
+            &["records", "--type", "prompt", "--since", "2026/10/13"][..],
             "ccdig: parse since:",
         ),
         (
-            &["prompts", "--tz", "Mars/Olympus"][..],
+            &["records", "--type", "prompt", "--tz", "Mars/Olympus"][..],
             "ccdig: load time zone:",
         ),
         (
             &["digest", "--max-prompt-chars", "0"][..],
             "ccdig: --max-prompt-chars",
         ),
-        (&["prompts", "--grep", "("][..], "ccdig: parse grep:"),
-        (&["prompts", "--bogus"][..], "ccdig: unexpected argument"),
+        (
+            &["records", "--type", "prompt", "--grep", "("][..],
+            "ccdig: parse grep:",
+        ),
+        (
+            &["sessions", "--format", "digest"][..],
+            "ccdig: invalid value 'digest' for '--format <FORMAT>'",
+        ),
+        (
+            &["records", "--type", "prompt", "--bogus"][..],
+            "ccdig: unexpected argument",
+        ),
     ] {
         let ran = history.run(args);
         let name = args.join(" ");
@@ -529,13 +606,88 @@ fn version_and_help() -> TestResult {
     let history = History::new("root")?;
     let version = history.run(&["version"]);
     check_eq(version.out.as_str(), "ccdig v0.1.0\n", "version")?;
-    for args in [&[][..], &["--help"][..], &["prompts", "--help"][..]] {
+    for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
         let ran = history.run(args);
         let name = format!("help for {args:?}");
         check_eq(&ran.code, &0, &name)?;
         check_eq(&ran.out.contains("Usage: ccdig"), &true, &name)?;
         check_eq(ran.err.as_str(), "", &name)?;
     }
+    Ok(())
+}
+
+/// Whether each of `parts` is in `text`, in that order.
+fn in_order(text: &str, parts: &[&str]) -> bool {
+    let positions: Vec<Option<usize>> = parts.iter().map(|part| text.find(part)).collect();
+    positions.iter().all(Option::is_some) && positions.is_sorted()
+}
+
+#[test]
+fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
+    let history = History::new("root")?;
+    let top = history.run(&["--help"]).out;
+    check_eq(
+        &in_order(
+            &top,
+            &["  records ", "  sessions ", "  digest ", "  version "],
+        ),
+        &true,
+        &top,
+    )?;
+    let records = history.run(&["records", "-h"]).out;
+    check_eq(
+        &in_order(
+            &records,
+            &[
+                "Records:\n",
+                "--type <TYPE>",
+                "Filters:\n",
+                "--since <DAY>",
+                "--until <DAY>",
+                "--tz <ZONE>",
+                "--project <SUBSTRING>",
+                "--session <PREFIX>",
+                "--branch <NAME>",
+                "--grep <REGEX>",
+                "--igrep <REGEX>",
+                "--tool <NAME>",
+                "--status <STATUS>",
+                "--skill <NAME>",
+                "Input:\n",
+                "--root <DIR>",
+                "--subagents",
+                "Masking:\n",
+                "--mask <KIND>",
+                "--mask-file <FILE>",
+                "--no-mask",
+                "Output:\n",
+                "--format <FORMAT>",
+                "--limit <N>",
+            ],
+        ),
+        &true,
+        &records,
+    )?;
+    check_eq(
+        &records.contains("[possible values: json, jsonl, md]"),
+        &true,
+        "format values",
+    )?;
+    let digest = history.run(&["digest", "-h"]).out;
+    check_eq(
+        &in_order(
+            &digest,
+            &[
+                "Output:\n",
+                "--limit <N>",
+                "--max-prompt-chars",
+                "--max-session-chars",
+            ],
+        ),
+        &true,
+        &digest,
+    )?;
+    check_eq(&digest.contains("--type"), &false, "digest has no --type")?;
     Ok(())
 }
 
@@ -550,7 +702,7 @@ fn an_unreadable_file_is_skipped_with_a_warning() -> TestResult {
     if lock(&bad)?.is_none() {
         return Ok(());
     }
-    let ran = history.run_week(&["prompts"]);
+    let ran = history.run_week(&["records", "--type", "prompt"]);
     fs::set_permissions(&bad, fs::Permissions::from_mode(0o600))?;
     check_eq(&ran.code, &0, "exit")?;
     check_eq(&line_count(&ran.out), &3, "readable prompts")?;
@@ -576,7 +728,7 @@ fn undecodable_and_untimed_lines_are_counted_in_a_warning() -> TestResult {
         fixture_time()?,
         &[r#"{"type":"user","uuid":"h-1","message":{"role":"user","content":"when was this?"}}"#],
     )?;
-    let ran = history.run(&["prompts"]);
+    let ran = history.run(&["records", "--type", "prompt"]);
     check_eq(
         &ran.out.contains("when was this?"),
         &false,
@@ -601,7 +753,7 @@ fn files_last_written_before_the_range_are_not_opened() -> TestResult {
     if lock(&old)?.is_none() {
         return Ok(());
     }
-    let ran = history.run_week(&["prompts"]);
+    let ran = history.run_week(&["records", "--type", "prompt"]);
     fs::set_permissions(&old, fs::Permissions::from_mode(0o600))?;
     check_eq(&ran.code, &0, "exit")?;
     check_eq(ran.err.as_str(), "", "stderr")?;
@@ -621,7 +773,9 @@ fn session_titles_are_masked() -> TestResult {
             &title,
         ],
     )?;
-    let out = history.run_week(&["prompts", "--project", "blog"]).out;
+    let out = history
+        .run_week(&["records", "--type", "prompt", "--project", "blog"])
+        .out;
     check_eq(&out.contains(&key_id), &false, "key shown")?;
     check_eq(
         &out.contains(r#""session_title":"Rotate ***REDACTED*** key""#),
@@ -653,7 +807,14 @@ fn a_subagent_record_carries_the_masked_title_of_its_session() -> TestResult {
         ],
     )?;
     let out = history
-        .run_week(&["tools", "--subagents", "--session", "hhhh"])
+        .run_week(&[
+            "records",
+            "--type",
+            "call",
+            "--subagents",
+            "--session",
+            "hhhh",
+        ])
         .out;
     let subagent = out
         .lines()
@@ -688,7 +849,9 @@ fn a_subagent_takes_the_title_even_when_its_session_has_no_selected_record() -> 
     )?;
     let out = history
         .run_week(&[
-            "tools",
+            "records",
+            "--type",
+            "call",
             "--subagents",
             "--tool",
             "Bash",
@@ -723,7 +886,14 @@ fn a_subagent_of_a_session_without_a_title_has_an_empty_title() -> TestResult {
         ],
     )?;
     let out = history
-        .run_week(&["tools", "--subagents", "--session", "jjjj"])
+        .run_week(&[
+            "records",
+            "--type",
+            "call",
+            "--subagents",
+            "--session",
+            "jjjj",
+        ])
         .out;
     check_eq(&out.lines().count(), &2, "records")?;
     check_eq(
@@ -752,7 +922,9 @@ fn prompts_copied_into_a_resumed_session_appear_once() -> TestResult {
             r#"{"type":"user","uuid":"z-1","sessionId":"z","timestamp":"2026-10-15T00:00:00Z","cwd":"/Users/alice/work/notes","message":{"role":"user","content":"continue"}}"#,
         ],
     )?;
-    let out = history.run_week(&["prompts", "--project", "notes"]).out;
+    let out = history
+        .run_week(&["records", "--type", "prompt", "--project", "notes"])
+        .out;
     check_eq(&out.matches(r#""uuid":"b-1""#).count(), &1, "b-1")?;
     check_eq(&out.contains(r#""uuid":"z-1""#), &true, "z-1")?;
     Ok(())
@@ -777,7 +949,9 @@ fn a_resumed_copy_loses_ties_to_the_original() -> TestResult {
             r#"{"type":"user","uuid":"r-2","timestamp":"2026-10-16T00:00:00Z","cwd":"/Users/alice/r","message":{"role":"user","content":"new"}}"#,
         ],
     )?;
-    let out = history.run_week(&["prompts", "--project", "alice-r"]).out;
+    let out = history
+        .run_week(&["records", "--type", "prompt", "--project", "alice-r"])
+        .out;
     let lines: Vec<&str> = out.lines().collect();
     check_eq(&lines.len(), &2, "prompts")?;
     check_eq(
@@ -808,7 +982,7 @@ fn warnings_carry_no_control_characters() -> TestResult {
     if lock(&bad)?.is_none() {
         return Ok(());
     }
-    let ran = history.run(&["prompts"]);
+    let ran = history.run(&["records", "--type", "prompt"]);
     fs::set_permissions(&bad, fs::Permissions::from_mode(0o600))?;
     check_eq(&ran.code, &0, "exit")?;
     check_eq(&ran.err.contains(['\u{1b}', '\u{7}']), &false, &ran.err)?;
@@ -819,7 +993,9 @@ fn warnings_carry_no_control_characters() -> TestResult {
 #[test]
 fn limit_prints_the_first_records() -> TestResult {
     let history = History::new("root")?;
-    let out = history.run_week(&["prompts", "--limit", "2"]).out;
+    let out = history
+        .run_week(&["records", "--type", "prompt", "--limit", "2"])
+        .out;
     check_eq(&line_count(&out), &2, "prompts")?;
     check_eq(&out.contains(r#""uuid":"b-1""#), &false, "third prompt")?;
     Ok(())

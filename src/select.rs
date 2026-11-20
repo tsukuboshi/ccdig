@@ -6,9 +6,9 @@ use regex::{Regex, RegexBuilder};
 use crate::failure::Failure;
 use crate::when::DayRange;
 
-/// What a record offers to the filters. Kinds without a tool or an error
-/// flag leave them empty; the subcommands that read those kinds are the
-/// only ones with the matching flags.
+/// What a record offers to the filters. A kind without a skill, a tool, or
+/// an error flag has `None` there, and the filter on it lets the record
+/// through, so the kinds can be mixed.
 #[derive(Clone, Copy, Debug)]
 pub struct Facts<'record> {
     /// The git branch checked out at the time.
@@ -16,20 +16,20 @@ pub struct Facts<'record> {
     /// The working directory.
     pub cwd: &'record str,
     /// Whether the tool reported a failure.
-    pub is_error: bool,
+    pub is_error: Option<bool>,
     /// The project directory's name.
     pub project: &'record str,
     /// The session ID.
     pub session_id: &'record str,
     /// The skill running at the time.
-    pub skill: &'record str,
+    pub skill: Option<&'record str>,
     /// What `--grep` searches: the text as it will be printed, so after
     /// masking unless masking is off.
     pub text: &'record str,
     /// When the record was written.
     pub timestamp: Timestamp,
     /// The tool's name.
-    pub tool: &'record str,
+    pub tool: Option<&'record str>,
 }
 
 /// The filters given on the command line. An empty list or `None` lets
@@ -38,18 +38,19 @@ pub struct Facts<'record> {
 pub struct Query {
     /// `--branch`: exact branch names.
     pub branches: Vec<String>,
-    /// `--errors`: only failed tool calls.
-    pub errors: bool,
     /// `--grep`, compiled by `compile_grep`.
     pub grep: Option<Regex>,
+    /// `--status`: only failed tool results when `true`, only the others
+    /// when `false`.
+    pub is_error: Option<bool>,
     /// `--project`: substrings of the project directory or the cwd.
     pub projects: Vec<String>,
     /// `--since` and `--until`.
     pub range: DayRange,
     /// `--session`: session ID prefixes.
     pub sessions: Vec<String>,
-    /// `--skill`: the exact skill name.
-    pub skill: Option<String>,
+    /// `--skill`: exact skill names.
+    pub skills: Vec<String>,
     /// `--tool`: exact tool names.
     pub tools: Vec<String>,
 }
@@ -61,12 +62,15 @@ impl Query {
             && self.matches_project(facts.project, facts.cwd)
             && any_or_none(&self.sessions, |id| facts.session_id.starts_with(id))
             && any_or_none(&self.branches, |branch| branch == facts.branch)
-            && self
+            && facts
                 .skill
-                .as_deref()
-                .is_none_or(|skill| skill == facts.skill)
-            && any_or_none(&self.tools, |tool| tool == facts.tool)
-            && (!self.errors || facts.is_error)
+                .is_none_or(|skill| any_or_none(&self.skills, |want| want == skill))
+            && facts
+                .tool
+                .is_none_or(|tool| any_or_none(&self.tools, |want| want == tool))
+            && self
+                .is_error
+                .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
             && self
                 .grep
                 .as_ref()

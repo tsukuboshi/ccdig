@@ -1,4 +1,4 @@
-//! Tests for the replies, tools, and results subcommands, against the
+//! Tests for the kinds of record and the flags for them, against the
 //! history in `testdata/kinds/root`.
 
 use core::error::Error;
@@ -37,7 +37,7 @@ fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str
 #[test]
 fn replies_are_the_assistant_text_blocks() -> TestResult {
     let history = History::new("kinds/root")?;
-    let main = records(&history, &["replies"])?;
+    let main = records(&history, &["records", "--type", "reply"])?;
     check_eq(
         &strings(&main, "text"),
         &vec!["I will run the tests.", "Done."],
@@ -49,7 +49,7 @@ fn replies_are_the_assistant_text_blocks() -> TestResult {
         &vec!["Shopping cart", "Shopping cart"],
         "titles",
     )?;
-    let all = records(&history, &["replies", "--subagents"])?;
+    let all = records(&history, &["records", "--type", "reply", "--subagents"])?;
     check_eq(
         &strings(&all, "subagent"),
         &vec!["", "", "agent-7"],
@@ -61,7 +61,7 @@ fn replies_are_the_assistant_text_blocks() -> TestResult {
 #[test]
 fn tools_are_the_calls_with_their_input() -> TestResult {
     let history = History::new("kinds/root")?;
-    let calls = records(&history, &["tools"])?;
+    let calls = records(&history, &["records", "--type", "call"])?;
     check_eq(&strings(&calls, "tool"), &vec!["Bash", "Read"], "tools")?;
     check_eq(
         &calls.first().and_then(|call| call.get("input")).cloned(),
@@ -69,11 +69,23 @@ fn tools_are_the_calls_with_their_input() -> TestResult {
         "input",
     )?;
     for (args, want) in [
-        (&["tools", "--tool", "Bash"][..], vec!["t-1"]),
-        (&["tools", "--skill", "tdd"][..], vec!["t-1"]),
-        (&["tools", "--grep", r#""cargo test""#][..], vec!["t-1"]),
+        (
+            &["records", "--type", "call", "--tool", "Bash"][..],
+            vec!["t-1"],
+        ),
+        (
+            &["records", "--type", "call", "--skill", "tdd"][..],
+            vec!["t-1"],
+        ),
+        (
+            &["records", "--type", "call", "--grep", r#""cargo test""#][..],
+            vec!["t-1"],
+        ),
         // Grouped by file: the session, then its sub-agent.
-        (&["tools", "--subagents"][..], vec!["t-1", "t-2", "t-3"]),
+        (
+            &["records", "--type", "call", "--subagents"][..],
+            vec!["t-1", "t-2", "t-3"],
+        ),
     ] {
         check_eq(
             &strings(&records(&history, args)?, "tool_use_id"),
@@ -87,7 +99,7 @@ fn tools_are_the_calls_with_their_input() -> TestResult {
 #[test]
 fn results_carry_the_call_they_answer() -> TestResult {
     let history = History::new("kinds/root")?;
-    let results = records(&history, &["results"])?;
+    let results = records(&history, &["records", "--type", "result"])?;
     check_eq(
         &strings(&results, "tool_use_id"),
         &vec!["t-1", "t-2", "t-9"],
@@ -107,17 +119,35 @@ fn results_carry_the_call_they_answer() -> TestResult {
         "orphan input",
     )?;
     for (args, want) in [
-        (&["results", "--errors"][..], vec!["t-1"]),
-        (&["results", "--tool", "Read"][..], vec!["t-2"]),
-        (&["results", "--skill", "tdd"][..], vec!["t-1"]),
         (
-            &["results", "--subagents", "--tool", "Grep"][..],
+            &["records", "--type", "result", "--status", "error"][..],
+            vec!["t-1"],
+        ),
+        (
+            &["records", "--type", "result", "--tool", "Read"][..],
+            vec!["t-2"],
+        ),
+        (
+            &["records", "--type", "result", "--skill", "tdd"][..],
+            vec!["t-1"],
+        ),
+        (
+            &[
+                "records",
+                "--type",
+                "result",
+                "--subagents",
+                "--tool",
+                "Grep",
+            ][..],
             vec!["t-3"],
         ),
         // The day range must not cut the call off from its result.
         (
             &[
-                "results",
+                "records",
+                "--type",
+                "result",
                 "--since",
                 "2026-10-13",
                 "--tz",
@@ -140,9 +170,12 @@ fn results_carry_the_call_they_answer() -> TestResult {
 #[test]
 fn grep_sees_the_text_after_masking() -> TestResult {
     let history = History::new("kinds/root")?;
-    let masked = records(&history, &["results", "--grep", "EXAMPLEEXAMPLE"])?;
+    let masked = records(
+        &history,
+        &["records", "--type", "result", "--grep", "EXAMPLEEXAMPLE"],
+    )?;
     check_eq(&masked.len(), &0, "masked")?;
-    let read = records(&history, &["results", "--tool", "Read"])?;
+    let read = records(&history, &["records", "--type", "result", "--tool", "Read"])?;
     check_eq(
         &read
             .first()
@@ -153,14 +186,53 @@ fn grep_sees_the_text_after_masking() -> TestResult {
     )?;
     let plain = records(
         &history,
-        &["results", "--no-mask", "--grep", "EXAMPLEEXAMPLE"],
+        &[
+            "records",
+            "--type",
+            "result",
+            "--no-mask",
+            "--grep",
+            "EXAMPLEEXAMPLE",
+        ],
     )?;
     check_eq(&strings(&plain, "tool_use_id"), &vec!["t-2"], "unmasked")?;
-    let insensitive = records(&history, &["replies", "-i", "--grep", "^done"])?;
+    for (args, want) in [
+        (
+            &["records", "--type", "reply", "--grep", "^done"][..],
+            vec![],
+        ),
+        (
+            &["records", "--type", "reply", "--igrep", "^done"][..],
+            vec!["Done."],
+        ),
+        // One slot across the levels: the one after the subcommand wins.
+        (
+            &[
+                "--igrep", "^done", "records", "--type", "reply", "--grep", "^I ",
+            ][..],
+            vec!["I will run the tests."],
+        ),
+        (
+            &[
+                "--grep", "^I ", "records", "--type", "reply", "--igrep", "^done",
+            ][..],
+            vec!["Done."],
+        ),
+    ] {
+        check_eq(
+            &strings(&records(&history, args)?, "text"),
+            &want,
+            &args.join(" "),
+        )?;
+    }
+    let both = history.run(&["records", "--grep", "a", "--igrep", "b"]);
+    check_eq(&both.code, &1, "both")?;
     check_eq(
-        &strings(&insensitive, "text"),
-        &vec!["Done."],
-        "ignore case",
+        &both.err.starts_with(
+            "ccdig: the argument '--grep <REGEX>' cannot be used with '--igrep <REGEX>'",
+        ),
+        &true,
+        &both.err,
     )?;
     Ok(())
 }
@@ -169,13 +241,27 @@ fn grep_sees_the_text_after_masking() -> TestResult {
 fn place_and_time_filters_apply_to_every_kind() -> TestResult {
     let history = History::new("kinds/root")?;
     for (args, want) in [
-        (&["replies", "--branch", "main"][..], 1_usize),
-        (&["replies", "--session", "dddd"][..], 2),
-        (&["replies", "--session", "eeee"][..], 0),
-        (&["replies", "--project", "shop"][..], 2),
-        (&["replies", "--since", "2026-10-14", "--tz", "UTC"][..], 1),
-        (&["tools", "--limit", "1"][..], 1),
-        (&["prompts"][..], 1),
+        (
+            &["records", "--type", "reply", "--branch", "main"][..],
+            1_usize,
+        ),
+        (&["records", "--type", "reply", "--session", "dddd"][..], 2),
+        (&["records", "--type", "reply", "--session", "eeee"][..], 0),
+        (&["records", "--type", "reply", "--project", "shop"][..], 2),
+        (
+            &[
+                "records",
+                "--type",
+                "reply",
+                "--since",
+                "2026-10-14",
+                "--tz",
+                "UTC",
+            ][..],
+            1,
+        ),
+        (&["records", "--type", "call", "--limit", "1"][..], 1),
+        (&["records", "--type", "prompt"][..], 1),
     ] {
         check_eq(&records(&history, args)?.len(), &want, &args.join(" "))?;
     }
@@ -183,14 +269,16 @@ fn place_and_time_filters_apply_to_every_kind() -> TestResult {
 }
 
 #[test]
-fn the_new_kinds_write_markdown() -> TestResult {
+fn results_in_markdown_carry_the_tool_and_the_status() -> TestResult {
     let history = History::new("kinds/root")?;
     let out = history
-        .run(&["results", "--format", "md", "--tz", "UTC"])
+        .run(&[
+            "records", "--type", "result", "--format", "md", "--tz", "UTC",
+        ])
         .out;
-    check_eq(&out.starts_with("# Tool results\n"), &true, "heading")?;
+    check_eq(&out.starts_with("# Records\n"), &true, "heading")?;
     check_eq(
-        &out.contains("- Tool: `Bash`\n- Error: yes\n"),
+        &out.contains(" - Tool result\n\n- Tool: `Bash`\n- Error: yes\n"),
         &true,
         "failed call",
     )?;
@@ -209,7 +297,79 @@ fn a_mistyped_sibling_block_hides_only_itself_from_results() -> TestResult {
             r#"{"type":"tool_result","tool_use_id":"t-5","content":"kept"},{"type":"text","text":5}]}}"#,
         )],
     )?;
-    let results = records(&history, &["results", "--session", "eeee"])?;
+    let results = records(
+        &history,
+        &["records", "--type", "result", "--session", "eeee"],
+    )?;
     check_eq(&strings(&results, "text"), &vec!["kept"], "results")?;
+    Ok(())
+}
+
+#[test]
+fn kind_filters_let_the_kinds_without_the_fact_through() -> TestResult {
+    let history = History::new("kinds/root")?;
+    for (args, want) in [
+        (
+            &["records", "--type", "prompt,call", "--tool", "Bash"][..],
+            vec!["prompt", "call"],
+        ),
+        (
+            &["records", "--type", "prompt,result", "--status", "error"][..],
+            vec!["prompt", "result"],
+        ),
+        (
+            &["records", "--type", "reply,result", "--tool", "Bash"][..],
+            vec!["reply", "result", "reply"],
+        ),
+        (
+            &["records", "--skill", "tdd"][..],
+            vec!["prompt", "reply", "call"],
+        ),
+    ] {
+        check_eq(
+            &strings(&records(&history, args)?, "type"),
+            &want,
+            &args.join(" "),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
+    let history = History::new("kinds/root")?;
+    for (args, prefix) in [
+        (
+            &["records", "--type", "prompt,reply", "--tool", "Bash"][..],
+            "ccdig: --tool needs --type call or result",
+        ),
+        (
+            &["records", "--type", "call", "--status", "error"][..],
+            "ccdig: --status needs --type result",
+        ),
+        (
+            &["records", "--type", "prompt", "--skill", "tdd"][..],
+            "ccdig: --skill needs --type reply, call, or result",
+        ),
+        (
+            &["records", "--type", "prompt", "--subagents"][..],
+            "ccdig: --subagents needs --type reply, call, or result",
+        ),
+        // The default kinds have no results.
+        (
+            &["records", "--status", "ok"][..],
+            "ccdig: --status needs --type result",
+        ),
+    ] {
+        let ran = history.run(args);
+        let name = args.join(" ");
+        check_eq(&ran.code, &1, &name)?;
+        check_eq(
+            &ran.err.starts_with(prefix),
+            &true,
+            &format!("{name}: {}", ran.err),
+        )?;
+        check_eq(&ran.out.as_str(), &"", &name)?;
+    }
     Ok(())
 }

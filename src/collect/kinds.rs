@@ -22,9 +22,31 @@ struct Call {
     skill: String,
 }
 
-/// Picks the prompts, the assistant's text blocks, and tool calls, in the
-/// order they were written.
-pub struct Conversation;
+/// Picks the records of the kinds in `types`, in the order they were
+/// written.
+pub struct Records {
+    /// Pairs the results with their calls.
+    results: Results,
+    /// The kinds to pick.
+    types: Types,
+}
+
+/// The kinds of record `Records` picks.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "--type picks each kind on its own, so each is one switch"
+)]
+pub struct Types {
+    /// Tool calls.
+    pub calls: bool,
+    /// The prompts a person typed.
+    pub prompts: bool,
+    /// The assistant's text blocks.
+    pub replies: bool,
+    /// Tool results.
+    pub results: bool,
+}
 
 /// Picks the prompts a person typed.
 pub struct Prompts;
@@ -44,38 +66,62 @@ pub struct Results {
     calls: HashMap<String, Call>,
 }
 
-impl Pick for Conversation {
+impl Records {
+    /// Picks the kinds in `types`.
+    pub fn new(types: Types) -> Self {
+        Self {
+            results: Results::default(),
+            types,
+        }
+    }
+}
+
+impl Pick for Records {
     type Record = Turn;
 
     fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Turn)> {
+        let mut turns: Vec<(usize, Turn)> = Vec::new();
         match entry.role {
-            Role::User => Prompts
-                .pick(spot, entry)
-                .into_iter()
-                .map(|(index, prompt)| (index, Turn::Prompt(prompt)))
-                .collect(),
-            Role::Assistant => {
-                let replies = Replies.pick(spot, entry).into_iter();
-                let calls = Tools.pick(spot, entry).into_iter();
-                let mut turns: Vec<(usize, Turn)> = replies
-                    .map(|(index, reply)| (index, Turn::Reply(reply)))
-                    .chain(calls.map(|(index, call)| (index, Turn::Tool(call))))
-                    .collect();
-                turns.sort_by_key(|pair| pair.0);
-                turns
+            Role::User => {
+                // `wants` may have accepted the line for its results only.
+                if self.types.prompts && classify(entry) == Reason::Human {
+                    let prompts = Prompts.pick(spot, entry).into_iter();
+                    turns.extend(prompts.map(|(index, prompt)| (index, Turn::Prompt(prompt))));
+                }
+                if self.types.results {
+                    let results = self.results.pick(spot, entry).into_iter();
+                    turns.extend(results.map(|(index, result)| (index, Turn::Result(result))));
+                }
             }
-            Role::AiTitle | Role::Other => Vec::new(),
+            Role::Assistant => {
+                if self.types.replies {
+                    let replies = Replies.pick(spot, entry).into_iter();
+                    turns.extend(replies.map(|(index, reply)| (index, Turn::Reply(reply))));
+                }
+                if self.types.calls {
+                    let calls = Tools.pick(spot, entry).into_iter();
+                    turns.extend(calls.map(|(index, call)| (index, Turn::Call(call))));
+                }
+            }
+            Role::AiTitle | Role::Other => {}
         }
+        turns.sort_by_key(|pair| pair.0);
+        turns
     }
 
     fn roles(&self) -> Roles {
-        Roles::BOTH
+        Roles {
+            assistant: self.types.replies || self.types.calls || self.types.results,
+            user: self.types.prompts || self.types.results,
+        }
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
+        // Always called, so the results see every call before its result.
+        let result = self.types.results && self.results.wants(entry);
         match entry.role {
-            Role::User => Prompts.wants(entry),
-            Role::Assistant => true,
+            Role::User => result || (self.types.prompts && Prompts.wants(entry)),
+            Role::Assistant => self.types.replies || self.types.calls,
             Role::AiTitle | Role::Other => false,
         }
     }
@@ -237,9 +283,9 @@ impl Pick for Tools {
 impl Select for Prompt {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            is_error: false,
-            skill: "",
-            tool: "",
+            is_error: None,
+            skill: None,
+            tool: None,
         }
     }
 
@@ -259,9 +305,9 @@ impl Select for Prompt {
 impl Select for Reply {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            is_error: false,
-            skill: &self.skill,
-            tool: "",
+            is_error: None,
+            skill: Some(&self.skill),
+            tool: None,
         }
     }
 
@@ -281,9 +327,9 @@ impl Select for Reply {
 impl Select for ToolCall {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            is_error: false,
-            skill: &self.skill,
-            tool: &self.tool,
+            is_error: None,
+            skill: Some(&self.skill),
+            tool: Some(&self.tool),
         }
     }
 
@@ -322,9 +368,9 @@ impl Select for Turn {
 impl Select for ToolResult {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            is_error: self.is_error,
-            skill: &self.skill,
-            tool: &self.tool,
+            is_error: Some(self.is_error),
+            skill: Some(&self.skill),
+            tool: Some(&self.tool),
         }
     }
 
@@ -358,7 +404,8 @@ fn selected(turn: &Turn) -> &dyn Select {
     match *turn {
         Turn::Prompt(ref prompt) => prompt,
         Turn::Reply(ref reply) => reply,
-        Turn::Tool(ref call) => call,
+        Turn::Call(ref call) => call,
+        Turn::Result(ref result) => result,
     }
 }
 
@@ -367,7 +414,8 @@ fn selected_mut(turn: &mut Turn) -> &mut dyn Select {
     match *turn {
         Turn::Prompt(ref mut prompt) => prompt,
         Turn::Reply(ref mut reply) => reply,
-        Turn::Tool(ref mut call) => call,
+        Turn::Call(ref mut call) => call,
+        Turn::Result(ref mut result) => result,
     }
 }
 

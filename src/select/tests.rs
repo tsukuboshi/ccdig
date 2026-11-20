@@ -12,13 +12,13 @@ fn record() -> Result<Facts<'static>, jiff::Error> {
     Ok(Facts {
         branch: "main",
         cwd: "/Users/alice/blog",
-        is_error: false,
+        is_error: Some(false),
         project: "-Users-alice-blog",
         session_id: "1f0e9d8c-session",
-        skill: "tdd",
+        skill: Some("tdd"),
         text: "Build FAILED: 3 tests",
         timestamp: "2026-10-13T01:00:00Z".parse::<Timestamp>()?,
-        tool: "Bash",
+        tool: Some("Bash"),
     })
 }
 
@@ -119,7 +119,15 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "skill",
                 Query {
-                    skill: Some("tdd".to_owned()),
+                    skills: vec!["tdd".to_owned()],
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "any skill",
+                Query {
+                    skills: vec!["grilling".to_owned(), "tdd".to_owned()],
                     ..Query::default()
                 },
                 true,
@@ -127,7 +135,7 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "another skill",
                 Query {
-                    skill: Some("td".to_owned()),
+                    skills: vec!["td".to_owned()],
                     ..Query::default()
                 },
                 false,
@@ -151,24 +159,44 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "errors only, on a success",
                 Query {
-                    errors: true,
+                    is_error: Some(true),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "successes only, on a success",
+                Query {
+                    is_error: Some(false),
+                    ..Query::default()
+                },
+                true,
+            ),
+        ],
+    )?;
+    check_all(
+        &Facts {
+            is_error: Some(true),
+            ..facts
+        },
+        vec![
+            (
+                "errors only, on a failure",
+                Query {
+                    is_error: Some(true),
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "successes only, on a failure",
+                Query {
+                    is_error: Some(false),
                     ..Query::default()
                 },
                 false,
             ),
         ],
-    )?;
-    check_eq(
-        &Query {
-            errors: true,
-            ..Query::default()
-        }
-        .matches(&Facts {
-            is_error: true,
-            ..facts
-        }),
-        &true,
-        "errors only, on a failure",
     )?;
     Ok(())
 }
@@ -241,6 +269,28 @@ fn an_invalid_pattern_is_a_grep_failure() -> TestResult {
         &message.is_some_and(|text| text.starts_with("parse grep: ")),
         &true,
         "message",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn kind_filters_let_a_record_without_the_fact_through() -> TestResult {
+    let prompt = Facts {
+        is_error: None,
+        skill: None,
+        tool: None,
+        ..record()?
+    };
+    check_eq(
+        &Query {
+            is_error: Some(true),
+            skills: vec!["grilling".to_owned()],
+            tools: vec!["Read".to_owned()],
+            ..Query::default()
+        }
+        .matches(&prompt),
+        &true,
+        "a prompt",
     )?;
     Ok(())
 }
