@@ -42,6 +42,14 @@ cargo install --git https://github.com/tsukuboshi/ccdig
 ccdig version
 ```
 
+To build from a clone and run the tests:
+
+```sh
+git clone https://github.com/tsukuboshi/ccdig && cd ccdig
+cargo test --locked
+cargo install --path . --locked
+```
+
 ```sh
 # Prompts from one week, one JSON object per line
 ccdig prompts --since 2026-10-05 --until 2026-10-11
