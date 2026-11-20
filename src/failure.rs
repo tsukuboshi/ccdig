@@ -13,9 +13,14 @@ pub enum Failure {
     /// session limit lets one long prompt use the whole budget.
     #[error("--max-prompt-chars must be less than --max-session-chars")]
     DigestPromptLimitTooLarge,
-    /// `--format` is not one of the formats.
-    #[error("unknown --format {0:?}: use jsonl, json, or md")]
-    Format(String),
+    /// `CCDIG_MASK` names a mask `--mask` does not know.
+    #[error("CCDIG_MASK: unknown mask {name:?}: use {known}")]
+    EnvMask {
+        /// The masks `--mask` takes, listed.
+        known: String,
+        /// The unknown name.
+        name: String,
+    },
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),
@@ -55,6 +60,14 @@ pub enum Failure {
     /// A time cannot be formatted, such as one outside the supported years.
     #[error("format time: {0}")]
     TimeFormat(#[source] jiff::Error),
+    /// A kind-specific flag is given without a `--type` it applies to.
+    #[error("{flag} needs --type {kinds}")]
+    TypeForFlag {
+        /// The flag.
+        flag: &'static str,
+        /// The kinds it applies to.
+        kinds: &'static str,
+    },
     /// `--tz` names no known time zone.
     #[error("load time zone: unknown time zone {name}")]
     UnknownZone {

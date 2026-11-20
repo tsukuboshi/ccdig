@@ -2,36 +2,15 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Dig prompts, replies, tool calls, and tool results out of Claude Code
-session transcripts.
+Pull the logs you want to share out of your Claude Code session
+transcripts, formatted and masked. Combine filters for time, project,
+session, branch, text, kind of record, tool, outcome, and skill to narrow
+the history down to the part that matters, and write it as Markdown to
+read or JSON Lines to process. Common secrets are masked by default, and
+email addresses, IP addresses, your user name, and values you list can be
+masked too.
 
 [日本語](README.ja.md)
-
-## What it does
-
-Claude Code stores every session as JSONL under `~/.claude/projects/`. The
-lines mix what you typed with what the harness wrote: tool calls, tool
-results, injected skill bodies, `<system-reminder>` blocks, task
-notifications, compaction summaries, and sub-agent traffic.
-
-ccdig reads those transcripts and prints one kind of record at a time:
-
-- **Prompts** you typed, with harness noise dropped and slash commands
-  folded back into `/command args`.
-- **Replies**: the assistant's text.
-- **Tool calls**, with their input as JSON.
-- **Tool results**, each paired with the call it answers.
-
-Every kind shares the same filters (date range, project, regular
-expression, session, branch) and is masked for common secrets by default.
-
-## Why it is useful
-
-Viewers and converters are good at reading a whole session. ccdig is for
-pulling one slice out of all of them: what you asked for this week, every
-`Bash` call that failed, or the replies that mention a keyword. It decides
-which user lines a person typed, masks secrets by default, writes JSON
-Lines that pipe into `jq`, and ships as a single binary.
 
 ## Getting started
 
@@ -52,38 +31,37 @@ cargo install --path . --locked
 
 ```sh
 # Prompts from one week, one JSON object per line
-ccdig prompts --since 2026-10-05 --until 2026-10-11
+ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 
 # Replies in the blog project that mention "deploy", ignoring case
-ccdig replies --project blog --grep deploy -i
+ccdig records --type reply --project blog --igrep deploy
 
 # Failed Bash calls, with sub-agents, as Markdown
-ccdig results --tool Bash --errors --subagents --format md
+ccdig records --type result --tool Bash --status error --subagents --format md
 
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
 # One session as a thread to share, with emails, IP addresses, the user
 # name, and the values in a file masked too
-ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
+ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
 ```
 
 ### Commands
 
 | Command | Output |
 | --- | --- |
-| `prompts` | One record per prompt a person typed |
-| `replies` | One record per text block of the assistant |
-| `tools` | One record per tool call |
-| `results` | One record per tool result, with the call's tool and input |
-| `conversation` | Prompts, replies, and tool calls in the order they were written |
+| `records` | One record per prompt, reply, tool call, or tool result, of the kinds `--type` picks, in the order they were written |
 | `sessions` | One record per session with a selected prompt |
 | `digest` | Markdown digest of the prompts |
 | `version` | The installed version |
 
-`prompts`, `replies`, `tools`, `results`, `conversation`, and `sessions` take `--format`:
-`jsonl` (default), `json`, or `md`. `digest` takes `--max-prompt-chars`
-(default 300) and `--max-session-chars` (default 2000).
+`--type` takes `prompt` (a prompt a person typed), `reply` (a text block
+of the assistant), `call` (a tool call), and `result` (a tool result, with
+the call's tool and input), comma-separated or repeated, and defaults to
+`prompt,reply,call`. `records` and `sessions` take `--format`: `jsonl`
+(default), `json`, or `md`. `digest` takes `--max-prompt-chars` (default
+300) and `--max-session-chars` (default 2000).
 
 ### Filters
 
@@ -92,21 +70,44 @@ ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file s
 | `--since`, `--until` | all | Records from the first to the last day, `YYYY-MM-DD` |
 | `--tz` | all | Day boundaries and Markdown times in this IANA zone |
 | `--project` | all | Projects whose directory name or cwd contains the value |
-| `--grep`, `-i` | all | Records whose text matches the regular expression |
 | `--session` | all | Sessions whose ID starts with the value |
 | `--branch` | all | Records on this git branch |
+| `--grep` | all | Records whose text matches the regular expression |
+| `--igrep` | all | The same, ignoring case |
 | `--limit` | all | The first N records |
-| `--skill` | replies, tools, results, conversation | Records written while the skill ran |
-| `--subagents` | replies, tools, results, conversation | Sub-agent transcripts too |
-| `--tool` | tools, results | Calls to this tool |
-| `--errors` | results | Results the tool reported as failures |
+| `--tool` | records: `call`, `result` | Calls to this tool and their results |
+| `--status` | records: `result` | Results with this status: `error` or `ok` |
+| `--skill` | records: `reply`, `call`, `result` | Records written while the skill ran |
+| `--subagents` | records: `reply`, `call`, `result` | Sub-agent transcripts too |
 
-`--project`, `--session`, `--branch`, and `--tool` are repeatable and keep
-records that match any value. The shared flags go before or after the
-command. `--tz` defaults to the system time zone (`TZ`, else
-`/etc/localtime`). `--root` sets the transcript root (default
-`~/.claude/projects`). `--mask` and `--mask-file` add masks, and
+`--project`, `--session`, `--branch`, `--grep`, `--igrep`, `--tool`, and
+`--skill` are repeatable and keep records that match any value. A value
+with a leading `!` leaves out the records that match it instead, so
+`--session '!1a2b'` keeps every session but one and `--grep '!WIP'` drops
+the records that mention `WIP`; write `\!` for a value that starts with
+`!`. Quote such a value, as `!` starts a history expansion in most
+shells. `--status` takes a comma-separated list like `--type`.
+
+`--tool`, `--status`, and `--skill` narrow only the kinds that have what
+they test and let the other kinds through, so
+`ccdig records --type prompt,reply,call --skill tdd` keeps every prompt
+along with the replies and calls written while `tdd` ran. Without
+`--type`, `records` lists only the kinds every one of them given applies
+to: `ccdig records --tool Bash` prints the `Bash` calls and their results.
+Each of the last four flags needs a `--type` it applies to, or the
+command fails.
+
+The shared flags go before or after the command, and the values of a
+repeatable flag on both sides add up. `--tz` defaults to the system time
+zone (`TZ`, else `/etc/localtime`). `--root` sets the transcript root
+(default `~/.claude/projects`). `--mask` and `--mask-file` add masks, and
 `--no-mask` turns all masking off; see Masking.
+
+`CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of
+`--root`, `--mask` (comma-separated), and `--mask-file` (paths separated
+as in `PATH`). The flag on the command line replaces its variable,
+`--no-mask` ignores the mask variables, and an empty variable counts as
+unset.
 
 `--grep` searches the text as it will be printed: after masking, so a
 secret cannot be found by its value. It reads the prompt or reply text, a
@@ -115,10 +116,11 @@ call's input as compact JSON, or a result's text. For `sessions` and
 
 ### Output
 
-`ccdig prompts` writes one object per line:
+`ccdig records --type prompt` writes one object per line:
 
 ```json
-{"agent":"claude-code","session_id":"<uuid>","session_title":"Weekly report draft",
+{"type":"prompt","agent":"claude-code","session_id":"<uuid>",
+ "session_title":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T01:00:01Z",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
@@ -127,14 +129,15 @@ call's input as compact JSON, or a result's text. For `sessions` and
            "line":3,"uuid":"<entry uuid>"}}
 ```
 
-The other kinds start with the same keys, from `agent` to `timestamp`, and
-end with `redacted` and `source`:
+Every record starts with `type`, the kind `--type` names. The other kinds
+have the same keys from `type` to `timestamp`, and end with `redacted` and
+`source`:
 
-| Command | Keys in between |
+| Type | Keys in between |
 | --- | --- |
-| `replies` | `text`, `model`, `skill`, `subagent` |
-| `tools` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
-| `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `reply` | `text`, `model`, `skill`, `subagent` |
+| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 Every key is always present. `subagent` is empty for the session itself and
 the file name, such as `agent-1a2b`, for a sub-agent, whose record carries
@@ -143,9 +146,7 @@ when the session's own transcript was last written before `--since`.
 `input` is the
 untruncated input from the line's `wireToolInputs` when Claude Code stored
 one, and the `tool_use` block's otherwise. A result whose call
-was not found has an empty `tool` and a `null` `input`. A `conversation`
-record is a prompt, reply, or tool call record with a leading `type` key
-of `prompt`, `reply`, or `tool`. `--format json`
+was not found has an empty `tool` and a `null` `input`. `--format json`
 wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
 `filter` names the rule set below and changes whenever a rule change can
 change which prompts are kept.
@@ -237,7 +238,7 @@ The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a
 value that looks like a `snake_case` identifier. Tool results hold
 whatever the tool read: file contents, environment variables, command
-output. Tool inputs, which `conversation` prints, hold what was written,
+output. Tool inputs, which `records` prints by default, hold what was written,
 such as the content of a `Write` call. Treat masking as a safety net and
 check the output yourself before you share it.
 

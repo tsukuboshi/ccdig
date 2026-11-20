@@ -10,38 +10,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `ccdig conversation`: the prompts, replies, and tool calls of sessions
-  in the order they were written, each with a `type` key, as JSON Lines,
-  JSON, or Markdown.
 - `--mask email`, `--mask ip`, and `--mask user` mask email addresses, IP
   addresses, and the user name from `$HOME`; `--mask-file` masks each line
   of a file. They are off by default and cover the fields that are not
   text, such as `project`, `git_branch`, and `tool`.
-- `ccdig tools` and `ccdig results` print the untruncated tool input that
-  Claude Code stores in `wireToolInputs`, instead of the shortened copy in
-  the `tool_use` block.
+- Tool calls and results carry the untruncated tool input that Claude
+  Code stores in `wireToolInputs`, instead of the shortened copy in the
+  `tool_use` block.
 - Masking of `Authorization` header credentials, `Bearer` tokens, `mysql`
   `-p` passwords, SendGrid keys, Google OAuth tokens and client secrets,
   Stripe webhook secrets, values assigned to credential-like names such as
   `password=`, `--api-token=`, `PGPASSWORD=`, or `client_secret:` (also
   inside escaped JSON), and strings under such keys in a tool's input.
-- `ccdig prompts`: the prompts a person typed in Claude Code sessions, as
-  JSON Lines, JSON, or Markdown. Harness traffic is dropped by the
+- `ccdig records`: the prompts a person typed, the assistant's text
+  blocks, tool calls with their input as JSON, and tool results with the
+  tool and input of the call they answer, as JSON Lines, JSON, or
+  Markdown. `--type prompt,reply,call,result` picks the kinds, by default
+  `prompt,reply,call`, and they are listed in the order they were
+  written, each with a `type` key. Harness traffic is dropped by the
   `strict-v2` rules, and slash command expansions are folded back into
   `/command args`.
-- `ccdig replies`: the assistant's text blocks.
-- `ccdig tools`: tool calls with their input as JSON.
-- `ccdig results`: tool results, each with the tool and input of the call
-  it answers.
 - `ccdig sessions`: sessions with at least one selected prompt.
 - `ccdig digest`: a size-capped Markdown digest of the prompts for LLM
   input.
 - `ccdig version`, and the help when no command is given.
 - Filters for every command: `--since` and `--until` in the system time
-  zone or one given with `--tz`, `--project`, `--grep` with `-i` (matched
-  after masking), `--session` (ID prefix), `--branch`, and `--limit`. For
-  replies, tools, and results: `--skill` and `--subagents`. For tools and
-  results: `--tool`. For results: `--errors`.
+  zone or one given with `--tz`, `--project`, `--grep` or `--igrep`
+  (ignoring case; both matched after masking), `--session` (ID prefix),
+  `--branch`, and `--limit`. For `records`: `--skill` and `--subagents`
+  for replies, calls, and results, `--tool` for calls and results, and
+  `--status error|ok` for results. These narrow only the kinds they apply
+  to and need one of them in `--type`; without `--type`, `records` lists
+  only those kinds. `--grep`, `--igrep`, and the flags that take a name
+  are repeatable, and a value with a leading `!` leaves out what matches
+  it.
+- `CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of
+  `--root`, `--mask`, and `--mask-file`.
+- Help lists the flags under Records, Filters, Input, Masking, and
+  Output, with the values `--type`, `--status`, `--format`, and `--mask`
+  take.
 - Masking on by default (`--no-mask` to turn it off) of AWS credentials,
   GitHub, GitLab, npm, Anthropic, OpenAI, Google, Stripe, and Slack tokens,
   Slack webhooks, JWTs, URL passwords, and PEM / PGP private keys, in

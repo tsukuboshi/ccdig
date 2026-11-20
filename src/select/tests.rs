@@ -3,7 +3,7 @@
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Facts, Query, compile_grep};
+use super::{Facts, Filter, Query, compile_grep, patterns};
 use crate::testing::{TestResult, check_eq};
 use crate::when::DayRange;
 
@@ -12,14 +12,19 @@ fn record() -> Result<Facts<'static>, jiff::Error> {
     Ok(Facts {
         branch: "main",
         cwd: "/Users/alice/blog",
-        is_error: false,
+        is_error: Some(false),
         project: "-Users-alice-blog",
         session_id: "1f0e9d8c-session",
-        skill: "tdd",
+        skill: Some("tdd"),
         text: "Build FAILED: 3 tests",
         timestamp: "2026-10-13T01:00:00Z".parse::<Timestamp>()?,
-        tool: "Bash",
+        tool: Some("Bash"),
     })
+}
+
+/// `items` as the values of a name flag.
+fn names(items: &[&str]) -> Filter<String> {
+    Filter::names(items.iter().map(|&item| item.to_owned()).collect())
 }
 
 /// Checks each query in `cases` against `facts`.
@@ -38,14 +43,13 @@ fn an_empty_query_lets_everything_through() -> TestResult {
 
 #[test]
 fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
-    let list = |items: &[&str]| items.iter().map(|&item| item.to_owned()).collect();
     check_all(
         &record()?,
         vec![
             (
                 "project by directory name",
                 Query {
-                    projects: list(&["alice-blog"]),
+                    projects: names(&["alice-blog"]),
                     ..Query::default()
                 },
                 true,
@@ -53,7 +57,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "project by cwd",
                 Query {
-                    projects: list(&["alice/blog"]),
+                    projects: names(&["alice/blog"]),
                     ..Query::default()
                 },
                 true,
@@ -61,7 +65,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "any project filter",
                 Query {
-                    projects: list(&["shop", "blog"]),
+                    projects: names(&["shop", "blog"]),
                     ..Query::default()
                 },
                 true,
@@ -69,7 +73,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "another project",
                 Query {
-                    projects: list(&["shop"]),
+                    projects: names(&["shop"]),
                     ..Query::default()
                 },
                 false,
@@ -77,7 +81,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "session prefix",
                 Query {
-                    sessions: list(&["1f0e"]),
+                    sessions: names(&["1f0e"]),
                     ..Query::default()
                 },
                 true,
@@ -85,7 +89,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "session text that is not a prefix",
                 Query {
-                    sessions: list(&["session"]),
+                    sessions: names(&["session"]),
                     ..Query::default()
                 },
                 false,
@@ -93,7 +97,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "exact branch",
                 Query {
-                    branches: list(&["develop", "main"]),
+                    branches: names(&["develop", "main"]),
                     ..Query::default()
                 },
                 true,
@@ -101,7 +105,7 @@ fn place_filters_match_the_project_the_session_and_the_branch() -> TestResult {
             (
                 "branch prefix is not enough",
                 Query {
-                    branches: list(&["mai"]),
+                    branches: names(&["mai"]),
                     ..Query::default()
                 },
                 false,
@@ -119,7 +123,15 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "skill",
                 Query {
-                    skill: Some("tdd".to_owned()),
+                    skills: names(&["tdd"]),
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "any skill",
+                Query {
+                    skills: names(&["grilling", "tdd"]),
                     ..Query::default()
                 },
                 true,
@@ -127,7 +139,7 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "another skill",
                 Query {
-                    skill: Some("td".to_owned()),
+                    skills: names(&["td"]),
                     ..Query::default()
                 },
                 false,
@@ -135,7 +147,7 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "tool",
                 Query {
-                    tools: vec!["Read".to_owned(), "Bash".to_owned()],
+                    tools: names(&["Read", "Bash"]),
                     ..Query::default()
                 },
                 true,
@@ -143,7 +155,7 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "tool names are case sensitive",
                 Query {
-                    tools: vec!["bash".to_owned()],
+                    tools: names(&["bash"]),
                     ..Query::default()
                 },
                 false,
@@ -151,24 +163,44 @@ fn kind_filters_match_the_skill_the_tool_and_the_error_flag() -> TestResult {
             (
                 "errors only, on a success",
                 Query {
-                    errors: true,
+                    is_error: Some(true),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "successes only, on a success",
+                Query {
+                    is_error: Some(false),
+                    ..Query::default()
+                },
+                true,
+            ),
+        ],
+    )?;
+    check_all(
+        &Facts {
+            is_error: Some(true),
+            ..facts
+        },
+        vec![
+            (
+                "errors only, on a failure",
+                Query {
+                    is_error: Some(true),
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "successes only, on a failure",
+                Query {
+                    is_error: Some(false),
                     ..Query::default()
                 },
                 false,
             ),
         ],
-    )?;
-    check_eq(
-        &Query {
-            errors: true,
-            ..Query::default()
-        }
-        .matches(&Facts {
-            is_error: true,
-            ..facts
-        }),
-        &true,
-        "errors only, on a failure",
     )?;
     Ok(())
 }
@@ -181,7 +213,7 @@ fn grep_searches_the_text_with_or_without_case() -> TestResult {
             (
                 "pattern",
                 Query {
-                    grep: Some(compile_grep(r"FAILED: \d+", false)?),
+                    grep: patterns(&[r"FAILED: \d+"], &[])?,
                     ..Query::default()
                 },
                 true,
@@ -189,7 +221,7 @@ fn grep_searches_the_text_with_or_without_case() -> TestResult {
             (
                 "case differs",
                 Query {
-                    grep: Some(compile_grep("failed", false)?),
+                    grep: patterns(&["failed"], &[])?,
                     ..Query::default()
                 },
                 false,
@@ -197,7 +229,7 @@ fn grep_searches_the_text_with_or_without_case() -> TestResult {
             (
                 "case ignored",
                 Query {
-                    grep: Some(compile_grep("failed", true)?),
+                    grep: patterns(&[], &["failed"])?,
                     ..Query::default()
                 },
                 true,
@@ -243,4 +275,154 @@ fn an_invalid_pattern_is_a_grep_failure() -> TestResult {
         "message",
     )?;
     Ok(())
+}
+
+#[test]
+fn kind_filters_let_a_record_without_the_fact_through() -> TestResult {
+    let prompt = Facts {
+        is_error: None,
+        skill: None,
+        tool: None,
+        ..record()?
+    };
+    check_eq(
+        &Query {
+            is_error: Some(true),
+            skills: names(&["grilling"]),
+            tools: names(&["Read"]),
+            ..Query::default()
+        }
+        .matches(&prompt),
+        &true,
+        "a prompt",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_leading_bang_excludes_and_a_backslash_keeps_it() -> TestResult {
+    let facts = record()?;
+    check_all(
+        &facts,
+        vec![
+            (
+                "session excluded",
+                Query {
+                    sessions: names(&["!1f0e"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "another session excluded",
+                Query {
+                    sessions: names(&["!abcd"]),
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "kept, then excluded",
+                Query {
+                    sessions: names(&["1f0e", "!1f0e9"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "project excluded by its cwd",
+                Query {
+                    projects: names(&["!alice/blog"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "branch excluded",
+                Query {
+                    branches: names(&["!main"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "tool excluded",
+                Query {
+                    tools: names(&["!Bash"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "skill excluded",
+                Query {
+                    skills: names(&["!tdd"]),
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "text excluded",
+                Query {
+                    grep: patterns(&["!FAILED"], &[])?,
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "text excluded, ignoring case",
+                Query {
+                    grep: patterns(&[], &["!failed"])?,
+                    ..Query::default()
+                },
+                false,
+            ),
+            (
+                "text kept, other text excluded",
+                Query {
+                    grep: patterns(&["FAILED", "!passed"], &[])?,
+                    ..Query::default()
+                },
+                true,
+            ),
+        ],
+    )
+}
+
+#[test]
+fn a_leading_backslash_bang_matches_a_bang() -> TestResult {
+    check_all(
+        &Facts {
+            branch: "!odd",
+            text: "!important",
+            tool: None,
+            ..record()?
+        },
+        vec![
+            (
+                "a name that starts with a bang",
+                Query {
+                    branches: names(&[r"\!odd"]),
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "a pattern that starts with a bang",
+                Query {
+                    grep: patterns(&[r"\!imp"], &[])?,
+                    ..Query::default()
+                },
+                true,
+            ),
+            (
+                "a kind without a tool",
+                Query {
+                    tools: names(&["!Bash"]),
+                    ..Query::default()
+                },
+                true,
+            ),
+        ],
+    )
 }

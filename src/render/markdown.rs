@@ -3,60 +3,31 @@
 
 use jiff::tz::TimeZone;
 
-use super::record::{Prompt, Record, Reply, Session, ToolCall, ToolResult, Turn};
+use super::record::{Record, Session, ToolCall, ToolResult, Turn};
 use crate::failure::Failure;
 use crate::text::{clean_text, code_span, escape_pipes, fenced, heading_text};
 
-/// Prompts, each in a text block.
-///
-/// # Errors
-///
-/// When a time cannot be shown in `zone`.
-pub fn prompts(records: &[Prompt], zone: &TimeZone) -> Result<String, Failure> {
-    sections(
-        "Prompts",
-        records,
-        zone,
-        |_| "",
-        |prompt| Ok(fenced("text", &clean_text(&prompt.text))),
-    )
-}
-
-/// Replies, each in a text block.
-///
-/// # Errors
-///
-/// When a time cannot be shown in `zone`.
-pub fn replies(records: &[Reply], zone: &TimeZone) -> Result<String, Failure> {
-    sections(
-        "Replies",
-        records,
-        zone,
-        |_| "",
-        |reply| Ok(fenced("text", &clean_text(&reply.text))),
-    )
-}
-
-/// A conversation: each prompt, reply, and tool call under a heading that
-/// names which it is.
+/// Records of any kind, each under a heading that names its kind.
 ///
 /// # Errors
 ///
 /// When a time cannot be shown in `zone`, or an input cannot be encoded.
-pub fn conversation(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
+pub fn records(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
     sections(
-        "Conversation",
+        "Records",
         records,
         zone,
         |turn| match *turn {
             Turn::Prompt(_) => "Prompt",
             Turn::Reply(_) => "Reply",
-            Turn::Tool(_) => "Tool call",
+            Turn::Call(_) => "Tool call",
+            Turn::Result(_) => "Tool result",
         },
         |turn| match *turn {
             Turn::Prompt(ref prompt) => Ok(fenced("text", &clean_text(&prompt.text))),
             Turn::Reply(ref reply) => Ok(fenced("text", &clean_text(&reply.text))),
-            Turn::Tool(ref call) => tool_call(call),
+            Turn::Call(ref call) => tool_call(call),
+            Turn::Result(ref result) => Ok(tool_result(result)),
         },
     )
 }
@@ -130,35 +101,14 @@ pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure>
     Ok(out)
 }
 
-/// Tool calls, each with the tool's name and its input as indented JSON.
-///
-/// # Errors
-///
-/// When a time cannot be shown in `zone`.
-pub fn tool_calls(records: &[ToolCall], zone: &TimeZone) -> Result<String, Failure> {
-    sections("Tool calls", records, zone, |_| "", tool_call)
-}
-
-/// Tool results, each with the calling tool's name, whether it failed, and
+/// A tool result's body: the calling tool's name, whether it failed, and
 /// the output in a text block.
-///
-/// # Errors
-///
-/// When a time cannot be shown in `zone`.
-pub fn tool_results(records: &[ToolResult], zone: &TimeZone) -> Result<String, Failure> {
-    sections(
-        "Tool results",
-        records,
-        zone,
-        |_| "",
-        |result| {
-            Ok(format!(
-                "- Tool: {}\n- Error: {}\n\n{}",
-                tool_name(&result.tool),
-                if result.is_error { "yes" } else { "no" },
-                fenced("text", &clean_text(&result.text))
-            ))
-        },
+fn tool_result(result: &ToolResult) -> String {
+    format!(
+        "- Tool: {}\n- Error: {}\n\n{}",
+        tool_name(&result.tool),
+        if result.is_error { "yes" } else { "no" },
+        fenced("text", &clean_text(&result.text))
     )
 }
 

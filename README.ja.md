@@ -2,37 +2,15 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Claude Code の会話履歴から、依頼文・返答・ツールの呼び出し・ツールの結果を
-掘り出す CLI です。
+Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
+取り出す CLI です。
+期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
+成否・スキルを組み合わせて必要な部分に絞り込み、読みやすい Markdown か、
+加工しやすい JSON Lines で出力します。
+よくある秘密情報は既定でマスクし、メールアドレス・IP アドレス・ユーザー名・
+指定した値も追加でマスクできます。
 
 [English](README.md)
-
-## 何をするか
-
-Claude Code はすべてのセッションを `~/.claude/projects/` 配下に JSONL で
-保存します。そこには、人間が打った依頼文と、ハーネスが書いた行が混ざって
-います。
-ツールの呼び出しとその結果、注入されたスキル本文、`<system-reminder>`
-ブロック、タスク通知、コンパクションの要約、サブエージェントのやり取りです。
-
-ccdig はこの履歴を読み、1 種類ずつ取り出して出力します。
-
-- **依頼文**: 人間が打ったもの。ハーネスのノイズを除き、スラッシュコマンドは
-  `/command args` の形に戻す
-- **返答**: assistant のテキスト
-- **ツールの呼び出し**: 入力の JSON 付き
-- **ツールの結果**: それぞれが答える呼び出しと組にして出す
-
-どの種類も、期間・プロジェクト・正規表現・セッション・ブランチの同じ
-絞り込みが使え、よくある秘密情報は既定でマスクされます。
-
-## 何が便利か
-
-セッションを丸ごと読むのは、ビューアや変換ツールが得意です。
-ccdig は全セッションから一部を抜き出すための道具です。今週頼んだこと、
-失敗した `Bash` の呼び出しすべて、あるキーワードに触れた返答などを
-取り出せます。どの user 行を人間が打ったかを判定し、既定で秘密情報を
-マスクし、`jq` につなげる JSON Lines を出力し、単一のバイナリで配布されます。
 
 ## 始め方
 
@@ -53,39 +31,38 @@ cargo install --path . --locked
 
 ```sh
 # 1 週間分の依頼文を、1 行に 1 つの JSON オブジェクトで出す
-ccdig prompts --since 2026-10-05 --until 2026-10-11
+ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 
 # blog プロジェクトで "deploy" に触れた返答を、大文字小文字を区別せずに出す
-ccdig replies --project blog --grep deploy -i
+ccdig records --type reply --project blog --igrep deploy
 
 # 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
-ccdig results --tool Bash --errors --subagents --format md
+ccdig records --type result --tool Bash --status error --subagents --format md
 
 # LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
 # 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・IP
 # アドレス・ユーザー名・ファイルに書いた値もマスクする
-ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
+ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
 ```
 
 ### コマンド
 
 | コマンド | 出力 |
 | --- | --- |
-| `prompts` | 人間が打った依頼文 1 件につき 1 レコード |
-| `replies` | assistant のテキストブロック 1 つにつき 1 レコード |
-| `tools` | ツールの呼び出し 1 件につき 1 レコード |
-| `results` | ツールの結果 1 件につき 1 レコード。呼び出しのツールと入力付き |
-| `conversation` | 依頼文・返答・ツールの呼び出しを、書かれた順に並べたもの |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果 1 件につき 1 レコード。書かれた順に並ぶ |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード |
 | `digest` | 依頼文の Markdown ダイジェスト |
 | `version` | インストールされているバージョン |
 
-`prompts`・`replies`・`tools`・`results`・`conversation`・`sessions` は
-`--format` を取り、値は `jsonl`（既定）・`json`・`md` のいずれかです。`digest` は
-`--max-prompt-chars`（既定 300）と `--max-session-chars`（既定 2000）を
-取ります。
+`--type` は `prompt`（人間が打った依頼文）・`reply`（assistant の
+テキストブロック）・`call`（ツールの呼び出し）・`result`（ツールの結果。
+呼び出しのツールと入力付き）を取り、カンマ区切りでも繰り返しでも指定
+できます。既定は `prompt,reply,call` です。`records` と `sessions` は
+`--format` を取り、値は `jsonl`（既定）・`json`・`md` のいずれかです。
+`digest` は `--max-prompt-chars`（既定 300）と `--max-session-chars`
+（既定 2000）を取ります。
 
 ### 絞り込み
 
@@ -94,21 +71,43 @@ ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file s
 | `--since`, `--until` | すべて | 開始日から終了日までのレコード。`YYYY-MM-DD` |
 | `--tz` | すべて | 日の境界と Markdown の時刻をこの IANA タイムゾーンで扱う |
 | `--project` | すべて | ディレクトリ名か cwd にこの値を含むプロジェクト |
-| `--grep`, `-i` | すべて | テキストが正規表現に一致するレコード |
 | `--session` | すべて | ID がこの値で始まるセッション |
 | `--branch` | すべて | この git ブランチ上のレコード |
+| `--grep` | すべて | テキストが正規表現に一致するレコード |
+| `--igrep` | すべて | 同じく、大文字小文字を区別せずに一致するレコード |
 | `--limit` | すべて | 先頭 N 件のレコード |
-| `--skill` | replies, tools, results, conversation | そのスキルの実行中に書かれたレコード |
-| `--subagents` | replies, tools, results, conversation | サブエージェントの履歴も含める |
-| `--tool` | tools, results | このツールの呼び出し |
-| `--errors` | results | ツールが失敗と報告した結果 |
+| `--tool` | records: `call`, `result` | このツールの呼び出しとその結果 |
+| `--status` | records: `result` | この状態の結果。`error` か `ok` |
+| `--skill` | records: `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
+| `--subagents` | records: `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
-`--project`・`--session`・`--branch`・`--tool` は繰り返し指定でき、いずれかの
-値に一致するレコードを残します。共通のフラグはコマンドの前にも後にも
-置けます。`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ
-`/etc/localtime`）です。`--root` で履歴のルート（既定は
-`~/.claude/projects`）を変えます。`--mask` と `--mask-file` でマスクを足し、
-`--no-mask` ですべてのマスクを切ります（後述の「マスク」の節を参照）。
+`--project`・`--session`・`--branch`・`--grep`・`--igrep`・`--tool`・
+`--skill` は繰り返し指定でき、いずれかの値に一致するレコードを残します。
+先頭に `!` を付けた値は、逆に一致するレコードを除きます。たとえば
+`--session '!1a2b'` は 1 つを除くすべてのセッションを、`--grep '!WIP'` は
+`WIP` に触れたレコードを除いた残りを出します。`!` で始まる値そのものに
+一致させるときは `\!` と書きます。たいていのシェルでは `!` が履歴展開に
+なるので、引用符で囲んでください。`--status` は `--type` と同じく
+カンマ区切りで並べられます。
+
+`--tool`・`--status`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
+種類はそのまま残します。そのため
+`ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
+`tdd` の実行中に書かれた返答と呼び出しを残します。`--type` を省略すると、
+`records` は付けたフラグがすべて効く種類だけを出します。
+`ccdig records --tool Bash` なら、`Bash` の呼び出しとその結果です。表の
+最後の 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
+
+共通のフラグはコマンドの前にも後にも置け、繰り返し指定できるフラグの値は
+前後で足し合わせます。`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`）
+です。`--root` で履歴のルート（既定は `~/.claude/projects`）を変えます。
+`--mask` と `--mask-file` でマスクを足し、`--no-mask` ですべてのマスクを
+切ります（後述の「マスク」の節を参照）。
+
+`CCDIG_ROOT`・`CCDIG_MASK`・`CCDIG_MASK_FILE` で、`--root`・`--mask`
+（カンマ区切り）・`--mask-file`（`PATH` と同じ区切りでパスを並べる）の
+既定値を与えられます。コマンドラインのフラグは対応する変数を置き換え、
+`--no-mask` はマスクの変数を無視し、空の変数は未設定と同じに扱います。
 
 `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを検索します。
 そのため、秘密情報をその値で探し当てることはできません。対象は、依頼文や
@@ -117,10 +116,11 @@ ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file s
 
 ### 出力
 
-`ccdig prompts` は 1 行に 1 つのオブジェクトを書きます。
+`ccdig records --type prompt` は 1 行に 1 つのオブジェクトを書きます。
 
 ```json
-{"agent":"claude-code","session_id":"<uuid>","session_title":"Weekly report draft",
+{"type":"prompt","agent":"claude-code","session_id":"<uuid>",
+ "session_title":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T01:00:01Z",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
@@ -129,14 +129,15 @@ ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file s
            "line":3,"uuid":"<entry uuid>"}}
 ```
 
-ほかの種類も、`agent` から `timestamp` までの同じキーで始まり、`redacted` と
+どのレコードも、`--type` の名前で種類を表す `type` で始まります。ほかの
+種類も、`type` から `timestamp` までの同じキーで始まり、`redacted` と
 `source` で終わります。
 
-| コマンド | 間に入るキー |
+| 種類 | 間に入るキー |
 | --- | --- |
-| `replies` | `text`, `model`, `skill`, `subagent` |
-| `tools` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
-| `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `reply` | `text`, `model`, `skill`, `subagent` |
+| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 どのキーも常に出力されます。`subagent` は、セッション本体では空で、
 サブエージェントでは `agent-1a2b` のようなファイル名です。サブエージェントの
@@ -145,9 +146,7 @@ ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file s
 空です。`input` は、
 Claude Code が行の `wireToolInputs` に保存していればそこにある切り詰められて
 いない入力で、なければ `tool_use` ブロックの入力です。呼び出しが見つからな
-かった結果は、`tool` が空で `input` が `null` です。`conversation` の
-レコードは、依頼文・返答・ツールの呼び出しのレコードの先頭に、`prompt`・
-`reply`・`tool` のいずれかを値とする `type` キーを付けたものです。
+かった結果は、`tool` が空で `input` が `null` です。
 `--format json` はレコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
 `filter` は次の節のルールセットの名前で、ルールの変更で残る依頼文が変わり
 うるときは必ず変わります。
@@ -242,7 +241,7 @@ stderr に報告し、残りの出力はそのまま書きます。
 それを持たない秘密情報は見逃します。たとえば空白で区切った
 `--password value` や、`snake_case` の識別子のように見える値です。
 ツールの結果には、ツールが読んだもの、つまりファイルの中身・環境変数・
-コマンドの出力がそのまま入ります。`conversation` が出すツールの入力には、
+コマンドの出力がそのまま入ります。`records` が既定で出すツールの入力には、
 `Write` の呼び出しの中身のように、書いたものが入ります。マスクは安全網として扱い、出力を共有する
 前に自分で中身を確かめてください。
 

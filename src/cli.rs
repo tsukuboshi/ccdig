@@ -1,7 +1,7 @@
 //! The command line: the flags, the subcommands, and how help, output, and
 //! errors are written.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -11,26 +11,28 @@ use jiff::tz::TimeZone;
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
-use crate::collect::kinds::{Conversation, Prompts, Replies, Results, Tools};
+use crate::collect::kinds::{Prompts, Records, Types};
 use crate::collect::{Corpus, Mask, Pick, collect};
 use crate::failure::Failure;
 use crate::redact::ExtraMasks;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{document, lines};
 use crate::render::markdown;
-use crate::select::{Query, compile_grep};
+use crate::select::{Filter, Query, patterns};
 use crate::text::one_line;
 use crate::when::{DayRange, load_zone};
 
-/// Dig prompts, replies, tool calls, and tool results out of Claude Code
-/// session transcripts.
+/// Pull the logs you want to share out of Claude Code session transcripts,
+/// formatted and masked.
 #[derive(Parser)]
 #[command(
     name = "ccdig",
-    long_about = "ccdig reads Claude Code session transcripts and prints one kind of record:\n\
-                  the prompts a person typed, the assistant's replies, tool calls, or tool\n\
-                  results. Harness noise is dropped, slash commands are folded back, and\n\
-                  secrets are masked.",
+    long_about = "ccdig pulls the logs you want to share out of Claude Code session\n\
+                  transcripts, formatted and masked. Filters for time, project, session,\n\
+                  branch, text, kind of record, tool, outcome, and skill narrow the history\n\
+                  down, and the result is Markdown to read or JSON Lines to process. Harness\n\
+                  noise is dropped, slash commands are folded back, and common secrets are\n\
+                  masked by default.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
@@ -43,56 +45,67 @@ struct Cli {
     common: Common,
 }
 
-/// The flags of the subcommands that read assistant lines.
+/// The flags of `records` that apply to assistant lines and what answers
+/// them.
 #[derive(Args)]
 struct Activity {
-    /// Keep records written while this skill ran.
-    #[arg(long, value_name = "NAME")]
-    skill: Option<String>,
+    /// Keep replies, tool calls, and tool results written while this skill
+    /// ran, or with a leading !, leave them out (repeatable).
+    #[arg(
+        long = "skill",
+        value_name = "NAME",
+        help_heading = "Filters",
+        display_order = 30
+    )]
+    skills: Vec<String>,
     /// Also read sub-agent transcripts.
-    #[arg(long)]
+    #[arg(long, help_heading = "Input", display_order = 41)]
     subagents: bool,
 }
 
-/// The subcommands.
+/// The subcommands. Help lists them by `display_order`, most used first.
 #[derive(Subcommand)]
 enum Command {
-    /// List the prompts, the assistant's text replies, and tool calls of
-    /// sessions in the order they were written.
-    Conversation {
-        /// The flags for assistant lines.
-        #[command(flatten)]
-        activity: Activity,
-        /// The shared flags.
-        #[command(flatten)]
-        common: Common,
-        /// The output format.
-        #[command(flatten)]
-        output: Output,
-    },
     /// Write a size-capped Markdown digest of the prompts for an LLM.
+    #[command(display_order = 3)]
     Digest {
         /// The shared flags.
         #[command(flatten)]
         common: Common,
         /// Truncate each prompt to this many characters.
-        #[arg(long, default_value_t = 300)]
+        #[arg(
+            long,
+            default_value_t = 300,
+            value_name = "N",
+            help_heading = "Output",
+            display_order = 62
+        )]
         max_prompt_chars: i64,
         /// List at most this many characters per session.
-        #[arg(long, default_value_t = 2000)]
+        #[arg(
+            long,
+            default_value_t = 2000,
+            value_name = "N",
+            help_heading = "Output",
+            display_order = 63
+        )]
         max_session_chars: i64,
     },
-    /// List the prompts a person typed.
-    Prompts {
-        /// The shared flags.
-        #[command(flatten)]
-        common: Common,
-        /// The output format.
-        #[command(flatten)]
-        output: Output,
-    },
-    /// List the assistant's text replies.
-    Replies {
+    /// List prompts, replies, tool calls, and tool results in the order
+    /// they were written.
+    #[command(display_order = 1)]
+    Records {
+        /// The kinds of record to list (comma-separated, repeatable)
+        /// [default: prompt,reply,call, or with --tool, --status, or
+        /// --skill, the kinds they all apply to].
+        #[arg(
+            long = "type",
+            value_name = "TYPE",
+            value_delimiter = ',',
+            help_heading = "Records",
+            display_order = 10
+        )]
+        types: Vec<RecordType>,
         /// The flags for assistant lines.
         #[command(flatten)]
         activity: Activity,
@@ -102,26 +115,28 @@ enum Command {
         /// The output format.
         #[command(flatten)]
         output: Output,
-    },
-    /// List tool results with the calls they answer.
-    Results {
-        /// The flags for assistant lines.
-        #[command(flatten)]
-        activity: Activity,
-        /// The shared flags.
-        #[command(flatten)]
-        common: Common,
-        /// Keep only results the tool reported as failures.
-        #[arg(long)]
-        errors: bool,
-        /// The output format.
-        #[command(flatten)]
-        output: Output,
-        /// Keep results of calls to this tool (repeatable).
-        #[arg(long = "tool", value_name = "NAME")]
+        /// Keep tool results with this status (comma-separated,
+        /// repeatable).
+        #[arg(
+            long = "status",
+            value_name = "STATUS",
+            value_delimiter = ',',
+            help_heading = "Filters",
+            display_order = 29
+        )]
+        statuses: Vec<Status>,
+        /// Keep tool calls and results of this tool, or with a leading !,
+        /// leave them out (repeatable).
+        #[arg(
+            long = "tool",
+            value_name = "NAME",
+            help_heading = "Filters",
+            display_order = 28
+        )]
         tools: Vec<String>,
     },
     /// List sessions that have at least one selected prompt.
+    #[command(display_order = 2)]
     Sessions {
         /// The shared flags.
         #[command(flatten)]
@@ -130,23 +145,9 @@ enum Command {
         #[command(flatten)]
         output: Output,
     },
-    /// List tool calls with their input.
-    Tools {
-        /// The flags for assistant lines.
-        #[command(flatten)]
-        activity: Activity,
-        /// The shared flags.
-        #[command(flatten)]
-        common: Common,
-        /// The output format.
-        #[command(flatten)]
-        output: Output,
-        /// Keep calls to this tool (repeatable).
-        #[arg(long = "tool", value_name = "NAME")]
-        tools: Vec<String>,
-    },
     /// Print the ccdig version.
     // The shared flags are accepted and ignored.
+    #[command(display_order = 4)]
     Version(Common),
 }
 
@@ -155,50 +156,111 @@ enum Command {
 /// both levels and merged: lists add up, a later value wins, and a switch
 /// given on either level is on.
 #[derive(Args)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "clap lists the help headings in the order their flags are declared"
+)]
 struct Common {
-    /// Keep records on this git branch (repeatable).
-    #[arg(long = "branch", value_name = "NAME")]
-    branches: Vec<String>,
-    /// Keep records whose text matches this regular expression, after
-    /// masking.
-    #[arg(long, value_name = "REGEX")]
-    grep: Option<String>,
-    /// Match --grep regardless of case.
-    #[arg(short = 'i', long)]
-    ignore_case: bool,
-    /// Print at most this many records.
-    #[arg(long, value_name = "N")]
-    limit: Option<usize>,
-    /// Also mask each non-empty line of this file wherever it appears
-    /// (repeatable).
-    #[arg(long = "mask-file", value_name = "FILE")]
-    mask_files: Vec<PathBuf>,
-    /// Also mask these: email, ip, or user (comma-separated, repeatable).
-    #[arg(long = "mask", value_name = "KIND", value_delimiter = ',')]
-    masks: Vec<MaskKind>,
-    /// Do not mask anything, secrets included.
-    #[arg(long)]
-    no_mask: bool,
-    /// Keep projects whose directory name or cwd contains this
-    /// (repeatable).
-    #[arg(long = "project", value_name = "SUBSTRING")]
-    projects: Vec<String>,
-    /// Transcript root [default: ~/.claude/projects].
-    #[arg(long, value_name = "DIR")]
-    root: Option<PathBuf>,
-    /// Keep sessions whose ID starts with this (repeatable).
-    #[arg(long = "session", value_name = "ID")]
-    sessions: Vec<String>,
     /// First day to include, YYYY-MM-DD (record time, in --tz).
-    #[arg(long, value_name = "DAY")]
+    #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 20)]
     since: Option<String>,
+    /// Last day to include, YYYY-MM-DD (record time, in --tz).
+    #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 21)]
+    until: Option<String>,
     /// IANA time zone for --since, --until, and Markdown times [default:
     /// Local, the system zone; set TZ to override].
-    #[arg(long, value_name = "ZONE")]
+    #[arg(
+        long,
+        value_name = "ZONE",
+        help_heading = "Filters",
+        display_order = 22
+    )]
     tz: Option<String>,
-    /// Last day to include, YYYY-MM-DD (record time, in --tz).
-    #[arg(long, value_name = "DAY")]
-    until: Option<String>,
+    /// Keep projects whose directory name or cwd contains this, or with a
+    /// leading !, leave them out (repeatable).
+    #[arg(
+        long = "project",
+        value_name = "SUBSTRING",
+        help_heading = "Filters",
+        display_order = 23
+    )]
+    projects: Vec<String>,
+    /// Keep sessions whose ID starts with this, or with a leading !, leave
+    /// them out (repeatable).
+    #[arg(
+        long = "session",
+        value_name = "PREFIX",
+        help_heading = "Filters",
+        display_order = 24
+    )]
+    sessions: Vec<String>,
+    /// Keep records on this git branch, or with a leading !, leave them
+    /// out (repeatable).
+    #[arg(
+        long = "branch",
+        value_name = "NAME",
+        help_heading = "Filters",
+        display_order = 25
+    )]
+    branches: Vec<String>,
+    /// Keep records whose text matches this regular expression, after
+    /// masking, or with a leading !, leave them out (repeatable).
+    #[arg(
+        long = "grep",
+        value_name = "REGEX",
+        help_heading = "Filters",
+        display_order = 26
+    )]
+    grep: Vec<String>,
+    /// Like --grep, ignoring case.
+    #[arg(
+        long = "igrep",
+        value_name = "REGEX",
+        help_heading = "Filters",
+        display_order = 27
+    )]
+    igrep: Vec<String>,
+    /// Transcript root [default: ~/.claude/projects] [env: `CCDIG_ROOT`].
+    #[arg(long, value_name = "DIR", help_heading = "Input", display_order = 40)]
+    root: Option<PathBuf>,
+    /// Also mask these (comma-separated, repeatable) [env: `CCDIG_MASK`].
+    #[arg(
+        long = "mask",
+        value_name = "KIND",
+        value_delimiter = ',',
+        help_heading = "Masking",
+        display_order = 50
+    )]
+    masks: Vec<MaskKind>,
+    /// Also mask each non-empty line of this file wherever it appears
+    /// (repeatable) [env: `CCDIG_MASK_FILE`, separated as in
+    /// `PATH`].
+    #[arg(
+        long = "mask-file",
+        value_name = "FILE",
+        help_heading = "Masking",
+        display_order = 51
+    )]
+    mask_files: Vec<PathBuf>,
+    /// Do not mask anything, secrets included.
+    #[arg(long, help_heading = "Masking", display_order = 52)]
+    no_mask: bool,
+    /// Print at most this many records.
+    #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
+    limit: Option<usize>,
+}
+
+/// The `CCDIG_*` environment variables: defaults for the flags they name,
+/// used when neither level of the command line gives the flag. An empty
+/// variable counts as unset.
+#[derive(Default)]
+struct Environment {
+    /// `CCDIG_MASK`, for `--mask`.
+    mask: Option<OsString>,
+    /// `CCDIG_MASK_FILE`, for `--mask-file`: paths separated as in `PATH`.
+    mask_file: Option<OsString>,
+    /// `CCDIG_ROOT`, for `--root`.
+    root: Option<OsString>,
 }
 
 /// What `--mask` can ask to mask besides the built-in rules.
@@ -212,23 +274,51 @@ enum MaskKind {
     User,
 }
 
-/// The output formats of the record subcommands.
-#[derive(Clone, Copy)]
+/// What `--type` can pick.
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum RecordType {
+    /// Tool calls.
+    Call,
+    /// The prompts a person typed.
+    Prompt,
+    /// The assistant's text blocks.
+    Reply,
+    /// Tool results.
+    Result,
+}
+
+/// What `--status` can keep.
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum Status {
+    /// Results the tool reported as failures.
+    Error,
+    /// Results the tool did not report as failures.
+    Ok,
+}
+
+/// The output formats of `records` and `sessions`.
+#[derive(Clone, Copy, ValueEnum)]
 enum Format {
     /// One indented JSON document.
     Json,
     /// One JSON object per line.
     Jsonl,
     /// Markdown for reading.
+    #[value(name = "md")]
     Markdown,
 }
 
 /// The `--format` flag.
 #[derive(Args)]
 struct Output {
-    /// Output format: jsonl, json, or md.
-    #[arg(long, default_value = "jsonl")]
-    format: String,
+    /// Output format.
+    #[arg(
+        long,
+        default_value = "jsonl",
+        help_heading = "Output",
+        display_order = 60
+    )]
+    format: Format,
 }
 
 /// What a subcommand produced.
@@ -239,13 +329,14 @@ struct Printed {
     warnings: Vec<String>,
 }
 
-/// The kind-specific filters, empty for the prompt subcommands.
+/// The kind-specific filters, empty for `sessions` and `digest`.
 #[derive(Default)]
 struct Narrowing {
-    /// `--errors`.
-    errors: bool,
+    /// `--status`: whether to keep only failed results, only the others,
+    /// or both.
+    is_error: Option<bool>,
     /// `--skill`.
-    skill: Option<String>,
+    skills: Vec<String>,
     /// `--subagents`.
     subagents: bool,
     /// `--tool`.
@@ -264,22 +355,18 @@ impl Common {
     {
         let zone = load_zone(self.tz.as_deref().unwrap_or("Local"))?;
         let query = Query {
-            branches: self.branches.clone(),
-            errors: narrowing.errors,
-            grep: self
-                .grep
-                .as_deref()
-                .map(|pattern| compile_grep(pattern, self.ignore_case))
-                .transpose()?,
-            projects: self.projects.clone(),
+            branches: Filter::names(self.branches.clone()),
+            is_error: narrowing.is_error,
+            grep: patterns(&self.grep, &self.igrep)?,
+            projects: Filter::names(self.projects.clone()),
             range: DayRange::parse(
                 self.since.as_deref().unwrap_or_default(),
                 self.until.as_deref().unwrap_or_default(),
                 &zone,
             )?,
-            sessions: self.sessions.clone(),
-            skill: narrowing.skill,
-            tools: narrowing.tools,
+            sessions: Filter::names(self.sessions.clone()),
+            skills: Filter::names(narrowing.skills),
+            tools: Filter::names(narrowing.tools),
         };
         let root = self.history_root()?;
         let mut corpus = collect(
@@ -348,10 +435,12 @@ impl Common {
         self.sessions.extend(later.sessions);
         self.masks.extend(later.masks);
         self.mask_files.extend(later.mask_files);
+        self.grep.extend(later.grep);
+        self.igrep.extend(later.igrep);
         Self {
             branches: self.branches,
-            grep: later.grep.or(self.grep),
-            ignore_case: self.ignore_case || later.ignore_case,
+            grep: self.grep,
+            igrep: self.igrep,
             limit: later.limit.or(self.limit),
             mask_files: self.mask_files,
             masks: self.masks,
@@ -364,19 +453,45 @@ impl Common {
             until: later.until.or(self.until),
         }
     }
+
+    /// These flags with the defaults in `environment` filled in. Masks
+    /// from the environment are dropped under `--no-mask`.
+    fn with_env(mut self, environment: &Environment) -> Result<Self, Failure> {
+        if self.root.is_none() {
+            self.root = environment.root.clone().map(PathBuf::from);
+        }
+        if self.no_mask {
+            return Ok(self);
+        }
+        if self.masks.is_empty()
+            && let Some(ref value) = environment.mask
+        {
+            self.masks = mask_kinds(value)?;
+        }
+        if self.mask_files.is_empty()
+            && let Some(ref value) = environment.mask_file
+        {
+            self.mask_files = env::split_paths(value)
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect();
+        }
+        Ok(self)
+    }
+}
+
+impl Environment {
+    /// Reads the variables, leaving out empty ones.
+    fn read() -> Self {
+        let var = |name: &str| env::var_os(name).filter(|value| !value.is_empty());
+        Self {
+            mask: var("CCDIG_MASK"),
+            mask_file: var("CCDIG_MASK_FILE"),
+            root: var("CCDIG_ROOT"),
+        }
+    }
 }
 
 impl Format {
-    /// Parses `--format`.
-    fn parse(name: &str) -> Result<Self, Failure> {
-        match name {
-            "json" => Ok(Self::Json),
-            "jsonl" => Ok(Self::Jsonl),
-            "md" => Ok(Self::Markdown),
-            _ => Err(Failure::Format(name.to_owned())),
-        }
-    }
-
     /// Writes `records` in this format, using `markdown` for Markdown.
     fn write<T>(
         self,
@@ -397,7 +512,7 @@ impl Format {
 impl From<Activity> for Narrowing {
     fn from(activity: Activity) -> Self {
         Self {
-            skill: activity.skill,
+            skills: activity.skills,
             subagents: activity.subagents,
             ..Self::default()
         }
@@ -406,99 +521,88 @@ impl From<Activity> for Narrowing {
 
 /// Runs `command`, with `earlier` the shared flags given before it, and
 /// returns its output.
-fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
+fn execute(
+    earlier: Common,
+    command: Command,
+    environment: &Environment,
+) -> Result<Printed, Failure> {
     let (out, warnings) = match command {
-        Command::Conversation {
-            activity,
-            common: later,
-            output,
-        } => list(
-            &earlier.merged(later),
-            activity.into(),
-            &output,
-            || Conversation,
-            markdown::conversation,
-        )?,
         Command::Digest {
             common: later,
             max_prompt_chars,
             max_session_chars,
         } => {
-            let flags = earlier.merged(later);
+            let flags = earlier.merged(later).with_env(environment)?;
             let limits = digest_limits(max_prompt_chars, max_session_chars)?;
             let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
             (digest(&corpus.records, &zone, limits)?, corpus.warnings)
         }
-        Command::Prompts {
-            common: later,
-            output,
-        } => list(
-            &earlier.merged(later),
-            Narrowing::default(),
-            &output,
-            || Prompts,
-            markdown::prompts,
-        )?,
-        Command::Replies {
+        Command::Records {
             activity,
             common: later,
             output,
-        } => list(
-            &earlier.merged(later),
-            activity.into(),
-            &output,
-            || Replies,
-            markdown::replies,
-        )?,
-        Command::Results {
-            activity,
-            common: later,
-            errors,
-            output,
+            statuses,
             tools,
+            types,
         } => {
+            let kinds = record_types(
+                &types,
+                !tools.is_empty(),
+                !statuses.is_empty(),
+                !activity.skills.is_empty(),
+            );
+            let assistant = kinds.reads_assistant();
+            for (given, applies, flag, needed) in [
+                (
+                    !tools.is_empty(),
+                    kinds.calls || kinds.results,
+                    "--tool",
+                    "call or result",
+                ),
+                (!statuses.is_empty(), kinds.results, "--status", "result"),
+                (
+                    !activity.skills.is_empty(),
+                    assistant,
+                    "--skill",
+                    "reply, call, or result",
+                ),
+                (
+                    activity.subagents,
+                    assistant,
+                    "--subagents",
+                    "reply, call, or result",
+                ),
+            ] {
+                if given && !applies {
+                    return Err(Failure::TypeForFlag {
+                        flag,
+                        kinds: needed,
+                    });
+                }
+            }
             let narrowing = Narrowing {
-                errors,
+                is_error: status_filter(&statuses),
                 tools,
                 ..activity.into()
             };
             list(
-                &earlier.merged(later),
+                &earlier.merged(later).with_env(environment)?,
                 narrowing,
                 &output,
-                Results::default,
-                markdown::tool_results,
+                || Records::new(kinds),
+                markdown::records,
             )?
         }
         Command::Sessions {
             common: later,
             output,
         } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
+            let flags = earlier.merged(later).with_env(environment)?;
             let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
-            let out = format.write(&corpus.sessions, |sessions| {
+            let out = output.format.write(&corpus.sessions, |sessions| {
                 markdown::sessions(sessions, &zone)
             })?;
             (out, corpus.warnings)
-        }
-        Command::Tools {
-            activity,
-            common: later,
-            output,
-            tools,
-        } => {
-            let narrowing = Narrowing {
-                tools,
-                ..activity.into()
-            };
-            list(
-                &earlier.merged(later),
-                narrowing,
-                &output,
-                || Tools,
-                markdown::tool_calls,
-            )?
         }
         Command::Version(_) => (
             concat!("ccdig v", env!("CARGO_PKG_VERSION"), "\n").to_owned(),
@@ -522,9 +626,10 @@ where
     P: Pick,
     P::Record: Serialize,
 {
-    let format = Format::parse(&output.format)?;
     let (corpus, zone) = flags.collect(narrowing, new_picker)?;
-    let out = format.write(&corpus.records, |records| markdown(records, &zone))?;
+    let out = output
+        .format
+        .write(&corpus.records, |records| markdown(records, &zone))?;
     Ok((out, corpus.warnings))
 }
 
@@ -535,6 +640,75 @@ fn user_name(home: &str) -> Option<String> {
         .file_name()?
         .to_str()
         .map(str::to_owned)
+}
+
+/// The kinds `--type` picks. Without it: the kinds every one of `--tool`,
+/// `--status`, and `--skill` given applies to, or prompts, replies, and
+/// calls when none is.
+fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> Types {
+    if types.is_empty() {
+        if !(tool || status || skill) {
+            return Types {
+                calls: true,
+                prompts: true,
+                replies: true,
+                results: false,
+            };
+        }
+        // Every one of them applies to results.
+        return Types {
+            calls: !status,
+            prompts: false,
+            replies: !(tool || status),
+            results: true,
+        };
+    }
+    Types {
+        calls: types.contains(&RecordType::Call),
+        prompts: types.contains(&RecordType::Prompt),
+        replies: types.contains(&RecordType::Reply),
+        results: types.contains(&RecordType::Result),
+    }
+}
+
+/// What `--status` keeps: only failed results, only the others, or
+/// `None` for both.
+fn status_filter(statuses: &[Status]) -> Option<bool> {
+    match (
+        statuses.contains(&Status::Error),
+        statuses.contains(&Status::Ok),
+    ) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        (true, true) | (false, false) => None,
+    }
+}
+
+/// The masks `CCDIG_MASK` names, comma-separated as `--mask` takes them.
+fn mask_kinds(value: &OsStr) -> Result<Vec<MaskKind>, Failure> {
+    let text = value.to_string_lossy();
+    text.split(',')
+        .map(|name| {
+            MaskKind::from_str(name.trim(), false).map_err(|_unknown| Failure::EnvMask {
+                known: mask_names(),
+                name: name.trim().to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// The names `--mask` takes, as `a, b, or c`.
+fn mask_names() -> String {
+    let names: Vec<String> = MaskKind::value_variants()
+        .iter()
+        .filter_map(ValueEnum::to_possible_value)
+        .map(|value| value.get_name().to_owned())
+        .collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{}, or {last}", rest.join(", ")),
+        Some((last, _)) => last.clone(),
+        None => String::new(),
+    }
 }
 
 /// Checks the digest limits and converts them.
@@ -570,6 +744,20 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    run_in(args, &Environment::read(), stdout, stderr)
+}
+
+/// Runs ccdig with `args` and the `CCDIG_*` variables in `environment`.
+fn run_in<I, T>(
+    args: I,
+    environment: &Environment,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error) if error.use_stderr() => {
@@ -582,7 +770,7 @@ where
     let Some(command) = cli.command else {
         return write_out(stdout, stderr, &Cli::command().render_help().to_string());
     };
-    match execute(cli.common, command) {
+    match execute(cli.common, command, environment) {
         Ok(printed) => {
             for warning in &printed.warnings {
                 drop(writeln!(stderr, "{warning}"));

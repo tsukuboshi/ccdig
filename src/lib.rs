@@ -1,5 +1,5 @@
-//! ccdig digs prompts, replies, tool calls, and tool results out of Claude
-//! Code session transcripts.
+//! ccdig pulls the logs you want to share out of Claude Code session
+//! transcripts, formatted and masked.
 
 extern crate alloc;
 

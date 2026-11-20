@@ -42,7 +42,7 @@ pub enum Kind {
     Text,
 }
 
-/// A prompt a person typed: a line of `ccdig prompts`.
+/// A prompt a person typed: a `prompt` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -74,7 +74,7 @@ pub trait Record {
     fn subagent(&self) -> &str;
 }
 
-/// The assistant's text: a line of `ccdig replies`.
+/// The assistant's text: a `reply` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -143,7 +143,7 @@ pub struct Source {
     pub uuid: String,
 }
 
-/// A tool call: a line of `ccdig tools`.
+/// A tool call: a `call` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -169,7 +169,8 @@ pub struct ToolCall {
     pub source: Source,
 }
 
-/// A tool's output, with the call it answers: a line of `ccdig results`.
+/// A tool's output, with the call it answers: a `result` of
+/// `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -201,17 +202,19 @@ pub struct ToolResult {
     pub skill: String,
 }
 
-/// One line of `ccdig conversation`: a prompt, a reply, or a tool call,
-/// written with a `type` key naming which.
+/// One line of `ccdig records`: a prompt, a reply, a tool call, or a tool
+/// result, written with a `type` key naming which.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Turn {
+    /// A tool call.
+    Call(ToolCall),
     /// A prompt a person typed.
     Prompt(Prompt),
     /// A text block of the assistant.
     Reply(Reply),
-    /// A tool call.
-    Tool(ToolCall),
+    /// A tool result.
+    Result(ToolResult),
 }
 
 impl Record for Prompt {
@@ -276,7 +279,8 @@ impl Turn {
         match *self {
             Self::Prompt(ref prompt) => prompt,
             Self::Reply(ref reply) => reply,
-            Self::Tool(ref call) => call,
+            Self::Call(ref call) => call,
+            Self::Result(ref result) => result,
         }
     }
 }
