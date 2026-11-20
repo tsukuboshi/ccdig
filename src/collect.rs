@@ -4,8 +4,8 @@
 pub mod kinds;
 
 use alloc::borrow::Cow;
-use std::collections::HashSet;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -96,6 +96,8 @@ struct Read<T> {
     records: Vec<(usize, T)>,
     /// The lines that were skipped.
     skipped: Skipped,
+    /// The session title, masked; empty when the file has none.
+    title: String,
 }
 
 /// Lines skipped across files, for the summary warning.
@@ -204,6 +206,8 @@ where
     let mut skipped = Skipped::default();
     let mut troubled_files = 0_usize;
     let mut sessions = Vec::new();
+    // The masked title of each session's own transcript, for its sub-agents.
+    let mut titles: HashMap<PathBuf, String> = HashMap::new();
     for file in &found.sessions {
         // A time outside the supported years skips this file, not the run.
         let modified = match Stamp::from_system_time(file.modified) {
@@ -219,6 +223,9 @@ where
         }
         match read_file(file, query, mask, new_picker()) {
             Ok(read) => {
+                if subagents && file.parent.is_none() && !read.title.is_empty() {
+                    titles.insert(file.path.clone(), read.title);
+                }
                 if !read.skipped.is_empty() {
                     skipped.oversized = skipped.oversized.saturating_add(read.skipped.oversized);
                     skipped.untimed = skipped.untimed.saturating_add(read.skipped.untimed);
@@ -241,6 +248,9 @@ where
             skipped.oversized,
             MAX_LINE_BYTES >> 20_u32,
         ));
+    }
+    for &mut (file, _, ref mut records) in &mut sessions {
+        inherit_title(file, records, &titles);
     }
     // Order sessions by their first record. A resumed copy starts with the
     // original's timestamps, so ties go to the older file, the original,
@@ -304,6 +314,25 @@ where
     corpus
 }
 
+/// Gives the records of a sub-agent's transcript the title of its session,
+/// as a sub-agent's transcript has no `ai-title` line of its own. The
+/// session's transcript must have been read in the same run, so one last
+/// written before `--since` leaves the title empty.
+fn inherit_title<T>(
+    file: &SessionFile,
+    records: &mut [(usize, T)],
+    titles: &HashMap<PathBuf, String>,
+) where
+    T: Select,
+{
+    let Some(title) = file.parent.as_ref().and_then(|parent| titles.get(parent)) else {
+        return;
+    };
+    for pair in records {
+        pair.1.head_mut().session_title.clone_from(title);
+    }
+}
+
 /// Reads one transcript and returns its selected records in file order.
 fn read_file<P>(
     file: &SessionFile,
@@ -362,6 +391,7 @@ where
             undecodable: stats.undecodable,
             untimed,
         },
+        title: masked_title,
     })
 }
 

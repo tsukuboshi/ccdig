@@ -131,7 +131,10 @@ end with `redacted` and `source`:
 | `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 Every key is always present. `subagent` is empty for the session itself and
-the file name, such as `agent-1a2b`, for a sub-agent. `input` is the
+the file name, such as `agent-1a2b`, for a sub-agent, whose record carries
+the `session_id` and `session_title` of its session. The title is empty
+when the session's own transcript was last written before `--since`.
+`input` is the
 untruncated input from the line's `wireToolInputs` when Claude Code stored
 one, and the `tool_use` block's otherwise. A result whose call
 was not found has an empty `tool` and a `null` `input`. `--format json`

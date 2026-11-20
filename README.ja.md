@@ -133,7 +133,10 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 | `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 どのキーも常に出力されます。`subagent` は、セッション本体では空で、
-サブエージェントでは `agent-1a2b` のようなファイル名です。`input` は、
+サブエージェントでは `agent-1a2b` のようなファイル名です。サブエージェントの
+レコードは、そのセッションの `session_id` と `session_title` を持ちます。
+セッション本体の transcript の最終書き込みが `--since` より前なら、タイトルは
+空です。`input` は、
 Claude Code が行の `wireToolInputs` に保存していればそこにある切り詰められて
 いない入力で、なければ `tool_use` ブロックの入力です。呼び出しが見つからな
 かった結果は、`tool` が空で `input` が `null` です。`--format json` は

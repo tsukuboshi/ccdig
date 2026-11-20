@@ -48,6 +48,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- With `--subagents`, a sub-agent's records carry the title of their
+  session instead of an empty `session_title`, unless the session's own
+  transcript was last written before `--since`.
 - Slack workflow and trigger webhook URLs longer than 56 characters are
   masked to the end.
 

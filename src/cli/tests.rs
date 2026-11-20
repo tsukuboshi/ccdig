@@ -374,6 +374,110 @@ fn session_titles_are_masked() -> TestResult {
 }
 
 #[test]
+fn a_subagent_record_carries_the_masked_title_of_its_session() -> TestResult {
+    let history = History::new("root")?;
+    let key_id = format!("AKIA{}", "Q".repeat(16));
+    let title =
+        format!(r#"{{"type":"ai-title","sessionId":"hhhh","aiTitle":"Rotate {key_id} key"}}"#);
+    history.write(
+        "-Users-alice-blog/hhhh.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"h-1","sessionId":"hhhh","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_h1","name":"Bash","input":{"command":"ls"}}]}}"#,
+            &title,
+        ],
+    )?;
+    history.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"h-2","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"toolu_h2","name":"Bash","input":{"command":"pwd"}}]}}"#,
+        ],
+    )?;
+    let out = history
+        .run_week(&["tools", "--subagents", "--session", "hhhh"])
+        .out;
+    let subagent = out
+        .lines()
+        .find(|line| line.contains(r#""subagent":"agent-9""#))
+        .ok_or("no sub-agent record")?;
+    check_eq(
+        &subagent.contains(r#""session_title":"Rotate ***REDACTED*** key""#),
+        &true,
+        "sub-agent title",
+    )?;
+    check_eq(&out.contains(&key_id), &false, "key shown")?;
+    Ok(())
+}
+
+#[test]
+fn a_subagent_takes_the_title_even_when_its_session_has_no_selected_record() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/iiii.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"i-1","sessionId":"iiii","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_i1","name":"Read","input":{"file_path":"a.md"}}]}}"#,
+            r#"{"type":"ai-title","sessionId":"iiii","aiTitle":"Tidy the notes"}"#,
+        ],
+    )?;
+    history.write(
+        "-Users-alice-blog/iiii/subagents/agent-7.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"i-2","sessionId":"iiii","isSidechain":true,"timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"toolu_i2","name":"Bash","input":{"command":"pwd"}}]}}"#,
+        ],
+    )?;
+    let out = history
+        .run_week(&[
+            "tools",
+            "--subagents",
+            "--tool",
+            "Bash",
+            "--session",
+            "iiii",
+        ])
+        .out;
+    check_eq(&out.lines().count(), &1, "records")?;
+    check_eq(
+        &out.contains(r#""session_title":"Tidy the notes""#),
+        &true,
+        "sub-agent title",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_subagent_of_a_session_without_a_title_has_an_empty_title() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/jjjj.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"j-1","sessionId":"jjjj","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_j1","name":"Bash","input":{"command":"ls"}}]}}"#,
+        ],
+    )?;
+    history.write(
+        "-Users-alice-blog/jjjj/subagents/agent-8.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"j-2","sessionId":"jjjj","isSidechain":true,"timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"toolu_j2","name":"Bash","input":{"command":"pwd"}}]}}"#,
+        ],
+    )?;
+    let out = history
+        .run_week(&["tools", "--subagents", "--session", "jjjj"])
+        .out;
+    check_eq(&out.lines().count(), &2, "records")?;
+    check_eq(
+        &out.lines()
+            .all(|line| line.contains(r#""session_title":"""#)),
+        &true,
+        "empty titles",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn prompts_copied_into_a_resumed_session_appear_once() -> TestResult {
     let history = History::new("root")?;
     let original = fs::read_to_string(
