@@ -49,6 +49,7 @@ missing_inline_in_public_items = "allow"
 missing_trait_methods = "allow"
 
 [dependencies]
+aho-corasick = "1.1.5"
 clap = { version = "4.6.9", default-features = false, features = [
   "std",
   "derive",

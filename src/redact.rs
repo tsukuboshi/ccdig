@@ -11,6 +11,7 @@
 
 mod name;
 
+use aho_corasick::{AhoCorasick, MatchKind};
 use regex::{Captures, Regex};
 use serde_json::Value;
 
@@ -265,20 +266,24 @@ pub struct ExtraMasks {
 
 /// The compiled masks that `ExtraMasks` asks for.
 struct ExtraRules {
-    /// Email addresses; one followed by `:`, an SSH remote such as
-    /// `git@github.com:`, stays.
+    /// Email addresses; an SSH remote such as `git@github.com:alice/x`
+    /// stays.
     email: Option<Regex>,
     /// The home directory and its project directory form, each to `~`.
     home: Option<(String, String)>,
     /// IPv4 and IPv6 addresses.
     ip: Option<(Regex, Regex)>,
-    /// The values, longest first so one that holds another is masked whole.
-    values: Vec<String>,
+    /// The values, matched longest first so one that holds another is
+    /// masked whole.
+    values: Option<AhoCorasick>,
 }
 
 /// The compiled masking rules, applied in order.
 pub struct Redactor {
-    /// The masks asked for, applied after the rules.
+    /// Whether the built-in rules apply, including the credential keys of
+    /// a tool's input.
+    built_in: bool,
+    /// The masks asked for, applied before the rules.
     extra: ExtraRules,
     /// Each later rule sees the output of the earlier ones.
     rules: Vec<Rule>,
@@ -293,45 +298,53 @@ impl ExtraMasks {
 }
 
 impl ExtraRules {
-    /// Applies the masks to `text`.
-    fn apply(&self, text: String) -> String {
-        let mut masked = text;
-        for value in &self.values {
-            if masked.contains(value.as_str()) {
-                masked = masked.replace(value.as_str(), MARKER);
-            }
-        }
+    /// Applies the masks to `text`: the home directory first, then email
+    /// and IP addresses, so that a value inside one cannot split it, and
+    /// the values last, around the markers already placed.
+    fn apply(&self, text: &str) -> String {
+        let mut masked = self.shorten_home(text.to_owned());
         if let Some(ref pattern) = self.email {
-            masked = replace_unless_followed(pattern, &masked, |_, next| next == Some(':'));
+            masked = replace_unless_followed(pattern, &masked, |_, after| is_ssh_path(after));
         }
         if let Some((ref v4, ref v6)) = self.ip {
-            masked = replace_unless_followed(v4, &masked, |address, next| {
-                next.is_some_and(|ch| ch.is_ascii_digit() || ch == '.')
+            masked = replace_unless_followed(v4, &masked, |address, after| {
+                let mut next = after.chars();
+                let continues = match next.next() {
+                    Some('.') => next.next().is_some_and(|ch| ch.is_ascii_digit()),
+                    Some(ch) => ch.is_ascii_digit(),
+                    None => false,
+                };
+                continues
                     || address.starts_with("127.")
                     || address == "0.0.0.0"
                     || address == "255.255.255.255"
             });
-            masked = replace_unless_followed(v6, &masked, |address, next| {
-                next.is_some_and(|ch| ch.is_ascii_hexdigit() || ch == ':')
+            masked = replace_unless_followed(v6, &masked, |address, after| {
+                after.starts_with(|ch: char| ch.is_ascii_hexdigit() || ch == ':')
                     || address.split(':').filter(|group| !group.is_empty()).count()
                         < MIN_IPV6_GROUPS
             });
         }
-        self.shorten_home(masked)
+        match self.values {
+            Some(ref values) => replace_values(values, &masked),
+            None => masked,
+        }
     }
 
     /// Compiles the masks `extra` asks for.
     fn new(extra: ExtraMasks) -> Result<Self, regex::Error> {
-        let mut values: Vec<String> = extra
+        let values: Vec<String> = extra
             .values
             .into_iter()
             .filter(|value| !value.is_empty())
             .collect();
-        values.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
-        values.dedup();
+        let trimmed = extra
+            .home
+            .map(|home| home.trim_end_matches('/').to_owned())
+            .filter(|home| !home.is_empty());
         Ok(Self {
             email: extra.emails.then(|| Regex::new(EMAIL)).transpose()?,
-            home: extra.home.filter(|home| home.len() > 1).map(|home| {
+            home: trimmed.map(|home| {
                 let encoded = home
                     .chars()
                     .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
@@ -343,7 +356,18 @@ impl ExtraRules {
             } else {
                 None
             },
-            values,
+            values: if values.is_empty() {
+                None
+            } else {
+                // Only a pattern too large for memory fails, and the values
+                // then stay unmasked by none of them: fail the run instead.
+                Some(
+                    AhoCorasick::builder()
+                        .match_kind(MatchKind::LeftmostLongest)
+                        .build(&values)
+                        .map_err(|error| regex::Error::Syntax(error.to_string()))?,
+                )
+            },
         })
     }
 
@@ -425,6 +449,12 @@ impl Redactor {
         masked
     }
 
+    /// Applies only the masks asked for to `field`, such as a path, a
+    /// branch, or a tool's name, where the built-in rules do not belong.
+    pub fn meta(&self, field: &str) -> String {
+        self.extra.apply(field)
+    }
+
     /// Compiles the rules.
     ///
     /// The patterns are fixed, so an error here is a bug in this file; a
@@ -434,15 +464,9 @@ impl Redactor {
         Self::with(true, ExtraMasks::default())
     }
 
-    /// Shortens the home directory in `path` when `home` was asked for,
-    /// without the other masks, for the file and directory fields.
-    pub fn path(&self, path: &str) -> String {
-        self.extra.shorten_home(path.to_owned())
-    }
-
     /// Masks secrets in `text` and reports whether it changed anything.
     pub fn redact(&self, text: &str) -> (String, bool) {
-        let masked = self.extra.apply(self.apply_rules(text));
+        let masked = self.apply_rules(&self.extra.apply(text));
         let changed = masked != text;
         (masked, changed)
     }
@@ -471,6 +495,7 @@ impl Redactor {
                 let mut changed = false;
                 for (key, field) in fields.iter_mut() {
                     if let Value::String(ref mut text) = *field
+                        && self.built_in
                         && key.is_ascii()
                         && name::masks(key, text)
                     {
@@ -493,7 +518,8 @@ impl Redactor {
     ///
     /// When a fixed pattern does not compile, which is a bug in this file.
     pub fn with(built_in: bool, extra: ExtraMasks) -> Result<Self, regex::Error> {
-        let rules = RULES
+        let patterns = if built_in { RULES.as_slice() } else { &[] };
+        let rules = patterns
             .iter()
             .map(|&(pattern, replacement)| {
                 Ok(Rule {
@@ -508,8 +534,9 @@ impl Redactor {
             })
             .collect::<Result<Vec<_>, regex::Error>>()?;
         Ok(Self {
+            built_in,
             extra: ExtraRules::new(extra)?,
-            rules: if built_in { rules } else { Vec::new() },
+            rules,
         })
     }
 }
@@ -521,13 +548,50 @@ fn is_port_then_query(text: &str) -> bool {
     rest.len() < text.len() && rest.starts_with(['?', '#'])
 }
 
+/// Whether `after`, the text after an email address, makes it an SSH or
+/// scp remote such as `git@github.com:alice/blog.git`.
+fn is_ssh_path(after: &str) -> bool {
+    after.strip_prefix(':').is_some_and(|path| {
+        let head = path
+            .find(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-' | '~')))
+            .map_or(path, |end| path.get(..end).unwrap_or_default());
+        path.get(head.len()..)
+            .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// Replaces each match of `values` in `text` with the marker, except one
+/// that overlaps a marker already placed, so a value such as `RED` does not
+/// break it.
+fn replace_values(values: &AhoCorasick, text: &str) -> String {
+    let markers: Vec<(usize, usize)> = text
+        .match_indices(MARKER)
+        .map(|(start, found)| (start, start.saturating_add(found.len())))
+        .collect();
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for found in values.find_iter(text) {
+        let overlaps = markers
+            .iter()
+            .any(|&(start, end)| found.start() < end && start < found.end());
+        if overlaps {
+            continue;
+        }
+        out.push_str(text.get(copied..found.start()).unwrap_or_default());
+        out.push_str(MARKER);
+        copied = found.end();
+    }
+    out.push_str(text.get(copied..).unwrap_or_default());
+    out
+}
+
 /// Replaces the matches of `pattern` in `text` with the marker, keeping the
 /// boundary in `${1}` when the pattern has one, except where `keep` says the
-/// match, given with the character after it, is not one to mask.
+/// match, given with the text after it, is not one to mask.
 fn replace_unless_followed(
     pattern: &Regex,
     text: &str,
-    keep: impl Fn(&str, Option<char>) -> bool,
+    keep: impl Fn(&str, &str) -> bool,
 ) -> String {
     pattern
         .replace_all(text, |captures: &Captures<'_>| {
@@ -536,8 +600,8 @@ fn replace_unless_followed(
             let Some(found) = captures.get(2).or_else(|| captures.get(0)) else {
                 return String::new();
             };
-            let next = text.get(found.end()..).and_then(|rest| rest.chars().next());
-            if keep(found.as_str(), next) {
+            let after = text.get(found.end()..).unwrap_or_default();
+            if keep(found.as_str(), after) {
                 whole.to_owned()
             } else {
                 format!("{boundary}{MARKER}")

@@ -96,8 +96,8 @@ ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file s
 | `--session` | all | Sessions whose ID starts with the value |
 | `--branch` | all | Records on this git branch |
 | `--limit` | all | The first N records |
-| `--skill` | replies, tools, results | Records written while the skill ran |
-| `--subagents` | replies, tools, results | Sub-agent transcripts too |
+| `--skill` | replies, tools, results, conversation | Records written while the skill ran |
+| `--subagents` | replies, tools, results, conversation | Sub-agent transcripts too |
 | `--tool` | tools, results | Calls to this tool |
 | `--errors` | results | Results the tool reported as failures |
 
@@ -217,20 +217,24 @@ More masks are off by default and can be added to any command, even with
 | --- | --- |
 | `--mask email` | Email addresses, but not an SSH remote such as `git@github.com:` |
 | `--mask home` | `$HOME` as `~`, in text and in `cwd`, `project` (`-Users-alice-blog` becomes `~-blog`), and file paths |
-| `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more other than `::1` |
-| `--mask-file FILE` | Each non-empty line of the file, wherever it appears |
+| `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more |
+| `--mask-file FILE` | Each non-empty line of the file, trimmed, wherever it appears, as typed (case matters) |
 
 `--mask` takes a comma-separated list and is repeatable, as in
-`--mask email,home`. An IPv4 rule cannot tell a bare version number such
-as `1.2.3.4` from an address, so it masks that too; one after a letter or
-a dot, as in `v1.2.3.4`, stays.
+`--mask email,home`, and so is `--mask-file`. These masks also apply to
+the fields that are not text: `project`, `cwd`, `git_branch`, file paths,
+`tool`, `model`, `subagent`, `command`, and the warnings on stderr. The
+keys of a tool's input stay as they are. An IPv4 rule cannot tell a bare
+version number such as `1.2.3.4` from an address, so it masks that too;
+one after a letter or a dot, as in `v1.2.3.4`, stays.
 
 The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a
 value that looks like a `snake_case` identifier. Tool results hold
 whatever the tool read: file contents, environment variables, command
-output. Treat masking as a safety net and check the output yourself
-before you share it.
+output. Tool inputs, which `conversation` prints, hold what was written,
+such as the content of a `Write` call. Treat masking as a safety net and
+check the output yourself before you share it.
 
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened

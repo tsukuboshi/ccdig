@@ -250,6 +250,10 @@ impl Select for Prompt {
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
     }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        vec![&mut self.command]
+    }
 }
 
 impl Select for Reply {
@@ -267,6 +271,10 @@ impl Select for Reply {
 
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
+    }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        vec![&mut self.model, &mut self.subagent]
     }
 }
 
@@ -287,31 +295,27 @@ impl Select for ToolCall {
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
     }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        vec![&mut self.tool, &mut self.subagent]
+    }
 }
 
 impl Select for Turn {
     fn extra(&self) -> Extra<'_> {
-        match *self {
-            Self::Prompt(ref prompt) => prompt.extra(),
-            Self::Reply(ref reply) => reply.extra(),
-            Self::Tool(ref call) => call.extra(),
-        }
+        selected(self).extra()
     }
 
     fn grep_text(&self) -> Cow<'_, str> {
-        match *self {
-            Self::Prompt(ref prompt) => prompt.grep_text(),
-            Self::Reply(ref reply) => reply.grep_text(),
-            Self::Tool(ref call) => call.grep_text(),
-        }
+        selected(self).grep_text()
     }
 
     fn head_mut(&mut self) -> &mut Head {
-        match *self {
-            Self::Prompt(ref mut prompt) => &mut prompt.head,
-            Self::Reply(ref mut reply) => &mut reply.head,
-            Self::Tool(ref mut call) => &mut call.head,
-        }
+        selected_mut(self).head_mut()
+    }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        selected_mut(self).labels_mut()
     }
 }
 
@@ -331,6 +335,10 @@ impl Select for ToolResult {
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
     }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        vec![&mut self.tool, &mut self.subagent]
+    }
 }
 
 /// The records `make` builds from the blocks of `entry`, each with its
@@ -345,10 +353,28 @@ fn blocks<T>(entry: &Entry, make: impl Fn(&Block) -> Option<T>) -> Vec<(usize, T
         .collect()
 }
 
+/// The record inside `turn`.
+fn selected(turn: &Turn) -> &dyn Select {
+    match *turn {
+        Turn::Prompt(ref prompt) => prompt,
+        Turn::Reply(ref reply) => reply,
+        Turn::Tool(ref call) => call,
+    }
+}
+
+/// The record inside `turn`, to change.
+fn selected_mut(turn: &mut Turn) -> &mut dyn Select {
+    match *turn {
+        Turn::Prompt(ref mut prompt) => prompt,
+        Turn::Reply(ref mut reply) => reply,
+        Turn::Tool(ref mut call) => call,
+    }
+}
+
 /// Where `entry` is.
 fn source(spot: &Spot<'_>, entry: &Entry) -> Source {
     Source {
-        file: spot.mask.path(&spot.file.path.to_string_lossy()),
+        file: spot.mask.meta(&spot.file.path.to_string_lossy()),
         line: spot.line,
         uuid: entry.uuid.clone(),
     }

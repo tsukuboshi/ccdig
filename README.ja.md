@@ -98,8 +98,8 @@ ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file s
 | `--session` | すべて | ID がこの値で始まるセッション |
 | `--branch` | すべて | この git ブランチ上のレコード |
 | `--limit` | すべて | 先頭 N 件のレコード |
-| `--skill` | replies, tools, results | そのスキルの実行中に書かれたレコード |
-| `--subagents` | replies, tools, results | サブエージェントの履歴も含める |
+| `--skill` | replies, tools, results, conversation | そのスキルの実行中に書かれたレコード |
+| `--subagents` | replies, tools, results, conversation | サブエージェントの履歴も含める |
 | `--tool` | tools, results | このツールの呼び出し |
 | `--errors` | results | ツールが失敗と報告した結果 |
 
@@ -222,11 +222,14 @@ stderr に報告し、残りの出力はそのまま書きます。
 | --- | --- |
 | `--mask email` | メールアドレス。`git@github.com:` のような SSH のリモートは除く |
 | `--mask home` | `$HOME` を `~` に。本文と `cwd`、`project`（`-Users-alice-blog` は `~-blog`）、ファイルのパスで |
-| `--mask ip` | `127.x.x.x`・`0.0.0.0`・`255.255.255.255` 以外の IPv4 アドレスと、`::1` 以外の 3 グループ以上の IPv6 アドレス |
-| `--mask-file FILE` | ファイルの空でない各行。どこに現れても |
+| `--mask ip` | `127.x.x.x`・`0.0.0.0`・`255.255.255.255` 以外の IPv4 アドレスと、3 グループ以上の IPv6 アドレス |
+| `--mask-file FILE` | ファイルの空でない各行を前後の空白を除いて。どこに現れても、書いたとおりに（大文字と小文字を区別） |
 
 `--mask` はカンマ区切りで並べられ、`--mask email,home` のように繰り返しも
-指定できます。IPv4 のルールは `1.2.3.4` のような単独のバージョン番号と
+指定できます。`--mask-file` も繰り返し指定できます。これらのマスクは、本文
+でないフィールド、つまり `project`・`cwd`・`git_branch`・ファイルのパス・
+`tool`・`model`・`subagent`・`command` と、stderr の警告にもかかります。
+ツールの入力のキーはそのまま残ります。IPv4 のルールは `1.2.3.4` のような単独のバージョン番号と
 アドレスを区別できないため、それもマスクします。`v1.2.3.4` のように英字や
 ドットの後に続くものは残ります。
 
@@ -234,7 +237,8 @@ stderr に報告し、残りの出力はそのまま書きます。
 それを持たない秘密情報は見逃します。たとえば空白で区切った
 `--password value` や、`snake_case` の識別子のように見える値です。
 ツールの結果には、ツールが読んだもの、つまりファイルの中身・環境変数・
-コマンドの出力がそのまま入ります。マスクは安全網として扱い、出力を共有する
+コマンドの出力がそのまま入ります。`conversation` が出すツールの入力には、
+`Write` の呼び出しの中身のように、書いたものが入ります。マスクは安全網として扱い、出力を共有する
 前に自分で中身を確かめてください。
 
 Markdown とダイジェストの出力は、履歴のフィールドを信頼できない入力として

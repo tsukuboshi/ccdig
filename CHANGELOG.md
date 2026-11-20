@@ -16,7 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--mask email`, `--mask home`, and `--mask ip` mask email addresses,
   shorten the home directory to `~` (also in `cwd`, `project`, and file
   paths), and mask IP addresses; `--mask-file` masks each line of a file.
-  They are off by default and also apply with `--no-redact`.
+  They are off by default, also apply with `--no-redact`, and cover the
+  fields that are not text, such as `project`, `git_branch`, and `tool`.
 - `ccdig tools` and `ccdig results` print the untruncated tool input that
   Claude Code stores in `wireToolInputs`, instead of the shortened copy in
   the `tool_use` block.

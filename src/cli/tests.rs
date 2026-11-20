@@ -196,12 +196,15 @@ fn no_redact_leaves_the_secret_as_typed() -> TestResult {
 fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     let history = History::new("root")?;
     let home = env::var("HOME")?;
+    // The JSON string of the home directory, without its quotes.
+    let escaped = serde_json::to_string(&home)?;
+    let quoted = escaped.trim_matches('"');
     let project: String = home
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
         .collect();
     let prompt = format!(
-        r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{home}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {home}/blog on 10.1.2.3 for corp-hidden"}}}}"#
+        r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{quoted}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {quoted}/blog on 10.1.2.3 for corp-hidden"}}}}"#
     );
     history.write(
         &format!("{project}-blog/mmmm.jsonl"),
@@ -213,8 +216,16 @@ fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     Ok((history, values.to_string_lossy().into_owned()))
 }
 
+/// Whether `$HOME` is one `--mask home` can be tested with.
+fn home_is_usable() -> bool {
+    env::var("HOME").is_ok_and(|home| home.len() > 1)
+}
+
 #[test]
 fn mask_hides_emails_the_home_directory_and_ips_and_mask_file_hides_its_values() -> TestResult {
+    if !home_is_usable() {
+        return Ok(());
+    }
     let (history, values) = history_with_personal_data()?;
     let ran = history.run_week(&[
         "prompts",
@@ -278,6 +289,70 @@ fn mask_still_applies_under_no_redact() -> TestResult {
         ])
         .out;
     check_eq(&out.contains("mail ***REDACTED*** about"), &true, "email")?;
+    Ok(())
+}
+
+#[test]
+fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-corp-hidden-portal/nnnn.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"n-1","sessionId":"nnnn","cwd":"/work/corp-hidden","gitBranch":"feat/corp-hidden","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"check it"}}"#,
+            r#"{"type":"assistant","uuid":"n-2","sessionId":"nnnn","cwd":"/work/corp-hidden","gitBranch":"feat/corp-hidden","timestamp":"2026-10-15T00:00:10Z","message":{"model":"corp-hidden-model","content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"toolu_n1","name":"mcp__corp-hidden__x","input":{}}]}}"#,
+        ],
+    )?;
+    // A BOM and surrounding spaces, as an editor may save them; and an
+    // empty file given after the command, which must not replace it.
+    let values = history.root.with_file_name("values.txt");
+    fs::write(&values, "\u{feff}  corp-hidden  \n")?;
+    let empty = history.root.with_file_name("empty.txt");
+    fs::write(&empty, "")?;
+    let values_path = values.to_string_lossy().into_owned();
+    let empty_path = empty.to_string_lossy().into_owned();
+    for format in ["jsonl", "md"] {
+        let ran = history.run_week(&[
+            "--mask-file",
+            &values_path,
+            "conversation",
+            "--project",
+            "corp-hidden",
+            "--mask-file",
+            &empty_path,
+            "--format",
+            format,
+        ]);
+        check_eq(&ran.code, &0, format)?;
+        check_eq(&ran.out.is_empty(), &false, format)?;
+        check_eq(
+            &ran.out.contains("corp-hidden"),
+            &false,
+            &format!("{format}: {}", ran.out),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn no_redact_with_a_mask_leaves_a_credential_key_in_a_tool_input() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/pppp.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"assistant","uuid":"p-1","sessionId":"pppp","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_p1","name":"Bash","input":{"password":"hunter2hunter2"}}]}}"#],
+    )?;
+    let out = history
+        .run_week(&[
+            "tools",
+            "--session",
+            "pppp",
+            "--no-redact",
+            "--mask",
+            "email",
+        ])
+        .out;
+    check_eq(&out.contains("hunter2hunter2"), &true, &out)?;
     Ok(())
 }
 

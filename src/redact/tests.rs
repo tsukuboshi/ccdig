@@ -696,6 +696,7 @@ fn extra_redactor() -> Result<Redactor, regex::Error> {
             values: vec![
                 "corp-internal".to_owned(),
                 "corp-internal.example".to_owned(),
+                "RED".to_owned(),
             ],
         },
     )
@@ -750,6 +751,26 @@ fn extra_cases() -> Vec<Case> {
             "::1 at 12:30:45 in std::fs and a::b",
         ),
         case(
+            "IPv4 address at the end of a sentence",
+            "server is 10.0.0.5.".to_owned(),
+            "server is ***REDACTED***.",
+        ),
+        case(
+            "email address followed by a colon in prose",
+            "From alice@example.com: ok".to_owned(),
+            "From ***REDACTED***: ok",
+        ),
+        case(
+            "an email address that holds a value is masked whole",
+            "mail bob@corp-internal.example".to_owned(),
+            "mail ***REDACTED***",
+        ),
+        case(
+            "a value inside the marker does not break it",
+            "alice@example.com and RED".to_owned(),
+            "***REDACTED*** and ***REDACTED***",
+        ),
+        case(
             "values from the mask file, longest first",
             "host corp-internal.example for corp-internal".to_owned(),
             "host ***REDACTED*** for ***REDACTED***",
@@ -787,17 +808,57 @@ fn extra_masks_apply_without_the_built_in_rules() -> TestResult {
 }
 
 #[test]
-fn path_masks_only_the_home_directory() -> TestResult {
+fn meta_applies_only_the_masks_asked_for() -> TestResult {
     let extra = extra_redactor()?;
     check_eq(
-        &extra.path("/Users/alice/.claude/projects/-Users-alice-blog/s.jsonl"),
+        &extra.meta("/Users/alice/.claude/projects/-Users-alice-blog/s.jsonl"),
         &"~/.claude/projects/~-blog/s.jsonl".to_owned(),
         "path",
     )?;
+    let key = key_id();
     check_eq(
-        &Redactor::new()?.path("/Users/alice/x"),
-        &"/Users/alice/x".to_owned(),
-        "path without home",
+        &extra.meta(&format!("feat/corp-internal-{key}")),
+        &format!("feat/***REDACTED***-{key}"),
+        "branch keeps what only the built-in rules mask",
     )?;
+    check_eq(
+        &Redactor::new()?.meta("/Users/alice/x"),
+        &"/Users/alice/x".to_owned(),
+        "nothing asked for",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_home_directory_with_a_trailing_slash_is_shortened() -> TestResult {
+    let redactor = Redactor::with(
+        false,
+        ExtraMasks {
+            home: Some("/Users/alice/".to_owned()),
+            ..ExtraMasks::default()
+        },
+    )?;
+    let (got, _) = redactor.redact("cd /Users/alice/blog in -Users-alice-blog");
+    check_eq(got.as_str(), "cd ~/blog in ~-blog", "trailing slash")?;
+    Ok(())
+}
+
+#[test]
+fn without_the_built_in_rules_a_credential_key_stays() -> TestResult {
+    let redactor = Redactor::with(
+        false,
+        ExtraMasks {
+            emails: true,
+            ..ExtraMasks::default()
+        },
+    )?;
+    let mut value = json!({"password": "hunter2hunter2"});
+    let changed = redactor.redact_json(&mut value);
+    check_eq(
+        &value,
+        &json!({"password": "hunter2hunter2"}),
+        "key rule off",
+    )?;
+    check_eq(&changed, &false, "changed")?;
     Ok(())
 }

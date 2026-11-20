@@ -66,6 +66,10 @@ pub trait Select: Record {
 
     /// The shared keys, to fill in the session title.
     fn head_mut(&mut self) -> &mut Head;
+
+    /// The kind's own fields that are not text, such as the tool's name,
+    /// for the masks `--mask-file` asks for.
+    fn labels_mut(&mut self) -> Vec<&mut String>;
 }
 
 /// The facts the filters see that only some kinds have.
@@ -120,6 +124,14 @@ impl Mask {
             .is_some_and(|rules| rules.redact_json(value))
     }
 
+    /// Applies the masks `--mask` and `--mask-file` ask for to `field`, a
+    /// path, a branch, a tool's name, or another field that is not text.
+    pub fn meta(&self, field: &str) -> String {
+        self.0
+            .as_ref()
+            .map_or_else(|| field.to_owned(), |rules| rules.meta(field))
+    }
+
     /// The built-in rules unless `off`, and the masks in `extra`.
     ///
     /// # Errors
@@ -132,13 +144,6 @@ impl Mask {
         Redactor::with(!off, extra)
             .map(|rules| Self(Some(rules)))
             .map_err(Failure::Rules)
-    }
-
-    /// Shortens the home directory in `path` when `--mask home` asks for it.
-    pub fn path(&self, path: &str) -> String {
-        self.0
-            .as_ref()
-            .map_or_else(|| path.to_owned(), |rules| rules.path(path))
     }
 
     /// Masks `text`, reporting whether anything changed.
@@ -273,7 +278,9 @@ where
             .then_with(|| left_file.modified.cmp(&right_file.modified))
             .then_with(|| walk::bytes(&left_file.path).cmp(walk::bytes(&right_file.path)))
     });
-    Ok(gather(sessions, warnings, mask))
+    // A warning quotes a path, which can hold a masked value.
+    let shown = warnings.iter().map(|warning| mask.meta(warning)).collect();
+    Ok(gather(sessions, shown, mask))
 }
 
 /// Keeps each record once across sessions, in session order, and builds
@@ -309,7 +316,7 @@ where
             project: head.project.clone(),
             cwd: head.cwd.clone(),
             git_branch: head.git_branch.clone(),
-            file: mask.path(&file.path.to_string_lossy()),
+            file: mask.meta(&file.path.to_string_lossy()),
             // UTC keeps the output the same on every machine.
             mtime: modified,
             started_at: head.timestamp,
@@ -391,8 +398,12 @@ where
         let head = pair.1.head_mut();
         head.session_title.clone_from(&masked_title);
         // After the filters, so --project still matches the real paths.
-        head.cwd = mask.path(&head.cwd);
-        head.project = mask.path(&head.project);
+        head.cwd = mask.meta(&head.cwd);
+        head.git_branch = mask.meta(&head.git_branch);
+        head.project = mask.meta(&head.project);
+        for label in pair.1.labels_mut() {
+            *label = mask.meta(label);
+        }
     }
     let stats = lines.stats();
     Ok(Read {

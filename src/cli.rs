@@ -60,6 +60,9 @@ enum Command {
     /// List the prompts, the assistant's text replies, and tool calls of
     /// sessions in the order they were written.
     Conversation {
+        /// The flags for assistant lines.
+        #[command(flatten)]
+        activity: Activity,
         /// The shared flags.
         #[command(flatten)]
         common: Common,
@@ -166,9 +169,10 @@ struct Common {
     /// Print at most this many records.
     #[arg(long, value_name = "N")]
     limit: Option<usize>,
-    /// Also mask each non-empty line of this file wherever it appears.
-    #[arg(long, value_name = "FILE")]
-    mask_file: Option<PathBuf>,
+    /// Also mask each non-empty line of this file wherever it appears
+    /// (repeatable).
+    #[arg(long = "mask-file", value_name = "FILE")]
+    mask_files: Vec<PathBuf>,
     /// Also mask these: email, home, or ip (comma-separated, repeatable).
     #[arg(long = "mask", value_name = "KIND", value_delimiter = ',')]
     masks: Vec<MaskKind>,
@@ -294,19 +298,21 @@ impl Common {
 
     /// The masks `--mask` and `--mask-file` ask for.
     fn extra_masks(&self) -> Result<ExtraMasks, Failure> {
-        let values = match self.mask_file {
-            Some(ref path) => fs::read_to_string(path)
-                .map_err(|source| Failure::MaskFile {
-                    path: path.display().to_string(),
-                    source,
-                })?
-                .lines()
-                .map(str::trim_end)
-                .filter(|line| !line.is_empty())
-                .map(str::to_owned)
-                .collect(),
-            None => Vec::new(),
-        };
+        let mut values = Vec::new();
+        for path in &self.mask_files {
+            let read = fs::read_to_string(path).map_err(|source| Failure::MaskFile {
+                path: path.display().to_string(),
+                source,
+            })?;
+            // An editor may start the file with a byte order mark.
+            let text = read.strip_prefix('\u{feff}').unwrap_or(&read);
+            values.extend(
+                text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned),
+            );
+        }
         let home = if self.masks.contains(&MaskKind::Home) {
             Some(
                 env::var("HOME")
@@ -342,12 +348,13 @@ impl Common {
         self.projects.extend(later.projects);
         self.sessions.extend(later.sessions);
         self.masks.extend(later.masks);
+        self.mask_files.extend(later.mask_files);
         Self {
             branches: self.branches,
             grep: later.grep.or(self.grep),
             ignore_case: self.ignore_case || later.ignore_case,
             limit: later.limit.or(self.limit),
-            mask_file: later.mask_file.or(self.mask_file),
+            mask_files: self.mask_files,
             masks: self.masks,
             no_redact: self.no_redact || later.no_redact,
             projects: self.projects,
@@ -403,17 +410,16 @@ impl From<Activity> for Narrowing {
 fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
     let (out, warnings) = match command {
         Command::Conversation {
+            activity,
             common: later,
             output,
-        } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
-            let (corpus, zone) = flags.collect(Narrowing::default(), || Conversation)?;
-            let out = format.write(&corpus.records, |records| {
-                markdown::conversation(records, &zone)
-            })?;
-            (out, corpus.warnings)
-        }
+        } => list(
+            &earlier.merged(later),
+            activity.into(),
+            &output,
+            || Conversation,
+            markdown::conversation,
+        )?,
         Command::Digest {
             common: later,
             max_prompt_chars,
@@ -427,24 +433,24 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
         Command::Prompts {
             common: later,
             output,
-        } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
-            let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
-            let out = format.write(&corpus.records, |records| markdown::prompts(records, &zone))?;
-            (out, corpus.warnings)
-        }
+        } => list(
+            &earlier.merged(later),
+            Narrowing::default(),
+            &output,
+            || Prompts,
+            markdown::prompts,
+        )?,
         Command::Replies {
             activity,
             common: later,
             output,
-        } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
-            let (corpus, zone) = flags.collect(activity.into(), || Replies)?;
-            let out = format.write(&corpus.records, |records| markdown::replies(records, &zone))?;
-            (out, corpus.warnings)
-        }
+        } => list(
+            &earlier.merged(later),
+            activity.into(),
+            &output,
+            || Replies,
+            markdown::replies,
+        )?,
         Command::Results {
             activity,
             common: later,
@@ -452,18 +458,18 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
             output,
             tools,
         } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
             let narrowing = Narrowing {
                 errors,
                 tools,
                 ..activity.into()
             };
-            let (corpus, zone) = flags.collect(narrowing, Results::default)?;
-            let out = format.write(&corpus.records, |records| {
-                markdown::tool_results(records, &zone)
-            })?;
-            (out, corpus.warnings)
+            list(
+                &earlier.merged(later),
+                narrowing,
+                &output,
+                Results::default,
+                markdown::tool_results,
+            )?
         }
         Command::Sessions {
             common: later,
@@ -483,17 +489,17 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
             output,
             tools,
         } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
             let narrowing = Narrowing {
                 tools,
                 ..activity.into()
             };
-            let (corpus, zone) = flags.collect(narrowing, || Tools)?;
-            let out = format.write(&corpus.records, |records| {
-                markdown::tool_calls(records, &zone)
-            })?;
-            (out, corpus.warnings)
+            list(
+                &earlier.merged(later),
+                narrowing,
+                &output,
+                || Tools,
+                markdown::tool_calls,
+            )?
         }
         Command::Version(_) => (
             concat!("ccdig v", env!("CARGO_PKG_VERSION"), "\n").to_owned(),
@@ -501,6 +507,26 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
         ),
     };
     Ok(Printed { out, warnings })
+}
+
+/// Collects the records `new_picker` picks under `flags` and `narrowing`,
+/// and writes them in the format of `output`, with `markdown` for Markdown.
+/// Returns the output and the warnings.
+fn list<P>(
+    flags: &Common,
+    narrowing: Narrowing,
+    output: &Output,
+    new_picker: impl Fn() -> P,
+    markdown: impl FnOnce(&[P::Record], &TimeZone) -> Result<String, Failure>,
+) -> Result<(String, Vec<String>), Failure>
+where
+    P: Pick,
+    P::Record: Serialize,
+{
+    let format = Format::parse(&output.format)?;
+    let (corpus, zone) = flags.collect(narrowing, new_picker)?;
+    let out = format.write(&corpus.records, |records| markdown(records, &zone))?;
+    Ok((out, corpus.warnings))
 }
 
 /// Checks the digest limits and converts them.
