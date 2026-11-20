@@ -119,6 +119,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 `--mask` と `--mask-file` でマスクを足し、`--no-mask` ですべてのマスクを
 切ります（後述の「マスク」の節を参照）。
 
+`CCDIG_ROOT`・`CCDIG_MASK`・`CCDIG_MASK_FILE` で、`--root`・`--mask`
+（カンマ区切り）・`--mask-file`（`PATH` と同じ区切りでパスを並べる）の
+既定値を与えられます。コマンドラインのフラグは対応する変数を置き換え、
+`--no-mask` はマスクの変数を無視し、空の変数は未設定と同じに扱います。
+
 `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを検索します。
 そのため、秘密情報をその値で探し当てることはできません。対象は、依頼文や
 返答のテキスト、呼び出しの入力を詰めた JSON、結果のテキストです。

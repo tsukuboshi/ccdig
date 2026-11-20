@@ -117,6 +117,12 @@ wins. `--tz` defaults to the system time zone (`TZ`, else
 `~/.claude/projects`). `--mask` and `--mask-file` add masks, and
 `--no-mask` turns all masking off; see Masking.
 
+`CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of
+`--root`, `--mask` (comma-separated), and `--mask-file` (paths separated
+as in `PATH`). The flag on the command line replaces its variable,
+`--no-mask` ignores the mask variables, and an empty variable counts as
+unset.
+
 `--grep` searches the text as it will be printed: after masking, so a
 secret cannot be found by its value. It reads the prompt or reply text, a
 call's input as compact JSON, or a result's text. For `sessions` and

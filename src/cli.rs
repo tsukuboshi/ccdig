@@ -1,7 +1,7 @@
 //! The command line: the flags, the subcommands, and how help, output, and
 //! errors are written.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -215,10 +215,10 @@ struct Common {
         display_order = 27
     )]
     igrep: Option<String>,
-    /// Transcript root [default: ~/.claude/projects].
+    /// Transcript root [default: ~/.claude/projects] [env: `CCDIG_ROOT`].
     #[arg(long, value_name = "DIR", help_heading = "Input", display_order = 40)]
     root: Option<PathBuf>,
-    /// Also mask these (comma-separated, repeatable).
+    /// Also mask these (comma-separated, repeatable) [env: `CCDIG_MASK`].
     #[arg(
         long = "mask",
         value_name = "KIND",
@@ -228,7 +228,8 @@ struct Common {
     )]
     masks: Vec<MaskKind>,
     /// Also mask each non-empty line of this file wherever it appears
-    /// (repeatable).
+    /// (repeatable) [env: `CCDIG_MASK_FILE`, separated as in
+    /// `PATH`].
     #[arg(
         long = "mask-file",
         value_name = "FILE",
@@ -242,6 +243,19 @@ struct Common {
     /// Print at most this many records.
     #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
     limit: Option<usize>,
+}
+
+/// The `CCDIG_*` environment variables: defaults for the flags they name,
+/// used when neither level of the command line gives the flag. An empty
+/// variable counts as unset.
+#[derive(Default)]
+struct Environment {
+    /// `CCDIG_MASK`, for `--mask`.
+    mask: Option<OsString>,
+    /// `CCDIG_MASK_FILE`, for `--mask-file`: paths separated as in `PATH`.
+    mask_file: Option<OsString>,
+    /// `CCDIG_ROOT`, for `--root`.
+    root: Option<OsString>,
 }
 
 /// What `--mask` can ask to mask besides the built-in rules.
@@ -442,6 +456,42 @@ impl Common {
             until: later.until.or(self.until),
         }
     }
+
+    /// These flags with the defaults in `environment` filled in. Masks
+    /// from the environment are dropped under `--no-mask`.
+    fn with_env(mut self, environment: &Environment) -> Result<Self, Failure> {
+        if self.root.is_none() {
+            self.root = environment.root.clone().map(PathBuf::from);
+        }
+        if self.no_mask {
+            return Ok(self);
+        }
+        if self.masks.is_empty()
+            && let Some(ref value) = environment.mask
+        {
+            self.masks = mask_kinds(value)?;
+        }
+        if self.mask_files.is_empty()
+            && let Some(ref value) = environment.mask_file
+        {
+            self.mask_files = env::split_paths(value)
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect();
+        }
+        Ok(self)
+    }
+}
+
+impl Environment {
+    /// Reads the variables, leaving out empty ones.
+    fn read() -> Self {
+        let var = |name: &str| env::var_os(name).filter(|value| !value.is_empty());
+        Self {
+            mask: var("CCDIG_MASK"),
+            mask_file: var("CCDIG_MASK_FILE"),
+            root: var("CCDIG_ROOT"),
+        }
+    }
 }
 
 impl Format {
@@ -474,14 +524,18 @@ impl From<Activity> for Narrowing {
 
 /// Runs `command`, with `earlier` the shared flags given before it, and
 /// returns its output.
-fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
+fn execute(
+    earlier: Common,
+    command: Command,
+    environment: &Environment,
+) -> Result<Printed, Failure> {
     let (out, warnings) = match command {
         Command::Digest {
             common: later,
             max_prompt_chars,
             max_session_chars,
         } => {
-            let flags = earlier.merged(later);
+            let flags = earlier.merged(later).with_env(environment)?;
             let limits = digest_limits(max_prompt_chars, max_session_chars)?;
             let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
             (digest(&corpus.records, &zone, limits)?, corpus.warnings)
@@ -530,7 +584,7 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
                 ..activity.into()
             };
             list(
-                &earlier.merged(later),
+                &earlier.merged(later).with_env(environment)?,
                 narrowing,
                 &output,
                 || Records::new(kinds),
@@ -541,7 +595,7 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
             common: later,
             output,
         } => {
-            let flags = earlier.merged(later);
+            let flags = earlier.merged(later).with_env(environment)?;
             let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
             let out = output.format.write(&corpus.sessions, |sessions| {
                 markdown::sessions(sessions, &zone)
@@ -618,6 +672,17 @@ fn status_filter(statuses: &[Status]) -> Option<bool> {
     }
 }
 
+/// The masks `CCDIG_MASK` names, comma-separated as `--mask` takes them.
+fn mask_kinds(value: &OsStr) -> Result<Vec<MaskKind>, Failure> {
+    let text = value.to_string_lossy();
+    text.split(',')
+        .map(|name| {
+            MaskKind::from_str(name.trim(), false)
+                .map_err(|_unknown| Failure::EnvMask(name.trim().to_owned()))
+        })
+        .collect()
+}
+
 /// Checks the digest limits and converts them.
 fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failure> {
     let (Ok(prompt), Ok(session)) = (
@@ -651,6 +716,20 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    run_in(args, &Environment::read(), stdout, stderr)
+}
+
+/// Runs ccdig with `args` and the `CCDIG_*` variables in `environment`.
+fn run_in<I, T>(
+    args: I,
+    environment: &Environment,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error) if error.use_stderr() => {
@@ -663,7 +742,7 @@ where
     let Some(command) = cli.command else {
         return write_out(stdout, stderr, &Cli::command().render_help().to_string());
     };
-    match execute(cli.common, command) {
+    match execute(cli.common, command, environment) {
         Ok(printed) => {
             for warning in &printed.warnings {
                 drop(writeln!(stderr, "{warning}"));

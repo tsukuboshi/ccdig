@@ -41,6 +41,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for replies, calls, and results, `--tool` for calls and results, and
   `--status error|ok` for results. These narrow only the kinds they apply
   to and need one of them in `--type`.
+- `CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of
+  `--root`, `--mask`, and `--mask-file`.
 - Help lists the flags under Records, Filters, Input, Masking, and
   Output, with the values `--type`, `--status`, `--format`, and `--mask`
   take.

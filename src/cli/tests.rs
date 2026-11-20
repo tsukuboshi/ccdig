@@ -4,6 +4,7 @@ mod kinds;
 
 use core::error::Error;
 use std::env;
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use std::time::SystemTime;
 use jiff::Timestamp;
 use tempfile::TempDir;
 
+use super::Environment;
 use crate::testing::{TestResult, check_eq, golden};
 
 /// The flags that pin the sample week, in JST so the goldens do not
@@ -59,15 +61,22 @@ impl History {
         Ok(Self { _dir: dir, root })
     }
 
-    /// Runs ccdig with `args` and `--root` pointing at the copy.
+    /// Runs ccdig with `args` and `--root` pointing at the copy, and no
+    /// `CCDIG_*` variables, whatever the test process has.
     fn run(&self, args: &[&str]) -> Ran {
+        self.run_in(&Environment::default(), args)
+    }
+
+    /// Runs ccdig with `args`, `--root` pointing at the copy, and the
+    /// `CCDIG_*` variables in `environment`.
+    fn run_in(&self, environment: &Environment, args: &[&str]) -> Ran {
         let root = self.root.to_string_lossy().into_owned();
         let mut full = vec!["ccdig"];
         full.extend_from_slice(args);
         full.extend(["--root", &root]);
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let code = super::run(full, &mut out, &mut err);
+        let code = super::run_in(full, environment, &mut out, &mut err);
         let shown = |bytes: &[u8]| String::from_utf8_lossy(bytes).replace(&root, "$ROOT");
         Ran {
             code,
@@ -998,5 +1007,90 @@ fn limit_prints_the_first_records() -> TestResult {
         .out;
     check_eq(&line_count(&out), &2, "prompts")?;
     check_eq(&out.contains(r#""uuid":"b-1""#), &false, "third prompt")?;
+    Ok(())
+}
+
+#[test]
+fn ccdig_variables_give_the_masks_and_the_command_line_replaces_them() -> TestResult {
+    let Some(_) = usable_user() else {
+        return Ok(());
+    };
+    let (history, values) = history_with_personal_data()?;
+    let emails = history.root.with_file_name("emails.txt");
+    fs::write(&emails, "bob@example.com\n")?;
+    let emails_path = emails.to_string_lossy().into_owned();
+    let both = env::join_paths([values.as_str(), emails_path.as_str()])?;
+    let mask = |value: &str| Environment {
+        mask: Some(value.into()),
+        ..Environment::default()
+    };
+    let mask_file = |value: OsString| Environment {
+        mask_file: Some(value),
+        ..Environment::default()
+    };
+    // (environment, extra flags, what must be hidden, what must be shown)
+    for (name, environment, extra, hidden, shown) in [
+        (
+            "mask",
+            mask("email,ip"),
+            &[][..],
+            &["bob@", "10.1.2.3"][..],
+            &["corp-hidden"][..],
+        ),
+        (
+            "--mask replaces it",
+            mask("email"),
+            &["--mask", "ip"][..],
+            &["10.1.2.3"][..],
+            &["bob@"][..],
+        ),
+        (
+            "--no-mask ignores it",
+            mask("email"),
+            &["--no-mask"][..],
+            &[][..],
+            &["bob@", "10.1.2.3"][..],
+        ),
+        (
+            "mask files",
+            mask_file(both.clone()),
+            &[][..],
+            &["corp-hidden", "bob@"][..],
+            &["10.1.2.3"][..],
+        ),
+        (
+            "--mask-file replaces them",
+            mask_file(both),
+            &["--mask-file", &emails_path][..],
+            &["bob@"][..],
+            &["corp-hidden"][..],
+        ),
+    ] {
+        let mut args = vec!["records", "--type", "prompt", "--session", "mmmm"];
+        args.extend_from_slice(extra);
+        let ran = history.run_in(&environment, &args);
+        check_eq(&ran.code, &0, &format!("{name}: {}", ran.err))?;
+        for value in hidden {
+            check_eq(
+                &ran.out.contains(value),
+                &false,
+                &format!("{name}: {value} hidden"),
+            )?;
+        }
+        for value in shown {
+            check_eq(
+                &ran.out.contains(value),
+                &true,
+                &format!("{name}: {value} shown"),
+            )?;
+        }
+    }
+    let bad = history.run_in(&mask("email,phone"), &["records"]);
+    check_eq(&bad.code, &1, "unknown mask")?;
+    check_eq(
+        bad.err.as_str(),
+        "ccdig: CCDIG_MASK: unknown mask \"phone\": use email, ip, or user\n",
+        "unknown mask",
+    )?;
     Ok(())
 }
