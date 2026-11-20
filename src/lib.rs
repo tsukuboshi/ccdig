@@ -34,4 +34,12 @@ mod text;
         reason = "the collector that calls this comes in a later stage"
     )
 )]
+mod transcript;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the collector that calls this comes in a later stage"
+    )
+)]
 mod when;
