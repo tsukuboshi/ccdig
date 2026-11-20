@@ -322,7 +322,7 @@ fn kind_filters_let_the_kinds_without_the_fact_through() -> TestResult {
             vec!["reply", "result", "reply"],
         ),
         (
-            &["records", "--skill", "tdd"][..],
+            &["records", "--type", "prompt,reply,call", "--skill", "tdd"][..],
             vec!["prompt", "reply", "call"],
         ),
     ] {
@@ -355,11 +355,6 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
             &["records", "--type", "prompt", "--subagents"][..],
             "ccdig: --subagents needs --type reply, call, or result",
         ),
-        // The default kinds have no results.
-        (
-            &["records", "--status", "ok"][..],
-            "ccdig: --status needs --type result",
-        ),
     ] {
         let ran = history.run(args);
         let name = args.join(" ");
@@ -370,6 +365,34 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
             &format!("{name}: {}", ran.err),
         )?;
         check_eq(&ran.out.as_str(), &"", &name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn kind_filters_without_type_list_the_kinds_they_apply_to() -> TestResult {
+    let history = History::new("kinds/root")?;
+    for (args, want) in [
+        (&["records", "--tool", "Bash"][..], vec!["call", "result"]),
+        (&["records", "--status", "error"][..], vec!["result"]),
+        (
+            &["records", "--skill", "tdd"][..],
+            vec!["reply", "call", "result"],
+        ),
+        (
+            &["records", "--skill", "tdd", "--tool", "Bash"][..],
+            vec!["call", "result"],
+        ),
+        (
+            &["records", "--tool", "Bash", "--status", "error"][..],
+            vec!["result"],
+        ),
+    ] {
+        check_eq(
+            &strings(&records(&history, args)?, "type"),
+            &want,
+            &args.join(" "),
+        )?;
     }
     Ok(())
 }

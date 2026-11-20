@@ -94,7 +94,8 @@ enum Command {
     #[command(display_order = 1)]
     Records {
         /// The kinds of record to list (comma-separated, repeatable)
-        /// [default: prompt,reply,call].
+        /// [default: prompt,reply,call, or with --tool, --status, or
+        /// --skill, the kinds they all apply to].
         #[arg(
             long = "type",
             value_name = "TYPE",
@@ -548,7 +549,12 @@ fn execute(
             tools,
             types,
         } => {
-            let kinds = record_types(&types);
+            let kinds = record_types(
+                &types,
+                !tools.is_empty(),
+                !statuses.is_empty(),
+                !activity.skills.is_empty(),
+            );
             let assistant = kinds.reads_assistant();
             for (given, applies, flag, needed) in [
                 (
@@ -640,15 +646,25 @@ fn user_name(home: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The kinds `--type` picks, or prompts, replies, and calls when it is
-/// not given.
-fn record_types(types: &[RecordType]) -> Types {
+/// The kinds `--type` picks. Without it: the kinds every one of `--tool`,
+/// `--status`, and `--skill` given applies to, or prompts, replies, and
+/// calls when none is.
+fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> Types {
     if types.is_empty() {
+        if !(tool || status || skill) {
+            return Types {
+                calls: true,
+                prompts: true,
+                replies: true,
+                results: false,
+            };
+        }
+        // Every one of them applies to results.
         return Types {
-            calls: true,
-            prompts: true,
-            replies: true,
-            results: false,
+            calls: !status,
+            prompts: false,
+            replies: !(tool || status),
+            results: true,
         };
     }
     Types {

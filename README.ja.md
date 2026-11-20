@@ -108,9 +108,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 でき、いずれかの値に一致するレコードを残します。`--status` は `--type` と
 同じくカンマ区切りで並べられます。`--tool`・`--status`・`--skill` は、
 調べる値を持つ種類だけを絞り、持たない種類はそのまま残します。そのため
-`ccdig records --skill tdd` は、すべての依頼文と、`tdd` の実行中に書かれた
-返答と呼び出しを残します。表の最後の 4 つのフラグは、効く種類が `--type` に
-無いとエラーになります。
+`ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
+`tdd` の実行中に書かれた返答と呼び出しを残します。`--type` を省略すると、
+`records` は付けたフラグがすべて効く種類だけを出します。
+`ccdig records --tool Bash` なら、`Bash` の呼び出しとその結果です。表の
+最後の 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
 
 共通のフラグはコマンドの前にも後にも置けます。`--grep` と `--igrep` は
 一緒に指定できず、コマンドの前後の両方にあるときは後ろのものが使われます。

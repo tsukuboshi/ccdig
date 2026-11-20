@@ -106,9 +106,12 @@ the call's tool and input), comma-separated or repeated, and defaults to
 repeatable and keep records that match any value; `--status` takes a
 comma-separated list like `--type`. `--tool`, `--status`, and `--skill`
 narrow only the kinds that have what they test and let the other kinds
-through, so `ccdig records --skill tdd` keeps every prompt along with the
-replies and calls written while `tdd` ran. Each of the last four flags
-needs a `--type` it applies to, or the command fails.
+through, so `ccdig records --type prompt,reply,call --skill tdd` keeps
+every prompt along with the replies and calls written while `tdd` ran.
+Without `--type`, `records` lists only the kinds every one of them given
+applies to: `ccdig records --tool Bash` prints the `Bash` calls and their
+results. Each of the last four flags needs a `--type` it applies to, or
+the command fails.
 
 The shared flags go before or after the command. `--grep` and `--igrep`
 cannot be given together; given on both sides, the one after the command
