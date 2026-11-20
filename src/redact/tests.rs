@@ -1,5 +1,7 @@
 //! Tests for secret masking.
 
+use std::time::Instant;
+
 use serde_json::json;
 
 use super::{MARKER, Redactor};
@@ -207,6 +209,263 @@ fn token_cases() -> Vec<Case> {
     ]
 }
 
+/// Headers, command-line passwords, and tokens of other services.
+fn format_cases() -> Vec<Case> {
+    vec![
+        case(
+            "Authorization header of each scheme",
+            format!(
+                "curl -H 'Authorization: Bearer {}' -H \"authorization: basic {}\" -H 'Authorization=Token {}'",
+                fake(12),
+                fake(12),
+                fake(12)
+            ),
+            "curl -H 'Authorization: Bearer ***REDACTED***' -H \"authorization: basic ***REDACTED***\" -H 'Authorization=Token ***REDACTED***'",
+        ),
+        case(
+            "bearer token without the header name",
+            format!("send Bearer {} with it", fake(24)),
+            "send Bearer ***REDACTED*** with it",
+        ),
+        case(
+            "bearer token in lowercase",
+            format!("using bearer {}", fake(24)),
+            "using bearer ***REDACTED***",
+        ),
+        case(
+            "mysql-family password glued to -p",
+            format!(
+                "mysql -u root -p{} app; mysqldump -h db -p{} app | gzip",
+                fake(10),
+                fake(10)
+            ),
+            "mysql -u root -p***REDACTED*** app; mysqldump -h db -p***REDACTED*** app | gzip",
+        ),
+        case(
+            "mysql -p on its own prompts and is left alone",
+            "mysql -u root -p app and mysql -P 3306".to_owned(),
+            "mysql -u root -p app and mysql -P 3306",
+        ),
+        case(
+            "mysql in a path is not the command",
+            "find /var/lib/mysql -name '*.cnf' -print; ls /etc/mysql -perm".to_owned(),
+            "find /var/lib/mysql -name '*.cnf' -print; ls /etc/mysql -perm",
+        ),
+        case(
+            "mysql by its full path",
+            format!("/usr/local/bin/mysql -u root -p{} app", fake(10)),
+            "/usr/local/bin/mysql -u root -p***REDACTED*** app",
+        ),
+        case(
+            "prose that only mentions mysql -p",
+            "the mysql-family password glued to -p\", is masked".to_owned(),
+            "the mysql-family password glued to -p\", is masked",
+        ),
+        case(
+            "quoted mysql password",
+            format!("mysql -u root -p'{}' app", fake(10)),
+            "mysql -u root -p***REDACTED*** app",
+        ),
+        case(
+            "mysql -p followed by a variable or a placeholder",
+            "mysql -u root -p$MYSQL_PWD app; format!(\"mysql -p{}\"); \"mysql -p\\\", -p\u{30FB}x\u{3068}".to_owned(),
+            "mysql -u root -p$MYSQL_PWD app; format!(\"mysql -p{}\"); \"mysql -p\\\", -p\u{30FB}x\u{3068}",
+        ),
+        case(
+            "SendGrid, Google OAuth, and Stripe webhook secrets",
+            format!(
+                "SG.{}.{} ya29.{} 1//0{} GOCSPX-{} whsec_{}",
+                fake(22),
+                fake(43),
+                fake(30),
+                fake(30),
+                fake(28),
+                fake(32)
+            ),
+            "***REDACTED*** ***REDACTED*** ***REDACTED*** ***REDACTED*** ***REDACTED***",
+        ),
+    ]
+}
+
+/// Values assigned to names that hold credentials.
+fn assignment_cases() -> Vec<Case> {
+    vec![
+        case(
+            "an assignment inside a flag value",
+            format!(
+                "kubectl create secret generic db --from-literal=password={} && docker run --env=DB_PASSWORD={}",
+                fake(12),
+                fake(12)
+            ),
+            "kubectl create secret generic db --from-literal=password=***REDACTED*** && docker run --env=DB_PASSWORD=***REDACTED***",
+        ),
+        case(
+            "escaped JSON inside a string",
+            format!(
+                "\"SecretString\": \"{{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"{}\\\"}}\"",
+                fake(12)
+            ),
+            "\"SecretString\": \"{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"***REDACTED***\\\"}\"",
+        ),
+        case(
+            "names without separators",
+            format!(
+                "PGPASSWORD={} ACCESSTOKEN={} clientsecret={} SECRETKEY={}",
+                fake(10),
+                fake(10),
+                fake(10),
+                fake(10)
+            ),
+            "PGPASSWORD=***REDACTED*** ACCESSTOKEN=***REDACTED*** clientsecret=***REDACTED*** SECRETKEY=***REDACTED***",
+        ),
+        case(
+            "percent-encoded and ENV-like values",
+            "password=p%40ssw0rd123 access_token=Ab3dE%2FfGh9Jk%2BLm0&x=1 token='ENVx9k2Lm3Qp'"
+                .to_owned(),
+            "password=***REDACTED*** access_token=***REDACTED***&x=1 token='***REDACTED***'",
+        ),
+        case(
+            "tokens with dots or brackets",
+            format!(
+                "DISCORD_TOKEN={}.{}.{} api_token=v1.{} password=Pass.Word2024 password=Pa(ssw0rd!x",
+                fake(24),
+                fake(6),
+                fake(27),
+                fake(15)
+            ),
+            "DISCORD_TOKEN=***REDACTED*** api_token=***REDACTED*** password=***REDACTED*** password=***REDACTED***",
+        ),
+        case(
+            "a quoted passphrase is masked whole",
+            "password: \"correct horse battery staple\" and passphrase='a b c d e f'".to_owned(),
+            "password: \"***REDACTED***\" and passphrase='***REDACTED***'",
+        ),
+        case(
+            "weak password behind a pass name",
+            "DB_PASS=12345678 SMTP_PASS=hunterbunny".to_owned(),
+            "DB_PASS=***REDACTED*** SMTP_PASS=***REDACTED***",
+        ),
+        case(
+            "shell, flag, YAML, and Ruby forms",
+            format!(
+                "PASSWORD={} --api-token={} client_secret: \"{}\" :password => '{}'",
+                fake(12),
+                fake(12),
+                fake(12),
+                fake(12)
+            ),
+            "PASSWORD=***REDACTED*** --api-token=***REDACTED*** client_secret: \"***REDACTED***\" :password => '***REDACTED***'",
+        ),
+        case(
+            "query string keeps the other parameters",
+            format!(
+                "GET https://api.example.com/v1?access_token={}&page=2",
+                fake(20)
+            ),
+            "GET https://api.example.com/v1?access_token=***REDACTED***&page=2",
+        ),
+        case(
+            "JSON with a camelCase name",
+            format!("{{\"apiKey\":\"{}\",\"region\":\"us-east-1\"}}", fake(20)),
+            "{\"apiKey\":\"***REDACTED***\",\"region\":\"us-east-1\"}",
+        ),
+        case(
+            "Japanese name with a full-width colon",
+            format!(
+                "\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}\u{FF1A}{}",
+                fake(10)
+            ),
+            "\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}\u{FF1A}***REDACTED***",
+        ),
+        case(
+            "a strong name masks a password of letters only",
+            "password: correcthorse".to_owned(),
+            "password: ***REDACTED***",
+        ),
+    ]
+}
+
+/// Assignments that look like credentials but are not.
+fn non_credential_cases() -> Vec<Case> {
+    vec![
+        case(
+            "parameters, sets, and counts after a name",
+            "const requireApiKey = (secret: string) => secret; f\"client_secret={client_secret}\" recache_tokens_if_cold: 999999"
+                .to_owned(),
+            "const requireApiKey = (secret: string) => secret; f\"client_secret={client_secret}\" recache_tokens_if_cold: 999999",
+        ),
+        case(
+            "a quote that closes a pattern is not an opening quote",
+            "env | grep '^GCP_PRIVATE_KEY=' | cut -d= -f2- | tr -d '\\n'".to_owned(),
+            "env | grep '^GCP_PRIVATE_KEY=' | cut -d= -f2- | tr -d '\\n'",
+        ),
+        case(
+            "numeric settings",
+            "token_limit: 100000 TOKEN_COUNT=123456 AUTH_TIMEOUT_SECONDS = 300000".to_owned(),
+            "token_limit: 100000 TOKEN_COUNT=123456 AUTH_TIMEOUT_SECONDS = 300000",
+        ),
+        case(
+            "format strings and variables",
+            "api_key=%{key} password=%(password)s token=%TOKEN% secret=\\u0041bcdefg".to_owned(),
+            "api_key=%{key} password=%(password)s token=%TOKEN% secret=\\u0041bcdefg",
+        ),
+        case(
+            "type annotations and the OAuth token type",
+            "readonly token: string; refreshToken: number; token_type: \"Bearer\"".to_owned(),
+            "readonly token: string; refreshToken: number; token_type: \"Bearer\"",
+        ),
+        case(
+            "escape sequences",
+            "const KEY_SEPARATOR = \"\\u0000\"; tokens_above=\\($limit)".to_owned(),
+            "const KEY_SEPARATOR = \"\\u0000\"; tokens_above=\\($limit)",
+        ),
+        case(
+            "prose after a name",
+            "password= \u{5F62}\u{5F0F}\u{306E}\u{5024}\u{304C}\u{6B8B}\u{308B}".to_owned(),
+            "password= \u{5F62}\u{5F0F}\u{306E}\u{5024}\u{304C}\u{6B8B}\u{308B}",
+        ),
+        case(
+            "a weak word alone is not a credential name",
+            "key: \"Escape\" and hook: post-commit".to_owned(),
+            "key: \"Escape\" and hook: post-commit",
+        ),
+        case(
+            "database and storage terms",
+            format!(
+                "primary_key: {} S3_KEY={} max_tokens: 4096",
+                fake(10),
+                fake(10)
+            ),
+            &format!(
+                "primary_key: {} S3_KEY={} max_tokens: 4096",
+                fake(10),
+                fake(10)
+            ),
+        ),
+        case(
+            "paths and URLs",
+            "token_path=./secrets/token.txt secret_url: https://vault.example.com".to_owned(),
+            "token_path=./secrets/token.txt secret_url: https://vault.example.com",
+        ),
+        case(
+            "references to a value",
+            "password=$DB_PASSWORD token: ENV['TOKEN'] secret: <your-secret> api_key=%{key}"
+                .to_owned(),
+            "password=$DB_PASSWORD token: ENV['TOKEN'] secret: <your-secret> api_key=%{key}",
+        ),
+        case(
+            "code expressions",
+            "password = self.password token = config[\"token\"] secret = last_secret".to_owned(),
+            "password = self.password token = config[\"token\"] secret = last_secret",
+        ),
+        case(
+            "a weak name with a word or a count",
+            "AttributeKey: ProductName and api_key: 123456789".to_owned(),
+            "AttributeKey: ProductName and api_key: 123456789",
+        ),
+    ]
+}
+
 /// Passwords in URLs and private key blocks.
 fn url_cases() -> Vec<Case> {
     vec![
@@ -313,10 +572,18 @@ fn prose_cases() -> Vec<Case> {
 
 /// Every case, including text glued to Japanese.
 fn cases() -> Vec<Case> {
-    [aws_cases(), token_cases(), url_cases(), prose_cases()]
-        .into_iter()
-        .flatten()
-        .collect()
+    [
+        aws_cases(),
+        token_cases(),
+        format_cases(),
+        assignment_cases(),
+        non_credential_cases(),
+        url_cases(),
+        prose_cases(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 #[test]
@@ -354,6 +621,40 @@ fn redact_json_masks_strings_at_any_depth_and_keeps_the_rest() -> TestResult {
     });
     check_eq(&value, &want, "tool input")?;
     check_eq(&changed, &true, "changed")?;
+    Ok(())
+}
+
+#[test]
+fn redact_json_masks_a_string_under_a_credential_key() -> TestResult {
+    let redactor = Redactor::new()?;
+    let mut value = json!({
+        "connection": {"host": "db", "password": fake(10), "port": 5432_i32},
+        "api_key": fake(20),
+        "token": "string",
+        "description": "rotate the password",
+    });
+    let changed = redactor.redact_json(&mut value);
+    let want = json!({
+        "connection": {"host": "db", "password": "***REDACTED***", "port": 5432_i32},
+        "api_key": "***REDACTED***",
+        "token": "string",
+        "description": "rotate the password",
+    });
+    check_eq(&value, &want, "tool input")?;
+    check_eq(&changed, &true, "changed")?;
+    Ok(())
+}
+
+#[test]
+fn redact_runs_in_linear_time_on_many_non_credential_assignments() -> TestResult {
+    let redactor = Redactor::new()?;
+    let text = "://a:".repeat(40_000);
+    let started = Instant::now();
+    let (got, changed) = redactor.redact(&text);
+    check_eq(got.as_str(), text.as_str(), "text")?;
+    check_eq(&changed, &false, "changed")?;
+    // The quadratic version took over a minute on this input.
+    check_eq(&(started.elapsed().as_secs() < 5), &true, "elapsed")?;
     Ok(())
 }
 

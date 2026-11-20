@@ -9,6 +9,8 @@
 //! of it, so the patterns spell out the ASCII classes: `[\t\n\x0C\r ]`,
 //! `[0-9A-Za-z_]`, `[0-9]`, and `(?-u:\b)`.
 
+mod name;
+
 use regex::{Captures, Regex};
 use serde_json::Value;
 
@@ -28,7 +30,7 @@ pub const MARKER: &str = "***REDACTED***";
 ///
 /// Token formats without a source comment follow the default rules of
 /// gitleaks: <https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml>.
-const RULES: [(&str, Replacement); 15] = [
+const RULES: [(&str, Replacement); 24] = [
     // AWS credentials by variable name: export lines from the SSO portal,
     // YAML, credentials files, and JSON with snake_case keys. The value must
     // be 16+ characters so that "AWS_SESSION_TOKEN: is it required?" keeps
@@ -103,6 +105,52 @@ const RULES: [(&str, Replacement); 15] = [
         r"hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
         Replacement::Marker,
     ),
+    // SendGrid API keys.
+    (
+        concat!(boundary!(), r"SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"),
+        Replacement::KeepPrefix,
+    ),
+    // Google OAuth access tokens (ya29.), refresh tokens (1//0), and client
+    // secrets (GOCSPX-).
+    (
+        concat!(boundary!(), r"ya29\.[0-9A-Za-z_-]{20,}"),
+        Replacement::KeepPrefix,
+    ),
+    (
+        concat!(boundary!(), r"1//0[0-9A-Za-z_-]{20,}"),
+        Replacement::KeepPrefix,
+    ),
+    (
+        concat!(boundary!(), r"GOCSPX-[0-9A-Za-z_-]{10,}"),
+        Replacement::KeepPrefix,
+    ),
+    // Stripe webhook signing secrets.
+    (
+        concat!(boundary!(), r"whsec_[0-9A-Za-z]{10,}"),
+        Replacement::KeepPrefix,
+    ),
+    // The credentials of an Authorization header. "<token>" and other
+    // placeholders do not match the value class and stay.
+    (
+        r#"(?i)((?:^|[^A-Za-z0-9])authorization["']?[\t ]*[:=][\t ]*["']?(?:bearer|basic|token)[\t ]+)[A-Za-z0-9._~+/=-]{8,}"#,
+        Replacement::KeepPrefix,
+    ),
+    // A bearer token without the header name, in any case. The length
+    // floor keeps prose such as "Bearer authentication" out.
+    (
+        r"((?-u:\b)(?i:bearer) )[A-Za-z0-9._~+/=-]{20,}",
+        Replacement::KeepPrefix,
+    ),
+    // A password glued to -p of the MySQL clients, run as a command: at the
+    // start, after a separator, or by a bin/ path, not /var/lib/mysql in an
+    // argument. -p followed by a space
+    // prompts for the password, and the next word is a database. A variable
+    // or a placeholder, such as -p$MYSQL_PWD or -p{}, and prose that only
+    // mentions -p stay.
+    (
+        r#"((?:^|[\t\n ;&|(]|bin/)(?:mysql|mysqldump|mysqladmin|mariadb)(?-u:\b)[^\n|;&]*?[\t ]-p)["']?[A-Za-z0-9!#%*+./=?@^_~][\x21-\x7E]*"#,
+        Replacement::KeepPrefix,
+    ),
     // JSON Web Tokens: two base64url "ey..." segments and a signature.
     (
         concat!(
@@ -128,11 +176,30 @@ const RULES: [(&str, Replacement); 15] = [
         r"(?s)-----BEGIN [A-Z0-9 _-]*PRIVATE KEY(?: BLOCK)?-----.*?(?:-----END [A-Z0-9 _-]*PRIVATE KEY(?: BLOCK)?-----|\z)",
         Replacement::Marker,
     ),
+    // A value assigned to a name: `name = value`, `name: value`,
+    // `name => value`, `--name=value`, `?name=value`, the same inside escaped
+    // JSON (`\"password\":\"...\"`), and the Japanese words for password,
+    // PIN, API key, access key, secret key, secret, and token
+    // with a full-width colon. The pattern stops after the opening quote;
+    // `Redactor::mask_assignments` finds the value and `name` decides. It
+    // runs last, so a value another rule masked starts with `***` and stays.
+    (
+        r#"(^|[^A-Za-z0-9_.])((?:\\?["'])?([A-Za-z_][A-Za-z0-9_.-]*|\x{30D1}\x{30B9}\x{30EF}\x{30FC}\x{30C9}|\x{6697}\x{8A3C}\x{756A}\x{53F7}|API\x{30AD}\x{30FC}|\x{30A2}\x{30AF}\x{30BB}\x{30B9}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}|\x{30C8}\x{30FC}\x{30AF}\x{30F3})(?:\\?["'])?\]?[\t ]*(?:=>|[=:\x{FF1A}])[\t ]*(\\?["'])?)"#,
+        Replacement::Assignment,
+    ),
 ];
+
+/// The most bytes of a value read before deciding whether to mask it. A
+/// value that is masked is then read to its end; one that is not costs at
+/// most this much, which keeps the rule linear in the text.
+const MAX_VALUE_SCAN: usize = 1024;
 
 /// What a rule puts in place of its match.
 #[derive(Clone, Copy)]
 enum Replacement {
+    /// The value after the match, when `name` says the name and the value
+    /// are a credential.
+    Assignment,
     /// The first capture group, then the marker.
     KeepPrefix,
     /// The marker alone.
@@ -144,11 +211,12 @@ enum Replacement {
 
 /// One pattern and its replacement.
 struct Rule {
+    /// How a match is replaced.
+    kind: Replacement,
     /// The secret to find.
     pattern: Regex,
-    /// Whether a match that is a port and a query stays as it is.
-    port_guard: bool,
-    /// The replacement text, in `regex` replacement syntax.
+    /// The replacement text, in `regex` replacement syntax, for
+    /// `KeepPrefix` and `Marker`; empty for the kinds that build their own.
     replacement: String,
 }
 
@@ -159,6 +227,46 @@ pub struct Redactor {
 }
 
 impl Redactor {
+    /// Masks the credential values after the matches of `pattern`, the
+    /// assignment rule, in `text`.
+    ///
+    /// A match whose name is not a credential is skipped only up to the end
+    /// of its name, without reading its value: in
+    /// `https://host/v1?access_token=...` or `--env=DB_PASSWORD=...` the
+    /// first name is `https` or `env`, and the credential after it must
+    /// still be found.
+    fn mask_assignments(pattern: &Regex, text: &str) -> String {
+        let mut masked = String::with_capacity(text.len());
+        let mut copied = 0;
+        let mut from = 0;
+        while let Some(captures) = pattern.captures_at(text, from) {
+            let (Some(prefix), Some(name)) = (captures.get(2), captures.get(3)) else {
+                break;
+            };
+            from = name.end();
+            if !name::is_credential_name(name.as_str()) {
+                continue;
+            }
+            let rest = text.get(prefix.end()..).unwrap_or_default();
+            let quote = captures.get(4).map(|found| found.as_str());
+            let head = value_of(rest, quote, MAX_VALUE_SCAN);
+            if !name::masks(name.as_str(), head) {
+                continue;
+            }
+            let value = if head.len() >= MAX_VALUE_SCAN {
+                value_of(rest, quote, usize::MAX)
+            } else {
+                head
+            };
+            masked.push_str(text.get(copied..prefix.end()).unwrap_or_default());
+            masked.push_str(MARKER);
+            copied = prefix.end().saturating_add(value.len());
+            from = copied;
+        }
+        masked.push_str(text.get(copied..).unwrap_or_default());
+        masked
+    }
+
     /// Compiles the rules.
     ///
     /// The patterns are fixed, so an error here is a bug in this file; a
@@ -168,14 +276,12 @@ impl Redactor {
             .iter()
             .map(|&(pattern, replacement)| {
                 Ok(Rule {
+                    kind: replacement,
                     pattern: Regex::new(pattern)?,
-                    port_guard: matches!(replacement, Replacement::UrlPassword),
                     replacement: match replacement {
                         Replacement::Marker => MARKER.to_owned(),
                         Replacement::KeepPrefix => format!("${{1}}{MARKER}"),
-                        Replacement::UrlPassword => {
-                            format!("${{1}}{MARKER}@")
-                        }
+                        Replacement::Assignment | Replacement::UrlPassword => String::new(),
                     },
                 })
             })
@@ -187,8 +293,10 @@ impl Redactor {
     pub fn redact(&self, text: &str) -> (String, bool) {
         let mut masked = text.to_owned();
         for rule in &self.rules {
-            masked = if rule.port_guard {
-                rule.pattern
+            masked = match rule.kind {
+                Replacement::Assignment => Self::mask_assignments(&rule.pattern, &masked),
+                Replacement::UrlPassword => rule
+                    .pattern
                     .replace_all(&masked, |captures: &Captures<'_>| {
                         let group = |index| captures.get(index).map_or("", |found| found.as_str());
                         if is_port_then_query(group(2)) {
@@ -197,11 +305,11 @@ impl Redactor {
                             format!("{}{MARKER}@", group(1))
                         }
                     })
-                    .into_owned()
-            } else {
-                rule.pattern
+                    .into_owned(),
+                Replacement::KeepPrefix | Replacement::Marker => rule
+                    .pattern
                     .replace_all(&masked, rule.replacement.as_str())
-                    .into_owned()
+                    .into_owned(),
             };
         }
         let changed = masked != text;
@@ -209,7 +317,9 @@ impl Redactor {
     }
 
     /// Masks secrets in every string inside `value`, such as a tool's input,
-    /// and reports whether it changed anything. Object keys stay as they are.
+    /// and reports whether it changed anything. A string under a key that
+    /// names a credential, as in `{"password": "..."}`, is masked whole by
+    /// the same test as an assignment. Object keys stay as they are.
     pub fn redact_json(&self, value: &mut Value) -> bool {
         match *value {
             Value::String(ref mut text) => {
@@ -228,8 +338,16 @@ impl Redactor {
             }
             Value::Object(ref mut fields) => {
                 let mut changed = false;
-                for field in fields.values_mut() {
-                    changed |= self.redact_json(field);
+                for (key, field) in fields.iter_mut() {
+                    if let Value::String(ref mut text) = *field
+                        && key.is_ascii()
+                        && name::masks(key, text)
+                    {
+                        MARKER.clone_into(text);
+                        changed = true;
+                    } else {
+                        changed |= self.redact_json(field);
+                    }
                 }
                 changed
             }
@@ -243,6 +361,32 @@ impl Redactor {
 fn is_port_then_query(text: &str) -> bool {
     let rest = text.trim_start_matches(|ch: char| ch.is_ascii_digit());
     rest.len() < text.len() && rest.starts_with(['?', '#'])
+}
+
+/// The value at the start of `rest`, read through at most `limit` bytes.
+///
+/// After an opening `quote` it runs to the matching close on the same
+/// line, so a passphrase with spaces is masked whole. A quote followed by
+/// a space closes something else, as in `grep '^TOKEN=' | cut`, and is not
+/// an opening one. Without a quote, or when the close is not found, it
+/// runs over printable ASCII up to a quote,
+/// a backtick, `,`, `;`, `)`, `}`, `]`, or `&`, so prose after the
+/// separator and the next query parameter stay.
+fn value_of<'text>(rest: &'text str, quote: Option<&str>, limit: usize) -> &'text str {
+    let window = rest.get(..rest.floor_char_boundary(limit)).unwrap_or(rest);
+    if let Some(close) = quote {
+        let line = window.split('\n').next().unwrap_or_default();
+        if !line.starts_with([' ', '\t'])
+            && let Some(end) = line.find(close)
+        {
+            return line.get(..end).unwrap_or_default();
+        }
+    }
+    let end = window
+        .bytes()
+        .take_while(|&byte| (0x21..=0x7E).contains(&byte) && !b"\"'`,;)}]&".contains(&byte))
+        .count();
+    window.get(..end).unwrap_or_default()
 }
 
 #[cfg(test)]

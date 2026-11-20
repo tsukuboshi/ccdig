@@ -13,6 +13,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ccdig tools` and `ccdig results` print the untruncated tool input that
   Claude Code stores in `wireToolInputs`, instead of the shortened copy in
   the `tool_use` block.
+- Masking of `Authorization` header credentials, `Bearer` tokens, `mysql`
+  `-p` passwords, SendGrid keys, Google OAuth tokens and client secrets,
+  Stripe webhook secrets, values assigned to credential-like names such as
+  `password=`, `--api-token=`, `PGPASSWORD=`, or `client_secret:` (also
+  inside escaped JSON), and strings under such keys in a tool's input.
 - `ccdig prompts`: the prompts a person typed in Claude Code sessions, as
   JSON Lines, JSON, or Markdown. Harness traffic is dropped by the
   `strict-v2` rules, and slash command expansions are folded back into
