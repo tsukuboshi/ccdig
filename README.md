@@ -2,37 +2,15 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Dig prompts, replies, tool calls, and tool results out of Claude Code
-session transcripts.
+Pull the logs you want to show someone out of your Claude Code session
+transcripts, formatted and masked. Combine filters for time, project,
+session, branch, text, kind of record, tool, outcome, and skill to narrow
+the history down to the part that matters, and write it as Markdown to
+read or JSON Lines to process. Common secrets are masked by default, and
+email addresses, IP addresses, your user name, and values you list can be
+masked too.
 
 [日本語](README.ja.md)
-
-## What it does
-
-Claude Code stores every session as JSONL under `~/.claude/projects/`. The
-lines mix what you typed with what the harness wrote: tool calls, tool
-results, injected skill bodies, `<system-reminder>` blocks, task
-notifications, compaction summaries, and sub-agent traffic.
-
-ccdig reads those transcripts and lists these kinds of record, one kind or
-several in the order they were written:
-
-- **Prompts** you typed, with harness noise dropped and slash commands
-  folded back into `/command args`.
-- **Replies**: the assistant's text.
-- **Tool calls**, with their input as JSON.
-- **Tool results**, each paired with the call it answers.
-
-Every kind shares the same filters (date range, project, regular
-expression, session, branch) and is masked for common secrets by default.
-
-## Why it is useful
-
-Viewers and converters are good at reading a whole session. ccdig is for
-pulling one slice out of all of them: what you asked for this week, every
-`Bash` call that failed, or the replies that mention a keyword. It decides
-which user lines a person typed, masks secrets by default, writes JSON
-Lines that pipe into `jq`, and ships as a single binary.
 
 ## Getting started
 
