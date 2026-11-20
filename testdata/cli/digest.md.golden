@@ -1,0 +1,6 @@
+## 2026-10-13 | ~/blog | Weekly report draft
+- `/weekly-report last week`
+- `log in with export AWS_SECRET_ACCESS_KEY=***REDACTED*** and <b>draft</b> it`
+
+## 2026-10-14 | ~/work/notes | Reader buffer size
+- `why does the reader stop at 64 KiB?`

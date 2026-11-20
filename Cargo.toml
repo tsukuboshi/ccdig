@@ -1,0 +1,73 @@
+[package]
+name = "ccdig"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+description = "Dig prompts, replies, tool calls, and tool results out of Claude Code session transcripts"
+license = "MIT"
+repository = "https://github.com/tsukuboshi/ccdig"
+readme = "README.md"
+keywords = ["claude-code", "transcript", "jsonl", "cli", "prompts"]
+categories = ["command-line-utilities", "development-tools"]
+publish = false
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+restriction = { level = "deny", priority = -1 }
+
+# Contradicting pairs: allow one side, and the lint that warns about enabling
+# the whole restriction group.
+# Enabling every restriction lint is the point of this configuration.
+blanket_clippy_restriction_lints = "allow"
+# Contradicts needless_return; return values with the tail expression.
+implicit_return = "allow"
+# Contradicts pub_with_shorthand; write `pub(crate)`.
+pub_without_shorthand = "allow"
+# Contradicts semicolon_inside_block.
+semicolon_outside_block = "allow"
+# Contradicts mod_module_files; lay modules out without `mod.rs`.
+self_named_module_files = "allow"
+# Contradicts unseparated_literal_suffix; write `1_u32`.
+separated_literal_suffix = "allow"
+# Contradicts pattern_type_mismatch, which asks for `ref` or `&` explicitly.
+ref_patterns = "allow"
+
+# Lints that prevent no bug and make ordinary Rust unwritable.
+# Forbids `?`, turning every error path into a `match`.
+question_mark_used = "allow"
+# Forbids functions called from one place, so code cannot be split up.
+single_call_fn = "allow"
+# Force `#[non_exhaustive]`, which defeats exhaustive `match` checking.
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+# Forces `#[inline]` on every public function.
+missing_inline_in_public_items = "allow"
+# Forces reimplementing every provided trait method.
+missing_trait_methods = "allow"
+
+[dependencies]
+clap = { version = "4.6.9", default-features = false, features = [
+  "std",
+  "derive",
+  "help",
+  "usage",
+  "error-context",
+] }
+jiff = { version = "1.0.1", default-features = false, features = [
+  "std",
+  "tz-system",
+  "tz-fat",
+  "tzdb-zoneinfo",
+  "tzdb-bundle-always",
+] }
+memchr = "2.8.3"
+regex = "1.13.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order", "raw_value"] }
+thiserror = "2.0.21"
+
+[dev-dependencies]
+tempfile = "3.27.0"

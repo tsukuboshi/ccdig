@@ -1,0 +1,2 @@
+{"type":"user","uuid":"c-1","sessionId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","timestamp":"2026-10-01T03:00:00.000Z","cwd":"/Users/alice/blog","gitBranch":"main","message":{"role":"user","content":"an older prompt outside the week"}}
+{"type":"ai-title","sessionId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","aiTitle":"Older session"}
