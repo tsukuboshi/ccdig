@@ -11,7 +11,7 @@ use jiff::tz::TimeZone;
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
-use crate::collect::kinds::{Prompts, Replies, Results, Tools};
+use crate::collect::kinds::{Conversation, Prompts, Replies, Results, Tools};
 use crate::collect::{Corpus, Mask, Pick, collect};
 use crate::failure::Failure;
 use crate::redact::ExtraMasks;
@@ -57,6 +57,16 @@ struct Activity {
 /// The subcommands.
 #[derive(Subcommand)]
 enum Command {
+    /// List the prompts, the assistant's text replies, and tool calls of
+    /// sessions in the order they were written.
+    Conversation {
+        /// The shared flags.
+        #[command(flatten)]
+        common: Common,
+        /// The output format.
+        #[command(flatten)]
+        output: Output,
+    },
     /// Write a size-capped Markdown digest of the prompts for an LLM.
     Digest {
         /// The shared flags.
@@ -392,6 +402,18 @@ impl From<Activity> for Narrowing {
 /// returns its output.
 fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
     let (out, warnings) = match command {
+        Command::Conversation {
+            common: later,
+            output,
+        } => {
+            let flags = earlier.merged(later);
+            let format = Format::parse(&output.format)?;
+            let (corpus, zone) = flags.collect(Narrowing::default(), || Conversation)?;
+            let out = format.write(&corpus.records, |records| {
+                markdown::conversation(records, &zone)
+            })?;
+            (out, corpus.warnings)
+        }
         Command::Digest {
             common: later,
             max_prompt_chars,

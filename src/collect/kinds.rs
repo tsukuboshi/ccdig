@@ -1,4 +1,4 @@
-//! The four kinds of record and how each is picked out of a line.
+//! The kinds of record and how each is picked out of a line.
 
 use alloc::borrow::Cow;
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
-use crate::render::record::{Head, Kind, Prompt, Reply, Source, ToolCall, ToolResult};
+use crate::render::record::{Head, Kind, Prompt, Reply, Source, ToolCall, ToolResult, Turn};
 use crate::transcript::entry::{Block, Entry, Role};
 use crate::transcript::reader::Roles;
 
@@ -21,6 +21,10 @@ struct Call {
     /// The skill running when the call was made.
     skill: String,
 }
+
+/// Picks the prompts, the assistant's text blocks, and tool calls, in the
+/// order they were written.
+pub struct Conversation;
 
 /// Picks the prompts a person typed.
 pub struct Prompts;
@@ -38,6 +42,43 @@ pub struct Results {
     /// results, so every result can find its call however the lines are
     /// filtered.
     calls: HashMap<String, Call>,
+}
+
+impl Pick for Conversation {
+    type Record = Turn;
+
+    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Turn)> {
+        match entry.role {
+            Role::User => Prompts
+                .pick(spot, entry)
+                .into_iter()
+                .map(|(index, prompt)| (index, Turn::Prompt(prompt)))
+                .collect(),
+            Role::Assistant => {
+                let replies = Replies.pick(spot, entry).into_iter();
+                let calls = Tools.pick(spot, entry).into_iter();
+                let mut turns: Vec<(usize, Turn)> = replies
+                    .map(|(index, reply)| (index, Turn::Reply(reply)))
+                    .chain(calls.map(|(index, call)| (index, Turn::Tool(call))))
+                    .collect();
+                turns.sort_by_key(|pair| pair.0);
+                turns
+            }
+            Role::AiTitle | Role::Other => Vec::new(),
+        }
+    }
+
+    fn roles(&self) -> Roles {
+        Roles::BOTH
+    }
+
+    fn wants(&mut self, entry: &Entry) -> bool {
+        match entry.role {
+            Role::User => Prompts.wants(entry),
+            Role::Assistant => true,
+            Role::AiTitle | Role::Other => false,
+        }
+    }
 }
 
 impl Pick for Prompts {
@@ -248,6 +289,32 @@ impl Select for ToolCall {
     }
 }
 
+impl Select for Turn {
+    fn extra(&self) -> Extra<'_> {
+        match *self {
+            Self::Prompt(ref prompt) => prompt.extra(),
+            Self::Reply(ref reply) => reply.extra(),
+            Self::Tool(ref call) => call.extra(),
+        }
+    }
+
+    fn grep_text(&self) -> Cow<'_, str> {
+        match *self {
+            Self::Prompt(ref prompt) => prompt.grep_text(),
+            Self::Reply(ref reply) => reply.grep_text(),
+            Self::Tool(ref call) => call.grep_text(),
+        }
+    }
+
+    fn head_mut(&mut self) -> &mut Head {
+        match *self {
+            Self::Prompt(ref mut prompt) => &mut prompt.head,
+            Self::Reply(ref mut reply) => &mut reply.head,
+            Self::Tool(ref mut call) => &mut call.head,
+        }
+    }
+}
+
 impl Select for ToolResult {
     fn extra(&self) -> Extra<'_> {
         Extra {
@@ -281,7 +348,7 @@ fn blocks<T>(entry: &Entry, make: impl Fn(&Block) -> Option<T>) -> Vec<(usize, T
 /// Where `entry` is.
 fn source(spot: &Spot<'_>, entry: &Entry) -> Source {
     Source {
-        file: spot.file.path.to_string_lossy().into_owned(),
+        file: spot.mask.path(&spot.file.path.to_string_lossy()),
         line: spot.line,
         uuid: entry.uuid.clone(),
     }

@@ -64,9 +64,9 @@ ccdig results --tool Bash --errors --subagents --format md
 # LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
-# メールアドレス・ホームディレクトリ・IP アドレス・ファイルに書いた値も
-# マスクして依頼文を出す
-ccdig prompts --mask email,home,ip --mask-file secrets.txt
+# 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・ホーム
+# ディレクトリ・IP アドレス・ファイルに書いた値もマスクする
+ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file secrets.txt
 ```
 
 ### コマンド
@@ -77,12 +77,13 @@ ccdig prompts --mask email,home,ip --mask-file secrets.txt
 | `replies` | assistant のテキストブロック 1 つにつき 1 レコード |
 | `tools` | ツールの呼び出し 1 件につき 1 レコード |
 | `results` | ツールの結果 1 件につき 1 レコード。呼び出しのツールと入力付き |
+| `conversation` | 依頼文・返答・ツールの呼び出しを、書かれた順に並べたもの |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード |
 | `digest` | 依頼文の Markdown ダイジェスト |
 | `version` | インストールされているバージョン |
 
-`prompts`・`replies`・`tools`・`results`・`sessions` は `--format` を取り、
-値は `jsonl`（既定）・`json`・`md` のいずれかです。`digest` は
+`prompts`・`replies`・`tools`・`results`・`conversation`・`sessions` は
+`--format` を取り、値は `jsonl`（既定）・`json`・`md` のいずれかです。`digest` は
 `--max-prompt-chars`（既定 300）と `--max-session-chars`（既定 2000）を
 取ります。
 
@@ -144,8 +145,10 @@ ccdig prompts --mask email,home,ip --mask-file secrets.txt
 空です。`input` は、
 Claude Code が行の `wireToolInputs` に保存していればそこにある切り詰められて
 いない入力で、なければ `tool_use` ブロックの入力です。呼び出しが見つからな
-かった結果は、`tool` が空で `input` が `null` です。`--format json` は
-レコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
+かった結果は、`tool` が空で `input` が `null` です。`conversation` の
+レコードは、依頼文・返答・ツールの呼び出しのレコードの先頭に、`prompt`・
+`reply`・`tool` のいずれかを値とする `type` キーを付けたものです。
+`--format json` はレコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
 `filter` は次の節のルールセットの名前で、ルールの変更で残る依頼文が変わり
 うるときは必ず変わります。
 

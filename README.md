@@ -63,9 +63,9 @@ ccdig results --tool Bash --errors --subagents --format md
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
-# Prompts with emails, the home directory, IP addresses, and the values in
-# a file masked too
-ccdig prompts --mask email,home,ip --mask-file secrets.txt
+# One session as a thread to share, with emails, the home directory, IP
+# addresses, and the values in a file masked too
+ccdig conversation --session 1a2b --format md --mask email,home,ip --mask-file secrets.txt
 ```
 
 ### Commands
@@ -76,11 +76,12 @@ ccdig prompts --mask email,home,ip --mask-file secrets.txt
 | `replies` | One record per text block of the assistant |
 | `tools` | One record per tool call |
 | `results` | One record per tool result, with the call's tool and input |
+| `conversation` | Prompts, replies, and tool calls in the order they were written |
 | `sessions` | One record per session with a selected prompt |
 | `digest` | Markdown digest of the prompts |
 | `version` | The installed version |
 
-`prompts`, `replies`, `tools`, `results`, and `sessions` take `--format`:
+`prompts`, `replies`, `tools`, `results`, `conversation`, and `sessions` take `--format`:
 `jsonl` (default), `json`, or `md`. `digest` takes `--max-prompt-chars`
 (default 300) and `--max-session-chars` (default 2000).
 
@@ -142,7 +143,9 @@ when the session's own transcript was last written before `--since`.
 `input` is the
 untruncated input from the line's `wireToolInputs` when Claude Code stored
 one, and the `tool_use` block's otherwise. A result whose call
-was not found has an empty `tool` and a `null` `input`. `--format json`
+was not found has an empty `tool` and a `null` `input`. A `conversation`
+record is a prompt, reply, or tool call record with a leading `type` key
+of `prompt`, `reply`, or `tool`. `--format json`
 wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
 `filter` names the rule set below and changes whenever a rule change can
 change which prompts are kept.

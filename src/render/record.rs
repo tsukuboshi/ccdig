@@ -201,6 +201,19 @@ pub struct ToolResult {
     pub skill: String,
 }
 
+/// One line of `ccdig conversation`: a prompt, a reply, or a tool call,
+/// written with a `type` key naming which.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Turn {
+    /// A prompt a person typed.
+    Prompt(Prompt),
+    /// A text block of the assistant.
+    Reply(Reply),
+    /// A tool call.
+    Tool(ToolCall),
+}
+
 impl Record for Prompt {
     fn head(&self) -> &Head {
         &self.head
@@ -254,5 +267,30 @@ impl Record for ToolResult {
 
     fn subagent(&self) -> &str {
         &self.subagent
+    }
+}
+
+impl Turn {
+    /// The record inside.
+    fn inner(&self) -> &dyn Record {
+        match *self {
+            Self::Prompt(ref prompt) => prompt,
+            Self::Reply(ref reply) => reply,
+            Self::Tool(ref call) => call,
+        }
+    }
+}
+
+impl Record for Turn {
+    fn head(&self) -> &Head {
+        self.inner().head()
+    }
+
+    fn source(&self) -> &Source {
+        self.inner().source()
+    }
+
+    fn subagent(&self) -> &str {
+        self.inner().subagent()
     }
 }

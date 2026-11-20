@@ -296,6 +296,70 @@ fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
     Ok(())
 }
 
+/// A history with one session that has two prompts, a reply with a
+/// thinking block and a tool call, and the tool's result.
+fn history_with_a_conversation() -> Result<History, Box<dyn Error>> {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/cccc.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"c-1","sessionId":"cccc","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"list the posts"}}"#,
+            r#"{"type":"assistant","uuid":"c-2","sessionId":"cccc","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"thinking","thinking":"private musing"},{"type":"text","text":"Listing them."},{"type":"tool_use","id":"toolu_c1","name":"Bash","input":{"command":"ls posts"}}]}}"#,
+            r#"{"type":"user","uuid":"c-3","sessionId":"cccc","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_c1","content":"a.md"}]}}"#,
+            r#"{"type":"user","uuid":"c-4","sessionId":"cccc","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"thanks"}}"#,
+            r#"{"type":"ai-title","sessionId":"cccc","aiTitle":"List posts"}"#,
+        ],
+    )?;
+    Ok(history)
+}
+
+#[test]
+fn conversation_lists_prompts_replies_and_tool_calls_in_order() -> TestResult {
+    let ran = history_with_a_conversation()?.run_week(&["conversation", "--session", "cccc"]);
+    check_eq(&ran.code, &0, "exit")?;
+    let types: Vec<&str> = ran
+        .out
+        .lines()
+        .filter_map(|line| line.split(r#""type":""#).nth(1))
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    check_eq(&types, &vec!["prompt", "reply", "tool", "prompt"], "order")?;
+    check_eq(&ran.out.contains("private musing"), &false, "thinking")?;
+    check_eq(&ran.out.contains("a.md"), &false, "tool result")?;
+    check_eq(
+        &ran.out.contains(r#""session_title":"List posts""#),
+        &true,
+        "title",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn conversation_in_markdown_reads_as_one_thread() -> TestResult {
+    let out = history_with_a_conversation()?
+        .run_week(&["conversation", "--session", "cccc", "--format", "md"])
+        .out;
+    let positions: Vec<Option<usize>> = [
+        "# Conversation",
+        "## List posts",
+        "- Prompt\n\n```text\nlist the posts",
+        "- Reply\n\n```text\nListing them.",
+        "- Tool call\n\n- Tool: `Bash`",
+        "- Prompt\n\n```text\nthanks",
+    ]
+    .iter()
+    .map(|part| out.find(part))
+    .collect();
+    check_eq(
+        &positions.iter().all(Option::is_some),
+        &true,
+        &format!("parts in {out}"),
+    )?;
+    check_eq(&positions.is_sorted(), &true, "parts in order")?;
+    Ok(())
+}
+
 #[test]
 fn project_matches_the_directory_name_or_the_cwd() -> TestResult {
     let history = History::new("root")?;

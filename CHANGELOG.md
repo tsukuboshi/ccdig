@@ -10,6 +10,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ccdig conversation`: the prompts, replies, and tool calls of sessions
+  in the order they were written, each with a `type` key, as JSON Lines,
+  JSON, or Markdown.
 - `--mask email`, `--mask home`, and `--mask ip` mask email addresses,
   shorten the home directory to `~` (also in `cwd`, `project`, and file
   paths), and mask IP addresses; `--mask-file` masks each line of a file.
