@@ -131,7 +131,9 @@ end with `redacted` and `source`:
 | `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 Every key is always present. `subagent` is empty for the session itself and
-the file name, such as `agent-1a2b`, for a sub-agent. A result whose call
+the file name, such as `agent-1a2b`, for a sub-agent. `input` is the
+untruncated input from the line's `wireToolInputs` when Claude Code stored
+one, and the `tool_use` block's otherwise. A result whose call
 was not found has an empty `tool` and a `null` `input`. `--format json`
 wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
 `filter` names the rule set below and changes whenever a rule change can
@@ -170,18 +172,39 @@ On by default. Matches are replaced with `***REDACTED***`:
   and bare `AKIA` / `ASIA` access key IDs
 - GitHub (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), GitLab,
   and npm tokens
-- Anthropic and OpenAI `sk-` keys, Google API keys, and Stripe keys
+- Anthropic and OpenAI `sk-` keys, Google API keys, OAuth tokens, and
+  client secrets, Stripe keys and webhook secrets, and SendGrid keys
 - Slack tokens and webhook URLs, and JWTs
-- Passwords in URLs (`postgres://user:…@host`)
+- `Authorization` header credentials and `Bearer` tokens
+- Passwords in URLs (`postgres://user:…@host`) and glued to the `-p` of
+  `mysql` and its relatives
 - PEM and PGP private key blocks
+- Values assigned to a credential-like name: `name=value`, `name: value`,
+  `name => value`, `--name=value`, `?name=value`, the same inside escaped
+  JSON (`\"password\":\"...\"`), and the Japanese words for password and
+  token. A name is split at `_`, `.`, `-`, and camelCase; a strong word
+  such as `token`, `secret`, or `password` counts alone or at the end of a
+  part (`PGPASSWORD`), a weak word such as `key` or `auth` only next to
+  another part (`api_key`, not `key`). A quoted value is masked to its
+  closing quote, so a passphrase with spaces goes whole. Names about paths,
+  URLs, or database keys (`token_path`, `primary_key`), digits behind a
+  quantity (`token_limit: 100000`), and values that are references (`$VAR`,
+  `ENV[...]`, `<placeholder>`, `%s`, `\u0000`), code (`self.token`,
+  `config[`, `last_token`), or type names (`token: string`) are left alone.
+  An unquoted value must be printable ASCII, so prose after the separator
+  stays
+- In a tool's input, a string under a key that names a credential, as in
+  `{"password": "..."}`, by the same test
 
 Session titles, every string in a tool's input, and tool results are
 masked too.
 
-The patterns need a distinctive prefix or variable name, so they miss
-secrets without one. Tool results hold whatever the tool read: file
-contents, environment variables, command output. Treat masking as a safety
-net and check the output yourself before you share it.
+The patterns need a distinctive prefix or a credential-like name, so they
+miss secrets without one, such as `--password value` with a space or a
+value that looks like a `snake_case` identifier. Tool results hold
+whatever the tool read: file contents, environment variables, command
+output. Treat masking as a safety net and check the output yourself
+before you share it.
 
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened

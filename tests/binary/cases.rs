@@ -1,6 +1,7 @@
 //! The end-to-end cases.
 
 use core::error::Error;
+use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -78,6 +79,30 @@ fn version_and_bare_help_exit_0() -> Result<(), Box<dyn Error>> {
         || !String::from_utf8(help.stdout)?.contains("Usage: ccdig")
     {
         return Err("version or help failed".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn tools_print_the_untruncated_input_with_credentials_masked() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let project = root.path().join("-Users-alice-blog");
+    fs::create_dir_all(&project)?;
+    fs::write(
+        project.join("dddddddd-dddd-4ddd-8ddd-dddddddddddd.jsonl"),
+        concat!(
+            r#"{"type":"assistant","uuid":"a-1","sessionId":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","#,
+            r#""timestamp":"2026-10-13T01:00:00Z","message":{"content":[{"type":"tool_use","#,
+            r#""id":"toolu_1","name":"Bash","input":{"command":"mysql --password=correcthorse"}}]},"#,
+            r#""wireToolInputs":{"toolu_1":{"command":"mysql --password=correcthorse -e 'select 1'"}}}"#,
+            "\n",
+        ),
+    )?;
+    let output = ccdig(&["tools", "--root", &root.path().to_string_lossy()], "UTC")?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let want = r#""input":{"command":"mysql --password=***REDACTED*** -e 'select 1'"}"#;
+    if !output.status.success() || !stdout.contains(want) {
+        return Err(format!("status {:?}, stdout {stdout:?}", output.status).into());
     }
     Ok(())
 }

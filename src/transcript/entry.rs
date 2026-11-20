@@ -122,6 +122,11 @@ struct RawEntry<'line> {
     timestamp: Option<String>,
     /// `uuid`.
     uuid: Option<String>,
+    /// `wireToolInputs`: the untruncated input of each tool call, by the
+    /// call's ID, decoded only for a line with tool calls so that a value of
+    /// another shape cannot reject the line.
+    #[serde(borrow, rename = "wireToolInputs")]
+    wire_tool_inputs: Option<&'line RawValue>,
 }
 
 /// The JSON of `message`.
@@ -188,7 +193,7 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         Some(ref value) => Some(Stamp::parse_rfc3339(value)?),
         None => None,
     };
-    let (content, model) = raw.message.map_or_else(
+    let (mut content, model) = raw.message.map_or_else(
         || (Content::default(), String::new()),
         |message| {
             (
@@ -197,6 +202,9 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
             )
         },
     );
+    if let Some(wire) = raw.wire_tool_inputs {
+        use_wire_inputs(&mut content.blocks, wire);
+    }
     Some(Entry {
         content,
         cwd: raw.cwd.unwrap_or_default(),
@@ -343,6 +351,30 @@ fn tool_use(fields: &Map<String, Value>) -> Block {
         input: fields.get("input").cloned().unwrap_or(Value::Null),
         name: name.to_owned(),
     })
+}
+
+/// Replaces each tool call's input with the untruncated one in `wire`, when
+/// `wire` is an object holding an object for the call's ID. The `tool_use`
+/// block keeps a shortened copy of long inputs. Any other shape of `wire`
+/// leaves the inputs as they are.
+fn use_wire_inputs(blocks: &mut [Block], wire: &RawValue) {
+    if !blocks
+        .iter()
+        .any(|block| matches!(*block, Block::ToolUse(_)))
+    {
+        return;
+    }
+    let Ok(mut inputs) = serde_json::from_str::<Map<String, Value>>(wire.get()) else {
+        return;
+    };
+    for block in blocks {
+        if let Block::ToolUse(ref mut call) = *block
+            && let Some(full) = inputs.remove(&call.id)
+            && full.is_object()
+        {
+            call.input = full;
+        }
+    }
 }
 
 #[cfg(test)]
