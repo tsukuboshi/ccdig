@@ -6,9 +6,10 @@ Thanks for your interest in improving ccdig.
 
 You need [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml)
 pins the toolchain used for development and CI, with clippy and rustfmt;
-`cargo` installs it on first use. For the dependency audit, install
-[cargo-deny](https://github.com/EmbarkStudios/cargo-deny):
-`cargo install cargo-deny --locked`.
+`cargo` installs it on first use. For the other checks, install
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny),
+[taplo](https://taplo.tamasfe.dev/), and
+[rumdl](https://github.com/rvben/rumdl).
 
 ## Checks
 
@@ -20,6 +21,8 @@ cargo fmt --all --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 cargo deny check
+taplo fmt --check
+rumdl check .
 ```
 
 Every clippy group, `restriction` included, is denied in

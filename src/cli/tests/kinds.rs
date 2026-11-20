@@ -197,3 +197,19 @@ fn the_new_kinds_write_markdown() -> TestResult {
     check_eq(&out.contains("- Tool: (unknown)\n"), &true, "orphan")?;
     Ok(())
 }
+
+#[test]
+fn a_mistyped_sibling_block_hides_only_itself_from_results() -> TestResult {
+    let history = History::new("kinds/root")?;
+    history.write(
+        "-Users-alice-shop/eeee.jsonl",
+        super::fixture_time()?,
+        &[concat!(
+            r#"{"type":"user","uuid":"e-1","timestamp":"2026-10-13T03:00:00Z","message":{"content":["#,
+            r#"{"type":"tool_result","tool_use_id":"t-5","content":"kept"},{"type":"text","text":5}]}}"#,
+        )],
+    )?;
+    let results = records(&history, &["results", "--session", "eeee"])?;
+    check_eq(&strings(&results, "text"), &vec!["kept"], "results")?;
+    Ok(())
+}

@@ -33,10 +33,10 @@ ccdig は全セッションから一部を抜き出すための道具です。�
 
 ## 始め方
 
-Rust 1.99 以降が必要です。
+Rust 1.99.1 以降が必要です。
 
 ```sh
-cargo install --git https://github.com/tsukuboshi/ccdig
+cargo install --locked --git https://github.com/tsukuboshi/ccdig
 ccdig prompts --since 2026-10-05 --until 2026-10-11
 ccdig results --tool Bash --errors --subagents
 ```

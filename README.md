@@ -35,10 +35,10 @@ Lines that pipe into `jq`, and ships as a single binary.
 
 ## Getting started
 
-Requires Rust 1.99 or later.
+Requires Rust 1.99.1 or later.
 
 ```sh
-cargo install --git https://github.com/tsukuboshi/ccdig
+cargo install --locked --git https://github.com/tsukuboshi/ccdig
 ccdig version
 ```
 

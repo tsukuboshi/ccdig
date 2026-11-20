@@ -66,8 +66,18 @@ impl Found {
     }
 
     /// Adds the sub-agent transcripts in `dir`, which most sessions do not
-    /// have.
+    /// have. A `dir` that is a symlink is skipped.
     fn add_subagents(&mut self, dir: &Path, project: &str) {
+        // read_dir follows a symlink, which could lead outside the root.
+        match fs::symlink_metadata(dir) {
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(_) => return,
+            Err(error) if error.kind() == ErrorKind::NotFound => return,
+            Err(error) => {
+                self.warn(dir, error);
+                return;
+            }
+        }
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == ErrorKind::NotFound => return,
@@ -114,7 +124,7 @@ impl Found {
 }
 
 /// The bytes of `path`, which compare the way Go compares path strings.
-fn bytes(path: &Path) -> &[u8] {
+pub fn bytes(path: &Path) -> &[u8] {
     path.as_os_str().as_encoded_bytes()
 }
 

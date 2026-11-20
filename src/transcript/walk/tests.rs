@@ -143,6 +143,25 @@ fn symlinks_are_skipped() -> TestResult {
 }
 
 #[test]
+fn a_symlinked_subagents_directory_is_not_followed() -> TestResult {
+    // A shared archive could point subagents/ at another project's
+    // transcripts outside --root.
+    let outside = tempfile::tempdir()?;
+    make_tree(outside.path(), &["private.jsonl"])?;
+    let root = tempfile::tempdir()?;
+    make_tree(root.path(), &["p/s.jsonl"])?;
+    fs::create_dir_all(root.path().join("p/s"))?;
+    symlink(outside.path(), root.path().join("p/s/subagents"))?;
+    let found = find_sessions(root.path(), true)?;
+    check_eq(
+        &listed(root.path(), &found)?,
+        &vec!["p/s.jsonl (p)".to_owned()],
+        "sessions",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_modification_time_is_reported() -> TestResult {
     let root = tempfile::tempdir()?;
     make_tree(root.path(), &["p/s.jsonl"])?;

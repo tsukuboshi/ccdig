@@ -7,7 +7,6 @@ use alloc::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 
-use jiff::Timestamp;
 use serde_json::Value;
 
 use crate::failure::Failure;
@@ -29,6 +28,10 @@ pub struct Corpus<T> {
     /// What was skipped, each a line for stderr.
     pub warnings: Vec<String>,
 }
+
+/// A file's selected records with its modification time, each with its
+/// block's index in the line.
+type FileRecords<'file, T> = (&'file SessionFile, Stamp, Vec<(usize, T)>);
 
 /// The masking applied to what is printed: the rules, or none under
 /// `--no-redact`.
@@ -58,6 +61,9 @@ pub trait Select: Record {
     /// The kind's own facts for the filters.
     fn extra(&self) -> Extra<'_>;
 
+    /// What `--grep` searches, built only when `--grep` is given.
+    fn grep_text(&self) -> Cow<'_, str>;
+
     /// The shared keys, to fill in the session title.
     fn head_mut(&mut self) -> &mut Head;
 }
@@ -68,8 +74,6 @@ pub struct Extra<'record> {
     pub is_error: bool,
     /// The skill running at the time.
     pub skill: &'record str,
-    /// What `--grep` searches.
-    pub text: Cow<'record, str>,
     /// The tool's name.
     pub tool: &'record str,
 }
@@ -200,8 +204,15 @@ where
     let mut troubled_files = 0_usize;
     let mut sessions = Vec::new();
     for file in &found.sessions {
-        let modified = Timestamp::try_from(file.modified).map_err(Failure::TimeFormat)?;
-        if query.range.starts_after(modified) {
+        // A time outside the supported years skips this file, not the run.
+        let modified = match Stamp::from_system_time(file.modified) {
+            Ok(stamp) => stamp,
+            Err(failure) => {
+                warnings.push(warning_line(&file.path, &failure.to_string()));
+                continue;
+            }
+        };
+        if query.range.starts_after(modified.instant()) {
             // Last written before the first day: nothing to find.
             continue;
         }
@@ -215,7 +226,7 @@ where
                     troubled_files = troubled_files.saturating_add(1);
                 }
                 if !read.records.is_empty() {
-                    sessions.push((file, read.records));
+                    sessions.push((file, modified, read.records));
                 }
             }
             Err(error) => warnings.push(warning_line(&file.path, &error)),
@@ -233,7 +244,7 @@ where
     // Order sessions by their first record. A resumed copy starts with the
     // original's timestamps, so ties go to the older file, the original,
     // and only then to the path, keeping the output deterministic.
-    sessions.sort_by(|&(left_file, ref left), &(right_file, ref right)| {
+    sessions.sort_by(|&(left_file, _, ref left), &(right_file, _, ref right)| {
         let first = |records: &[(usize, P::Record)]| {
             records
                 .first()
@@ -242,24 +253,15 @@ where
         first(left)
             .cmp(&first(right))
             .then_with(|| left_file.modified.cmp(&right_file.modified))
-            .then_with(|| {
-                left_file
-                    .path
-                    .as_os_str()
-                    .as_encoded_bytes()
-                    .cmp(right_file.path.as_os_str().as_encoded_bytes())
-            })
+            .then_with(|| walk::bytes(&left_file.path).cmp(walk::bytes(&right_file.path)))
     });
-    gather(sessions, warnings)
+    Ok(gather(sessions, warnings))
 }
 
 /// Keeps each record once across sessions, in session order, and builds
 /// the session records. A resumed or forked session starts with a copy of
 /// earlier entries, IDs included; the first session in order wins.
-fn gather<T>(
-    sessions: Vec<(&SessionFile, Vec<(usize, T)>)>,
-    warnings: Vec<String>,
-) -> Result<Corpus<T>, Failure>
+fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>) -> Corpus<T>
 where
     T: Select,
 {
@@ -269,7 +271,7 @@ where
         sessions: Vec::new(),
         warnings,
     };
-    for (file, records) in sessions {
+    for (file, modified, records) in sessions {
         let kept: Vec<T> = records
             .into_iter()
             .filter(|&(block, ref record)| {
@@ -291,14 +293,14 @@ where
             git_branch: head.git_branch.clone(),
             file: file.path.to_string_lossy().into_owned(),
             // UTC keeps the output the same on every machine.
-            mtime: Stamp::from_system_time(file.modified)?,
+            mtime: modified,
             started_at: head.timestamp,
             ended_at: last.head().timestamp,
             prompt_count: kept.len(),
         });
         corpus.records.extend(kept);
     }
-    Ok(corpus)
+    corpus
 }
 
 /// Reads one transcript and returns its selected records in file order.
@@ -317,8 +319,7 @@ where
     let mut records = Vec::new();
     let mut untimed = 0_usize;
     for item in &mut lines {
-        let (line, entry) =
-            item.map_err(|error| format!("read transcript {}: {error}", file.path.display()))?;
+        let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
             // The title is regenerated as a session goes on; the last wins.
             if !entry.title.is_empty() {
@@ -370,6 +371,11 @@ where
 {
     let head = record.head();
     let extra = record.extra();
+    let text = if query.grep.is_some() {
+        record.grep_text()
+    } else {
+        Cow::Borrowed("")
+    };
     query.matches(&Facts {
         branch: &head.git_branch,
         cwd: &head.cwd,
@@ -377,7 +383,7 @@ where
         project: &head.project,
         session_id: &head.session_id,
         skill: extra.skill,
-        text: &extra.text,
+        text: &text,
         timestamp: head.timestamp.instant(),
         tool: extra.tool,
     })

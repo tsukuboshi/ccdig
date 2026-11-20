@@ -12,6 +12,12 @@ use crate::render::record::{Head, Kind, Prompt, Reply, Source, ToolCall, ToolRes
 use crate::transcript::entry::{Block, Entry, Role};
 use crate::transcript::reader::Roles;
 
+/// The roles of the kinds read from assistant lines only.
+const ASSISTANT: Roles = Roles {
+    assistant: true,
+    user: false,
+};
+
 /// What a result needs of the call it answers.
 struct Call {
     /// The arguments, as the model wrote them.
@@ -96,10 +102,7 @@ impl Pick for Replies {
     }
 
     fn roles(&self) -> Roles {
-        Roles {
-            assistant: true,
-            user: false,
-        }
+        ASSISTANT
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
@@ -158,7 +161,13 @@ impl Pick for Results {
                 }
                 false
             }
-            Role::User => entry.content.has_tool_result,
+            // Block by block: unlike the prompt check, a mistyped sibling
+            // block must not hide the results.
+            Role::User => entry
+                .content
+                .blocks
+                .iter()
+                .any(|block| matches!(*block, Block::ToolResult(_))),
             Role::AiTitle | Role::Other => false,
         }
     }
@@ -188,10 +197,7 @@ impl Pick for Tools {
     }
 
     fn roles(&self) -> Roles {
-        Roles {
-            assistant: true,
-            user: false,
-        }
+        ASSISTANT
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
@@ -204,9 +210,12 @@ impl Select for Prompt {
         Extra {
             is_error: false,
             skill: "",
-            text: Cow::Borrowed(&self.text),
             tool: "",
         }
+    }
+
+    fn grep_text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.text)
     }
 
     fn head_mut(&mut self) -> &mut Head {
@@ -219,9 +228,12 @@ impl Select for Reply {
         Extra {
             is_error: false,
             skill: &self.skill,
-            text: Cow::Borrowed(&self.text),
             tool: "",
         }
+    }
+
+    fn grep_text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.text)
     }
 
     fn head_mut(&mut self) -> &mut Head {
@@ -230,14 +242,17 @@ impl Select for Reply {
 }
 
 impl Select for ToolCall {
-    /// `--grep` searches the input as compact JSON.
     fn extra(&self) -> Extra<'_> {
         Extra {
             is_error: false,
             skill: &self.skill,
-            text: Cow::Owned(self.input.to_string()),
             tool: &self.tool,
         }
+    }
+
+    /// The input as compact JSON.
+    fn grep_text(&self) -> Cow<'_, str> {
+        Cow::Owned(self.input.to_string())
     }
 
     fn head_mut(&mut self) -> &mut Head {
@@ -250,9 +265,12 @@ impl Select for ToolResult {
         Extra {
             is_error: self.is_error,
             skill: &self.skill,
-            text: Cow::Borrowed(&self.text),
             tool: &self.tool,
         }
+    }
+
+    fn grep_text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.text)
     }
 
     fn head_mut(&mut self) -> &mut Head {
