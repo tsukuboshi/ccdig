@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Pull the logs you want to show someone out of your Claude Code session
+Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
 session, branch, text, kind of record, tool, outcome, and skill to narrow
 the history down to the part that matters, and write it as Markdown to

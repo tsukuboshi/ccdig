@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Claude Code の会話履歴から、人に見せたいログだけを、整形・マスクして
+Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
 取り出す CLI です。
 期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
 成否・スキルを組み合わせて必要な部分に絞り込み、読みやすい Markdown か、
