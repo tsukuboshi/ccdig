@@ -73,6 +73,13 @@ pub fn code_span(text: &str) -> String {
     format!("{fence}{line}{fence}")
 }
 
+/// `text` in a fenced code block with `info` as its info string, fenced by a
+/// backtick run longer than any inside it. `text` should be cleaned first.
+pub fn fenced(info: &str, text: &str) -> String {
+    let fence = "`".repeat(longest_backtick_run(text).saturating_add(1).max(3));
+    format!("{fence}{info}\n{text}\n{fence}\n")
+}
+
 /// Keeps `|` from splitting a GFM table cell or the `date | project | title`
 /// digest heading. GFM needs the escape even inside code spans.
 pub fn escape_pipes(text: &str) -> String {

@@ -6,6 +6,9 @@ pub enum Failure {
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),
+    /// A record cannot be encoded as JSON.
+    #[error("write json: {0}")]
+    Json(#[source] serde_json::Error),
     /// `--since` is not a calendar day.
     #[error("parse since: {0}")]
     Since(String),

@@ -7,6 +7,7 @@ use jiff::civil::{Date, DateTime};
 use jiff::fmt::strtime;
 use jiff::tz::{Offset, TimeZone};
 use jiff::{Timestamp, ZonedDateTime};
+use serde::{Serialize, Serializer};
 
 use crate::failure::Failure;
 
@@ -169,6 +170,17 @@ impl Stamp {
             return self.instant.to_string();
         }
         self.instant.display_with_offset(self.offset).to_string()
+    }
+}
+
+/// Written as RFC 3339 with the offset it was read with, as Go's
+/// `time.Time` was.
+impl Serialize for Stamp {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.rfc3339())
     }
 }
 

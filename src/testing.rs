@@ -5,6 +5,8 @@
 
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
+use std::path::Path;
+use std::{env, fs};
 
 /// The error a test returns, so `?` works on any error type.
 pub type TestResult = Result<(), Box<dyn Error>>;
@@ -51,6 +53,20 @@ where
         got: format!("{got:?}"),
         want: format!("{want:?}"),
     })
+}
+
+/// Compares `got` with `testdata/<name>`, after rewriting the file from
+/// `got` when `UPDATE_GOLDEN` is set. Review the diff before committing.
+pub fn golden(name: &str, got: &str) -> TestResult {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata")
+        .join(name);
+    if env::var_os("UPDATE_GOLDEN").is_some() {
+        fs::write(&path, got)?;
+    }
+    let want = fs::read_to_string(&path)?;
+    check_eq(got, want.as_str(), name)?;
+    Ok(())
 }
 
 #[cfg(test)]

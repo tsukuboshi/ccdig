@@ -1,0 +1,30 @@
+# Tool results
+
+## Weekly report draft
+
+- Project: `-Users-alice-blog`
+- Session: `11111111-1111-4111-8111-111111111111`
+- Subagent: `agent-1`
+
+### 2026-10-13 10:25 JST
+
+- Tool: `Bash`
+- Error: yes
+
+```text
+fatal: not a git repository
+```
+
+## Weekly report draft
+
+- Project: `-Users-alice-blog`
+- Session: `11111111-1111-4111-8111-111111111111`
+
+### 2026-10-13 10:25 JST
+
+- Tool: (unknown)
+- Error: no
+
+```text
+ok
+```

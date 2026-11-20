@@ -29,6 +29,14 @@ mod redact;
     not(test),
     expect(
         dead_code,
+        reason = "the commands that call these come in a later stage"
+    )
+)]
+mod render;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "the collector that calls this comes in a later stage"
     )
 )]
