@@ -1,5 +1,5 @@
-//! Tests for decoding one transcript line, ported from promptdig and
-//! extended to assistant lines and tool blocks.
+//! Tests for decoding one transcript line, including assistant lines and
+//! tool blocks.
 
 use serde_json::json;
 
@@ -178,7 +178,7 @@ fn invalid_utf8_becomes_a_replacement_character() -> TestResult {
 }
 
 #[test]
-fn a_mistyped_block_empties_the_prompt_text_as_promptdig_did() -> TestResult {
+fn a_mistyped_block_empties_the_prompt_text() -> TestResult {
     let entry = decode(concat!(
         r#"{"type":"user","message":{"content":["#,
         r#"{"type":"text","text":"kept by itself"},{"type":"text","text":5}]}}"#,

@@ -3,8 +3,7 @@
 use crate::transcript::entry::{Entry, Role};
 
 /// Names the rule set `classify` applies. It changes whenever a rule change
-/// can change which entries are kept. strict-v1 was the Python extractor;
-/// strict-v2, promptdig's, added the origin rule.
+/// can change which entries are kept.
 pub const FILTER_VERSION: &str = "strict-v2";
 
 /// Tags the harness writes at the start of a body under the user role.
@@ -51,7 +50,7 @@ pub enum Reason {
 }
 
 /// Says whether `entry` is a prompt a person typed, or why not, checking the
-/// reasons in promptdig's order.
+/// reasons in a fixed order.
 pub fn classify(entry: &Entry) -> Reason {
     if entry.role != Role::User {
         return Reason::NotUser;
@@ -88,8 +87,8 @@ pub fn classify(entry: &Entry) -> Reason {
     Reason::Human
 }
 
-/// Skips the whitespace Go's `\s` matched: tab, newline, form feed, carriage
-/// return, and space, but not Unicode spaces.
+/// Skips ASCII whitespace: tab, newline, form feed, carriage return, and
+/// space, but not Unicode spaces.
 pub fn skip_ascii_space(text: &str) -> &str {
     text.trim_start_matches(['\t', '\n', '\u{C}', '\r', ' '])
 }

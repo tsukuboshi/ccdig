@@ -1,9 +1,8 @@
 //! One line of a session transcript.
 //!
-//! The decoding follows promptdig's Go `encoding/json` where the prompt
-//! classification depends on it: `null` reads as empty, unknown fields are
-//! ignored, invalid UTF-8 becomes U+FFFD, and one mistyped block empties the
-//! prompt text. Tool blocks are read one by one, so a broken block hides only
+//! The decoding is lenient where the prompt classification depends on it:
+//! `null` reads as empty, unknown fields are ignored, invalid UTF-8 becomes
+//! U+FFFD, and one mistyped block empties the prompt text. Tool blocks are read one by one, so a broken block hides only
 //! itself.
 
 use serde::Deserialize;
@@ -31,9 +30,10 @@ pub struct Content {
     /// Every element of array content, in order, so a block's position is
     /// its index in the line.
     pub blocks: Vec<Block>,
-    /// Whether array content holds a tool result, as promptdig decided it.
+    /// Whether array content holds a tool result, as the prompt check reads
+    /// it.
     pub has_tool_result: bool,
-    /// The prompt text as promptdig read it: string content as is, or the
+    /// The prompt text: string content as is, or the
     /// text blocks joined by newlines, or empty when any block is mistyped.
     pub text: String,
 }
@@ -80,7 +80,7 @@ pub struct Flags {
     pub sidechain: bool,
 }
 
-/// A field with a type promptdig's Go struct could not hold.
+/// A field with a type the prompt check does not accept.
 #[derive(Clone, Copy, Debug)]
 struct Mistyped;
 
@@ -238,7 +238,7 @@ fn block(item: &Value) -> Block {
     }
 }
 
-/// Reads a message's content into blocks and promptdig's prompt text.
+/// Reads a message's content into blocks and the prompt text.
 fn decode_content(raw: Option<&RawValue>) -> Content {
     let value = raw
         .and_then(|content| serde_json::from_str(content.get()).ok())
@@ -277,9 +277,9 @@ fn optional_str<'value>(
     }
 }
 
-/// promptdig's text and tool-result check for array content: the text
-/// blocks joined by newlines, or `None` when any element would not decode
-/// into Go's `{type, text}` struct.
+/// The prompt text and tool-result check for array content: the text
+/// blocks joined by newlines, or `None` when any element is not an object
+/// whose `type` and `text` are strings or absent.
 fn prompt_text(items: &[Value]) -> Option<(String, bool)> {
     let mut texts = Vec::new();
     let mut has_tool_result = false;

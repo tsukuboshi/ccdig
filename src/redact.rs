@@ -4,11 +4,10 @@
 //! with a distinctive prefix or an explicit variable name, so ordinary prose
 //! about authentication is left alone.
 //!
-//! They are promptdig's Go (RE2) patterns, where `\s`, `\w`, `\d`, and `\b`
-//! are ASCII-only. Rust's are Unicode by default and would, for example, read
-//! a Japanese character right after a key as part of it, so the patterns
-//! spell out the ASCII classes: `[\t\n\x0C\r ]`, `[0-9A-Za-z_]`, `[0-9]`, and
-//! `(?-u:\b)`.
+//! The `regex` crate's `\s`, `\w`, `\d`, and `\b` are Unicode by default and
+//! would, for example, read a Japanese character right after a key as part
+//! of it, so the patterns spell out the ASCII classes: `[\t\n\x0C\r ]`,
+//! `[0-9A-Za-z_]`, `[0-9]`, and `(?-u:\b)`.
 
 use regex::{Captures, Regex};
 use serde_json::Value;
@@ -117,9 +116,8 @@ const RULES: [(&str, Replacement); 15] = [
     // password containing '@', '?', or '#' is masked whole; a '/' in the
     // path stops it, so ?email=a@b.com after the path does not match. The
     // user may not contain '?' or '#', and a port followed by a query or
-    // fragment, as in host:8443?email=a@b.com, is left alone; promptdig
-    // masked both. The user and host stay so the prompt still says what it
-    // connects to.
+    // fragment, as in host:8443?email=a@b.com, is left alone. The user and
+    // host stay so the prompt still says what it connects to.
     (
         r"(://[^/\t\n\x0C\r :@?#]*:)([^\t\n\x0C\r /]*)@",
         Replacement::UrlPassword,

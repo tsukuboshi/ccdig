@@ -1,5 +1,0 @@
-{"type":"user","uuid":"b-1","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-10-14T00:05:00.000Z","cwd":"/Users/alice/work/promptdig","gitBranch":"feat/reader","message":{"role":"user","content":"why does the reader stop at 64 KiB?"}}
-{"type":"user","uuid":"b-rem","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-10-14T00:05:01.000Z","cwd":"/Users/alice/work/promptdig","gitBranch":"feat/reader","message":{"role":"user","content":"<system-reminder>\nfiles changed\n</system-reminder>"}}
-{"type":"user","uuid":"b-task","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","timestamp":"2026-10-14T00:06:00.000Z","cwd":"/Users/alice/work/promptdig","gitBranch":"feat/reader","origin":{"kind":"task-notification"},"message":{"role":"user","content":"background task finished"}}
-{"type":"ai-title","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","aiTitle":"First title"}
-{"type":"ai-title","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","aiTitle":"Reader buffer size"}

@@ -1,4 +1,4 @@
-//! Tests for folding slash command expansions, ported from promptdig.
+//! Tests for folding slash command expansions.
 
 use super::{Folded, fold};
 use crate::testing::{TestResult, check_eq};

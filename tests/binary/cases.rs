@@ -13,7 +13,7 @@ fn ccdig(args: &[&str], tz: &str) -> io::Result<Output> {
         .output()
 }
 
-/// The `prompts` arguments for promptdig's sample week, plus `extra`.
+/// The `prompts` arguments for the sample week, plus `extra`.
 fn week(root: &str, extra: &[&'static str]) -> Vec<String> {
     let mut args: Vec<String> = [
         "prompts",

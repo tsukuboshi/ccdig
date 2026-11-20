@@ -2,5 +2,5 @@
 - `/weekly-report last week`
 - `log in with export AWS_SECRET_ACCESS_KEY=***REDACTED*** and <b>draft</b> it`
 
-## 2026-10-14 | ~/work/promptdig | Reader buffer size
+## 2026-10-14 | ~/work/notes | Reader buffer size
 - `why does the reader stop at 64 KiB?`

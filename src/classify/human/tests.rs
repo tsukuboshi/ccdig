@@ -1,5 +1,4 @@
-//! Tests for telling typed prompts from harness traffic, ported from
-//! promptdig's table.
+//! Tests for telling typed prompts from harness traffic.
 
 use super::{Reason, classify};
 use crate::testing::{TestResult, check_eq};
@@ -113,10 +112,11 @@ fn classify_then_checks_the_body() -> TestResult {
             r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}"#,
             Reason::Interrupted,
         ),
-        // Go's \s is ASCII, so an ideographic space before a tag hides it,
-        // while strings.TrimSpace still strips the space for the other checks.
+        // Only ASCII whitespace is skipped before a tag, so an ideographic
+        // space hides it, while trimming for the other checks still strips
+        // the space.
         (
-            "tag after an ideographic space is a prompt, as in promptdig",
+            "tag after an ideographic space is a prompt",
             r#"{"type":"user","message":{"role":"user","content":"\u3000<system-reminder>x"}}"#,
             Reason::Human,
         ),

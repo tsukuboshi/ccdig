@@ -100,17 +100,15 @@ impl Stamp {
         self.instant
     }
 
-    /// Formats the time in `zone` as `2006-01-02 15:04 MST`, the form
-    /// promptdig's Markdown used.
+    /// Formats the time in `zone` as `2006-01-02 15:04 MST`, for Markdown.
     pub fn minute_label(&self, zone: &TimeZone) -> Result<String, Failure> {
         strtime::format("%Y-%m-%d %H:%M %Z", &self.in_zone(zone)).map_err(Failure::TimeFormat)
     }
 
-    /// Parses the strict RFC 3339 form that Go's JSON decoding reads first:
-    /// `YYYY-MM-DDTHH:MM:SS`, an optional `.` and digits, then `Z` or
-    /// `±HH:MM`. Go falls back to a looser parser (a one-digit hour, a comma
-    /// before the fraction); Claude Code writes `toISOString()`, which never
-    /// needs it, so those forms are rejected here.
+    /// Parses the strict RFC 3339 form: `YYYY-MM-DDTHH:MM:SS`, an optional
+    /// `.` and digits, then `Z` or `±HH:MM`. Looser forms (a one-digit hour,
+    /// a comma before the fraction) are rejected; Claude Code writes
+    /// `toISOString()`, which never needs them.
     pub fn parse_rfc3339(text: &str) -> Option<Self> {
         let &[
             y1,
@@ -163,7 +161,7 @@ impl Stamp {
         Some(Self { instant, offset })
     }
 
-    /// Formats the time as Go's JSON encoding did: the offset as written,
+    /// Formats the time as RFC 3339: the offset as written,
     /// `Z` for zero, and the fraction with its trailing zeros dropped.
     pub fn rfc3339(&self) -> String {
         if self.offset == Offset::UTC {
@@ -173,8 +171,7 @@ impl Stamp {
     }
 }
 
-/// Written as RFC 3339 with the offset it was read with, as Go's
-/// `time.Time` was.
+/// Written as RFC 3339 with the offset it was read with.
 impl Serialize for Stamp {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -184,7 +181,7 @@ impl Serialize for Stamp {
     }
 }
 
-/// Resolves `--tz` as Go's `time.LoadLocation` did: empty and `UTC` are UTC,
+/// Resolves `--tz`: empty and `UTC` are UTC,
 /// `Local` is the system zone, and anything else is an IANA name.
 pub fn load_zone(name: &str) -> Result<TimeZone, Failure> {
     match name {

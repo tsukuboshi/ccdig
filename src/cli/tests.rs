@@ -1,5 +1,4 @@
-//! Tests for the command line, ported from promptdig, against its golden
-//! files and synthetic history.
+//! Tests for the command line, against golden files and synthetic history.
 
 mod kinds;
 
@@ -14,7 +13,7 @@ use tempfile::TempDir;
 
 use crate::testing::{TestResult, check_eq, golden};
 
-/// The flags that pin promptdig's sample week, in JST so the goldens do not
+/// The flags that pin the sample week, in JST so the goldens do not
 /// depend on the host's zone.
 const WEEK: [&str; 6] = [
     "--since",
@@ -193,7 +192,7 @@ fn no_redact_leaves_the_secret_as_typed() -> TestResult {
 #[test]
 fn project_matches_the_directory_name_or_the_cwd() -> TestResult {
     let history = History::new("root")?;
-    for project in ["alice-work-promptdig", "work/promptdig"] {
+    for project in ["alice-work-notes", "work/notes"] {
         let out = history.run_week(&["prompts", "--project", project]).out;
         check_eq(&line_count(&out), &1, project)?;
         check_eq(&out.contains("64 KiB"), &true, project)?;
@@ -208,7 +207,7 @@ fn shared_flags_go_before_or_after_the_subcommand_and_add_up() -> TestResult {
         "alice-blog",
         "prompts",
         "--project",
-        "promptdig",
+        "notes",
     ]);
     check_eq(&line_count(&ran.out), &3, "both projects")?;
     Ok(())
@@ -380,18 +379,18 @@ fn prompts_copied_into_a_resumed_session_appear_once() -> TestResult {
     let original = fs::read_to_string(
         history
             .root
-            .join("-Users-alice-work-promptdig/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.jsonl"),
+            .join("-Users-alice-work-notes/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.jsonl"),
     )?;
     let first_line = original.lines().next().ok_or("empty fixture")?;
     history.write(
-        "-Users-alice-work-promptdig/zzzz.jsonl",
+        "-Users-alice-work-notes/zzzz.jsonl",
         fixture_time()?,
         &[
             first_line,
-            r#"{"type":"user","uuid":"z-1","sessionId":"z","timestamp":"2026-10-15T00:00:00Z","cwd":"/Users/alice/work/promptdig","message":{"role":"user","content":"continue"}}"#,
+            r#"{"type":"user","uuid":"z-1","sessionId":"z","timestamp":"2026-10-15T00:00:00Z","cwd":"/Users/alice/work/notes","message":{"role":"user","content":"continue"}}"#,
         ],
     )?;
-    let out = history.run_week(&["prompts", "--project", "promptdig"]).out;
+    let out = history.run_week(&["prompts", "--project", "notes"]).out;
     check_eq(&out.matches(r#""uuid":"b-1""#).count(), &1, "b-1")?;
     check_eq(&out.contains(r#""uuid":"z-1""#), &true, "z-1")?;
     Ok(())

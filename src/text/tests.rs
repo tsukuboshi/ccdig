@@ -1,4 +1,4 @@
-//! Tests for the text sanitizers, with the hostile inputs from promptdig.
+//! Tests for the text sanitizers, with hostile inputs.
 
 use super::{clean_text, code_span, escape_inline, escape_pipes, heading_text, one_line};
 use crate::testing::{TestResult, check_eq};

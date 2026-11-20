@@ -132,7 +132,7 @@ enum Command {
         tools: Vec<String>,
     },
     /// Print the ccdig version.
-    // The shared flags are accepted and ignored, as promptdig's were.
+    // The shared flags are accepted and ignored.
     Version(Common),
 }
 

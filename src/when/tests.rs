@@ -10,7 +10,7 @@ use jiff::tz::{TimeZone, TimeZoneDatabase};
 use super::{DayRange, Stamp, load_zone, local_zone};
 use crate::testing::{TestResult, check_eq};
 
-/// The zone promptdig's tests use, so day boundaries fall mid-UTC-day.
+/// The zone the tests use, so day boundaries fall mid-UTC-day.
 fn tokyo() -> Result<TimeZone, jiff::Error> {
     TimeZone::get("Asia/Tokyo")
 }

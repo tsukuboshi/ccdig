@@ -18,7 +18,7 @@ pub struct Limits {
     pub session_chars: usize,
 }
 
-/// The limits of the weekly digest promptdig replaced.
+/// Limits that fit a weekly digest.
 impl Default for Limits {
     fn default() -> Self {
         Self {

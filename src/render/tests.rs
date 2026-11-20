@@ -1,5 +1,4 @@
-//! Tests for the writers, against promptdig's golden files for the kinds it
-//! had.
+//! Tests for the writers, against golden files.
 
 use core::slice;
 
@@ -59,7 +58,7 @@ fn source(file: &str, line: usize, uuid: &str) -> Source {
     }
 }
 
-/// promptdig's two sample prompts.
+/// Two sample prompts.
 fn sample_prompts() -> Result<Vec<Prompt>, String> {
     Ok(vec![
         Prompt {
@@ -81,7 +80,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
     ])
 }
 
-/// promptdig's sample session.
+/// A sample session.
 fn sample_session() -> Result<Session, String> {
     Ok(Session {
         agent: AGENT,
@@ -132,7 +131,7 @@ fn prompts_as_markdown() -> TestResult {
         head: Head {
             session_id: "22222222-2222-4222-8222-222222222222".to_owned(),
             session_title: String::new(),
-            project: "-Users-alice-promptdig".to_owned(),
+            project: "-Users-alice-notes".to_owned(),
             cwd: String::new(),
             git_branch: String::new(),
             ..blog_head("2026-10-14T00:05:00Z")?
@@ -210,7 +209,7 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
     let other = bare_prompt(
         Head {
             session_title: String::new(),
-            project: "-Users-alice-promptdig".to_owned(),
+            project: "-Users-alice-notes".to_owned(),
             cwd: String::new(),
             ..blog_head("2026-10-14T00:00:00Z")?
         },

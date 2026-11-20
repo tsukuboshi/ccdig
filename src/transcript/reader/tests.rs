@@ -1,5 +1,5 @@
-//! Tests for streaming a transcript, ported from promptdig and extended to
-//! assistant lines and small read buffers.
+//! Tests for streaming a transcript, including assistant lines and small
+//! read buffers.
 
 use std::io::{BufReader, ErrorKind};
 
@@ -7,7 +7,7 @@ use super::{Lines, MAX_LINE_BYTES, ReadStats, Roles, open};
 use crate::testing::{TestResult, check_eq};
 use crate::transcript::entry::Role;
 
-/// The roles promptdig read.
+/// The roles the prompt subcommands read.
 const PROMPTS: Roles = Roles {
     assistant: false,
     user: true,

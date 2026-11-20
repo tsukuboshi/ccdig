@@ -60,8 +60,7 @@ where
     Ok(format!("{}\n", escape_separators(&json)))
 }
 
-/// Escapes U+2028 and U+2029, as Go's encoder did, so the output can be
-/// pasted into JavaScript. They can only occur inside strings.
+/// Escapes U+2028 and U+2029 so the output can be pasted into JavaScript. They can only occur inside strings.
 fn escape_separators(json: &str) -> String {
     json.replace('\u{2028}', "\\u2028")
         .replace('\u{2029}', "\\u2029")

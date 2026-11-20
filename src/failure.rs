@@ -1,4 +1,4 @@
-//! The errors ccdig reports, each with the prefix promptdig used.
+//! The errors ccdig reports, each with a prefix naming what failed.
 
 use std::io;
 

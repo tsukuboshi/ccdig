@@ -1,4 +1,4 @@
-//! Tests for secret masking, ported from promptdig's table.
+//! Tests for secret masking.
 
 use serde_json::json;
 
@@ -296,8 +296,8 @@ fn prose_cases() -> Vec<Case> {
                 .to_owned(),
             "the API returns 401 for Authorization: Bearer <token>; is sk-1 the task-notification key?",
         ),
-        // Go's \b and \w are ASCII-only; Rust's are Unicode by default and
-        // would treat a following Japanese character as part of the token.
+        // Unicode \b and \w would treat a following Japanese character as
+        // part of the token.
         case(
             "access key id followed by Japanese",
             format!("\u{30AD}\u{30FC}{}\u{306E}\u{5024}", key_id()),
@@ -311,7 +311,7 @@ fn prose_cases() -> Vec<Case> {
     ]
 }
 
-/// promptdig's table, plus rows for text glued to Japanese.
+/// Every case, including text glued to Japanese.
 fn cases() -> Vec<Case> {
     [aws_cases(), token_cases(), url_cases(), prose_cases()]
         .into_iter()

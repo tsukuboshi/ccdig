@@ -1,5 +1,5 @@
-//! Tests for the subcommands promptdig did not have, against the history
-//! in `testdata/kinds/root`.
+//! Tests for the replies, tools, and results subcommands, against the
+//! history in `testdata/kinds/root`.
 
 use core::error::Error;
 

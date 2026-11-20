@@ -10,33 +10,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- A Rust rewrite of promptdig 0.1.0. `ccdig prompts`, `sessions`, and
-  `digest` take the same flags and print the same output, with `promptdig`
-  in messages read as `ccdig`.
+- `ccdig prompts`: the prompts a person typed in Claude Code sessions, as
+  JSON Lines, JSON, or Markdown. Harness traffic is dropped by the
+  `strict-v2` rules, and slash command expansions are folded back into
+  `/command args`.
 - `ccdig replies`: the assistant's text blocks.
 - `ccdig tools`: tool calls with their input as JSON.
 - `ccdig results`: tool results, each with the tool and input of the call
   it answers.
-- Filters for every command: `--grep` with `-i` (matched after masking),
-  `--session` (ID prefix), `--branch`, and `--limit`. For replies, tools,
-  and results: `--skill` and `--subagents`. For tools and results:
-  `--tool`. For results: `--errors`.
-- Masking of every string in a tool's input and of tool results.
-- `ccdig` with no command prints the help and exits 0. Output to a closed
-  pipe, as under `| head`, ends quietly.
-
-### Changed
-
-- `version` prints `ccdig v0.1.0` from the crate version.
-- A port followed by a query or fragment
-  (`https://host:8443?email=a@b.com`) and a colon in a query
-  (`https://host?at=10:30@noon`) are no longer masked as a URL password.
-  A password containing `?` or `#` is still masked.
-- Help text and the details of flag errors follow clap; the `ccdig:` prefix
-  and the exit status 1 are kept.
-
-### Removed
-
-- The `completion` command cobra added.
+- `ccdig sessions`: sessions with at least one selected prompt.
+- `ccdig digest`: a size-capped Markdown digest of the prompts for LLM
+  input.
+- `ccdig version`, and the help when no command is given.
+- Filters for every command: `--since` and `--until` in the system time
+  zone or one given with `--tz`, `--project`, `--grep` with `-i` (matched
+  after masking), `--session` (ID prefix), `--branch`, and `--limit`. For
+  replies, tools, and results: `--skill` and `--subagents`. For tools and
+  results: `--tool`. For results: `--errors`.
+- Masking on by default (`--no-redact` to turn it off) of AWS credentials,
+  GitHub, GitLab, npm, Anthropic, OpenAI, Google, Stripe, and Slack tokens,
+  Slack webhooks, JWTs, URL passwords, and PEM / PGP private keys, in
+  prompts, replies, tool inputs, tool results, and session titles.
+- Entries copied into resumed sessions are listed once, in the original.
+- Unreadable files and undecodable, timestamp-less, or over-64-MiB lines
+  are reported on stderr while the rest of the output is still written.
+  Symlinks and other non-regular files under `--root` are not read.
+- Markdown and digest output neutralize terminal control characters, bidi
+  overrides, and Markdown or HTML in transcript fields.
 
 [Unreleased]: https://github.com/tsukuboshi/ccdig/commits/main

@@ -1,5 +1,4 @@
-//! Tests for finding transcripts, ported from promptdig and extended to
-//! sub-agent transcripts.
+//! Tests for finding transcripts, including sub-agent transcripts.
 
 use core::time::Duration;
 use std::fs::{self, File};

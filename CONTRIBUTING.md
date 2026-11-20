@@ -39,8 +39,6 @@ when you do.
   since `assert_eq!` panics. Prefer table-driven tests.
 - Rendered output is checked against golden files under `testdata/`;
   regenerate them with `UPDATE_GOLDEN=1 cargo test` and review the diff.
-  The files under `testdata/cli/`, `testdata/render/`, and `testdata/root/`
-  come from promptdig and must stay byte for byte the same.
 - Keep commits focused, with a message that makes sense on its own.
 - Add a line to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md)
   for any user-visible change.
