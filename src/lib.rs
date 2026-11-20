@@ -5,6 +5,14 @@
     not(test),
     expect(
         dead_code,
+        reason = "the collector that calls this comes in a later stage"
+    )
+)]
+mod classify;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "the commands that report these come in a later stage"
     )
 )]
