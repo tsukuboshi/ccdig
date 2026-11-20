@@ -10,6 +10,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ccdig conversation`: the prompts, replies, and tool calls of sessions
+  in the order they were written, each with a `type` key, as JSON Lines,
+  JSON, or Markdown.
+- `--mask email`, `--mask ip`, and `--mask user` mask email addresses, IP
+  addresses, and the user name from `$HOME`; `--mask-file` masks each line
+  of a file. They are off by default and cover the fields that are not
+  text, such as `project`, `git_branch`, and `tool`.
 - `ccdig tools` and `ccdig results` print the untruncated tool input that
   Claude Code stores in `wireToolInputs`, instead of the shortened copy in
   the `tool_use` block.
@@ -35,7 +42,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after masking), `--session` (ID prefix), `--branch`, and `--limit`. For
   replies, tools, and results: `--skill` and `--subagents`. For tools and
   results: `--tool`. For results: `--errors`.
-- Masking on by default (`--no-redact` to turn it off) of AWS credentials,
+- Masking on by default (`--no-mask` to turn it off) of AWS credentials,
   GitHub, GitLab, npm, Anthropic, OpenAI, Google, Stripe, and Slack tokens,
   Slack webhooks, JWTs, URL passwords, and PEM / PGP private keys, in
   prompts, replies, tool inputs, tool results, and session titles.

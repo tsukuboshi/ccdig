@@ -153,7 +153,7 @@ fn grep_sees_the_text_after_masking() -> TestResult {
     )?;
     let plain = records(
         &history,
-        &["results", "--no-redact", "--grep", "EXAMPLEEXAMPLE"],
+        &["results", "--no-mask", "--grep", "EXAMPLEEXAMPLE"],
     )?;
     check_eq(&strings(&plain, "tool_use_id"), &vec!["t-2"], "unmasked")?;
     let insensitive = records(&history, &["replies", "-i", "--grep", "^done"])?;

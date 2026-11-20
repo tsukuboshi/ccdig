@@ -3,6 +3,7 @@
 mod kinds;
 
 use core::error::Error;
+use std::env;
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -176,9 +177,9 @@ fn the_digest_matches_the_golden() -> TestResult {
 }
 
 #[test]
-fn no_redact_leaves_the_secret_as_typed() -> TestResult {
+fn no_mask_leaves_the_secret_as_typed() -> TestResult {
     let out = History::new("root")?
-        .run_week(&["prompts", "--no-redact"])
+        .run_week(&["prompts", "--no-mask"])
         .out;
     check_eq(
         &out.contains("AWS_SECRET_ACCESS_KEY=EXAMPLEEXAMPLEEXAMPLE"),
@@ -186,6 +187,263 @@ fn no_redact_leaves_the_secret_as_typed() -> TestResult {
         "secret shown",
     )?;
     check_eq(&out.contains(r#""redacted":true"#), &false, "no redaction")?;
+    Ok(())
+}
+
+/// The user name from `$HOME` when it is one the tests can use: made of
+/// the characters a project directory name keeps or turns into `-`.
+fn usable_user() -> Option<(String, String)> {
+    let home = env::var("HOME").ok()?;
+    let user = super::user_name(&home)?;
+    let parent = home.trim_end_matches('/').strip_suffix(&user)?.to_owned();
+    user.chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+        .then_some((parent, user))
+}
+
+/// A history with one prompt that holds an email address, the home
+/// directory, an IP address, and a value for `--mask-file`, in a project
+/// under the home directory. Returns it with the mask file's path.
+fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
+    let history = History::new("root")?;
+    let home = env::var("HOME")?;
+    // The JSON string of the home directory, without its quotes.
+    let escaped = serde_json::to_string(&home)?;
+    let quoted = escaped.trim_matches('"');
+    let project = encoded(&home);
+    let prompt = format!(
+        r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{quoted}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {quoted}/blog on 10.1.2.3 for corp-hidden"}}}}"#
+    );
+    history.write(
+        &format!("{project}-blog/mmmm.jsonl"),
+        fixture_time()?,
+        &[&prompt],
+    )?;
+    let values = history.root.with_file_name("mask.txt");
+    fs::write(&values, "corp-hidden\n\n")?;
+    Ok((history, values.to_string_lossy().into_owned()))
+}
+
+/// `path` as Claude Code names a project directory after it.
+fn encoded(path: &str) -> String {
+    path.chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect()
+}
+
+#[test]
+fn mask_hides_emails_the_user_name_and_ips_and_mask_file_hides_its_values() -> TestResult {
+    let Some((parent, _)) = usable_user() else {
+        return Ok(());
+    };
+    let (history, values) = history_with_personal_data()?;
+    let ran = history.run_week(&[
+        "prompts",
+        "--session",
+        "mmmm",
+        "--mask",
+        "email,user",
+        "--mask",
+        "ip",
+        "--mask-file",
+        &values,
+    ]);
+    check_eq(&ran.code, &0, "exit")?;
+    let cwd = format!("{parent}***REDACTED***/blog");
+    check_eq(
+        &ran.out.contains(&format!(
+            r#""text":"mail ***REDACTED*** about {cwd} on ***REDACTED*** for ***REDACTED***""#
+        )),
+        &true,
+        &ran.out,
+    )?;
+    check_eq(
+        &ran.out.contains(&format!(r#""cwd":"{cwd}""#)),
+        &true,
+        "cwd",
+    )?;
+    let project = format!("{}***REDACTED***-blog", encoded(&parent));
+    check_eq(
+        &ran.out.contains(&format!(r#""project":"{project}""#)),
+        &true,
+        "project",
+    )?;
+    check_eq(&ran.out.contains(r#""redacted":true"#), &true, "redacted")?;
+    let sessions = history
+        .run_week(&["sessions", "--session", "mmmm", "--mask", "user"])
+        .out;
+    check_eq(
+        &sessions.contains(&format!(r#""cwd":"{cwd}""#)),
+        &true,
+        "session cwd",
+    )?;
+    check_eq(
+        &sessions.contains(&format!(r#""project":"{project}""#)),
+        &true,
+        "session project",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_user_name_is_the_last_part_of_the_home_directory() -> TestResult {
+    check_eq(
+        &super::user_name("/Users/alice.b"),
+        &Some("alice.b".to_owned()),
+        "plain",
+    )?;
+    check_eq(
+        &super::user_name("/home/alice/"),
+        &Some("alice".to_owned()),
+        "trailing slash",
+    )?;
+    check_eq(&super::user_name("/"), &None, "root")?;
+    check_eq(&super::user_name(""), &None, "empty")?;
+    Ok(())
+}
+
+#[test]
+fn without_mask_the_personal_data_stays() -> TestResult {
+    let (history, _) = history_with_personal_data()?;
+    let out = history.run_week(&["prompts", "--session", "mmmm"]).out;
+    check_eq(&out.contains("bob@example.com"), &true, "email")?;
+    check_eq(&out.contains("10.1.2.3"), &true, "ip")?;
+    check_eq(&out.contains("corp-hidden"), &true, "value")?;
+    Ok(())
+}
+
+#[test]
+fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-corp-hidden-portal/nnnn.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"n-1","sessionId":"nnnn","cwd":"/work/corp-hidden","gitBranch":"feat/corp-hidden","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"check it"}}"#,
+            r#"{"type":"assistant","uuid":"n-2","sessionId":"nnnn","cwd":"/work/corp-hidden","gitBranch":"feat/corp-hidden","timestamp":"2026-10-15T00:00:10Z","message":{"model":"corp-hidden-model","content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"toolu_n1","name":"mcp__corp-hidden__x","input":{}}]}}"#,
+        ],
+    )?;
+    // A BOM and surrounding spaces, as an editor may save them; and an
+    // empty file given after the command, which must not replace it.
+    let values = history.root.with_file_name("values.txt");
+    fs::write(&values, "\u{feff}  corp-hidden  \n")?;
+    let empty = history.root.with_file_name("empty.txt");
+    fs::write(&empty, "")?;
+    let values_path = values.to_string_lossy().into_owned();
+    let empty_path = empty.to_string_lossy().into_owned();
+    for format in ["jsonl", "md"] {
+        let ran = history.run_week(&[
+            "--mask-file",
+            &values_path,
+            "conversation",
+            "--project",
+            "corp-hidden",
+            "--mask-file",
+            &empty_path,
+            "--format",
+            format,
+        ]);
+        check_eq(&ran.code, &0, format)?;
+        check_eq(&ran.out.is_empty(), &false, format)?;
+        check_eq(
+            &ran.out.contains("corp-hidden"),
+            &false,
+            &format!("{format}: {}", ran.out),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn no_mask_with_a_mask_is_an_error() -> TestResult {
+    let history = History::new("root")?;
+    for args in [
+        ["prompts", "--no-mask", "--mask", "email"],
+        ["prompts", "--no-mask", "--mask-file", "x.txt"],
+    ] {
+        let ran = history.run_week(&args);
+        check_eq(&(ran.code != 0), &true, args[3])?;
+        check_eq(&ran.out.is_empty(), &true, args[3])?;
+        check_eq(&ran.err.contains("--no-mask"), &true, &ran.err)?;
+    }
+    Ok(())
+}
+#[test]
+fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
+    let history = History::new("root")?;
+    let unknown = history.run_week(&["prompts", "--mask", "phone"]);
+    check_eq(&(unknown.code != 0), &true, "unknown mask")?;
+    let missing = history.run_week(&["prompts", "--mask-file", "/nonexistent/mask.txt"]);
+    check_eq(&(missing.code != 0), &true, "missing file")?;
+    check_eq(
+        &missing.err.contains("/nonexistent/mask.txt"),
+        &true,
+        "names the file",
+    )?;
+    Ok(())
+}
+
+/// A history with one session that has two prompts, a reply with a
+/// thinking block and a tool call, and the tool's result.
+fn history_with_a_conversation() -> Result<History, Box<dyn Error>> {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/cccc.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"c-1","sessionId":"cccc","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"list the posts"}}"#,
+            r#"{"type":"assistant","uuid":"c-2","sessionId":"cccc","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"thinking","thinking":"private musing"},{"type":"text","text":"Listing them."},{"type":"tool_use","id":"toolu_c1","name":"Bash","input":{"command":"ls posts"}}]}}"#,
+            r#"{"type":"user","uuid":"c-3","sessionId":"cccc","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_c1","content":"a.md"}]}}"#,
+            r#"{"type":"user","uuid":"c-4","sessionId":"cccc","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"thanks"}}"#,
+            r#"{"type":"ai-title","sessionId":"cccc","aiTitle":"List posts"}"#,
+        ],
+    )?;
+    Ok(history)
+}
+
+#[test]
+fn conversation_lists_prompts_replies_and_tool_calls_in_order() -> TestResult {
+    let ran = history_with_a_conversation()?.run_week(&["conversation", "--session", "cccc"]);
+    check_eq(&ran.code, &0, "exit")?;
+    let types: Vec<&str> = ran
+        .out
+        .lines()
+        .filter_map(|line| line.split(r#""type":""#).nth(1))
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    check_eq(&types, &vec!["prompt", "reply", "tool", "prompt"], "order")?;
+    check_eq(&ran.out.contains("private musing"), &false, "thinking")?;
+    check_eq(&ran.out.contains("a.md"), &false, "tool result")?;
+    check_eq(
+        &ran.out.contains(r#""session_title":"List posts""#),
+        &true,
+        "title",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn conversation_in_markdown_reads_as_one_thread() -> TestResult {
+    let out = history_with_a_conversation()?
+        .run_week(&["conversation", "--session", "cccc", "--format", "md"])
+        .out;
+    let positions: Vec<Option<usize>> = [
+        "# Conversation",
+        "## List posts",
+        "- Prompt\n\n```text\nlist the posts",
+        "- Reply\n\n```text\nListing them.",
+        "- Tool call\n\n- Tool: `Bash`",
+        "- Prompt\n\n```text\nthanks",
+    ]
+    .iter()
+    .map(|part| out.find(part))
+    .collect();
+    check_eq(
+        &positions.iter().all(Option::is_some),
+        &true,
+        &format!("parts in {out}"),
+    )?;
+    check_eq(&positions.is_sorted(), &true, "parts in order")?;
     Ok(())
 }
 

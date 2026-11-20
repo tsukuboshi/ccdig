@@ -1,19 +1,20 @@
 //! The command line: the flags, the subcommands, and how help, output, and
 //! errors are written.
 
-use std::env;
 use std::ffi::OsString;
 use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
 
-use clap::{Args, CommandFactory as _, Parser, Subcommand};
+use clap::{Args, CommandFactory as _, Parser, Subcommand, ValueEnum};
 use jiff::tz::TimeZone;
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
-use crate::collect::kinds::{Prompts, Replies, Results, Tools};
+use crate::collect::kinds::{Conversation, Prompts, Replies, Results, Tools};
 use crate::collect::{Corpus, Mask, Pick, collect};
 use crate::failure::Failure;
+use crate::redact::ExtraMasks;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{document, lines};
 use crate::render::markdown;
@@ -56,6 +57,19 @@ struct Activity {
 /// The subcommands.
 #[derive(Subcommand)]
 enum Command {
+    /// List the prompts, the assistant's text replies, and tool calls of
+    /// sessions in the order they were written.
+    Conversation {
+        /// The flags for assistant lines.
+        #[command(flatten)]
+        activity: Activity,
+        /// The shared flags.
+        #[command(flatten)]
+        common: Common,
+        /// The output format.
+        #[command(flatten)]
+        output: Output,
+    },
     /// Write a size-capped Markdown digest of the prompts for an LLM.
     Digest {
         /// The shared flags.
@@ -155,9 +169,16 @@ struct Common {
     /// Print at most this many records.
     #[arg(long, value_name = "N")]
     limit: Option<usize>,
-    /// Do not mask secrets.
+    /// Also mask each non-empty line of this file wherever it appears
+    /// (repeatable).
+    #[arg(long = "mask-file", value_name = "FILE")]
+    mask_files: Vec<PathBuf>,
+    /// Also mask these: email, ip, or user (comma-separated, repeatable).
+    #[arg(long = "mask", value_name = "KIND", value_delimiter = ',')]
+    masks: Vec<MaskKind>,
+    /// Do not mask anything, secrets included.
     #[arg(long)]
-    no_redact: bool,
+    no_mask: bool,
     /// Keep projects whose directory name or cwd contains this
     /// (repeatable).
     #[arg(long = "project", value_name = "SUBSTRING")]
@@ -178,6 +199,17 @@ struct Common {
     /// Last day to include, YYYY-MM-DD (record time, in --tz).
     #[arg(long, value_name = "DAY")]
     until: Option<String>,
+}
+
+/// What `--mask` can ask to mask besides the built-in rules.
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum MaskKind {
+    /// Email addresses.
+    Email,
+    /// IPv4 and IPv6 addresses.
+    Ip,
+    /// The user name, the last part of `$HOME`.
+    User,
 }
 
 /// The output formats of the record subcommands.
@@ -254,7 +286,7 @@ impl Common {
             &root,
             narrowing.subagents,
             &query,
-            &Mask::new(self.no_redact)?,
+            &Mask::new(self.no_mask, self.extra_masks()?)?,
             new_picker,
         )?;
         if let Some(limit) = self.limit {
@@ -262,6 +294,40 @@ impl Common {
             corpus.sessions.truncate(limit);
         }
         Ok((corpus, zone))
+    }
+
+    /// The masks `--mask` and `--mask-file` ask for.
+    fn extra_masks(&self) -> Result<ExtraMasks, Failure> {
+        if self.no_mask && !(self.masks.is_empty() && self.mask_files.is_empty()) {
+            return Err(Failure::MaskWithNoMask);
+        }
+        let mut values = Vec::new();
+        for path in &self.mask_files {
+            let read = fs::read_to_string(path).map_err(|source| Failure::MaskFile {
+                path: path.display().to_string(),
+                source,
+            })?;
+            // An editor may start the file with a byte order mark.
+            let text = read.strip_prefix('\u{feff}').unwrap_or(&read);
+            values.extend(
+                text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned),
+            );
+        }
+        let user = if self.masks.contains(&MaskKind::User) {
+            let home = env::var("HOME").unwrap_or_default();
+            Some(user_name(&home).ok_or(Failure::MaskUser)?)
+        } else {
+            None
+        };
+        Ok(ExtraMasks {
+            emails: self.masks.contains(&MaskKind::Email),
+            ips: self.masks.contains(&MaskKind::Ip),
+            user,
+            values,
+        })
     }
 
     /// `--root`, or `~/.claude/projects`.
@@ -280,12 +346,16 @@ impl Common {
         self.branches.extend(later.branches);
         self.projects.extend(later.projects);
         self.sessions.extend(later.sessions);
+        self.masks.extend(later.masks);
+        self.mask_files.extend(later.mask_files);
         Self {
             branches: self.branches,
             grep: later.grep.or(self.grep),
             ignore_case: self.ignore_case || later.ignore_case,
             limit: later.limit.or(self.limit),
-            no_redact: self.no_redact || later.no_redact,
+            mask_files: self.mask_files,
+            masks: self.masks,
+            no_mask: self.no_mask || later.no_mask,
             projects: self.projects,
             root: later.root.or(self.root),
             sessions: self.sessions,
@@ -338,6 +408,17 @@ impl From<Activity> for Narrowing {
 /// returns its output.
 fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
     let (out, warnings) = match command {
+        Command::Conversation {
+            activity,
+            common: later,
+            output,
+        } => list(
+            &earlier.merged(later),
+            activity.into(),
+            &output,
+            || Conversation,
+            markdown::conversation,
+        )?,
         Command::Digest {
             common: later,
             max_prompt_chars,
@@ -351,24 +432,24 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
         Command::Prompts {
             common: later,
             output,
-        } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
-            let (corpus, zone) = flags.collect(Narrowing::default(), || Prompts)?;
-            let out = format.write(&corpus.records, |records| markdown::prompts(records, &zone))?;
-            (out, corpus.warnings)
-        }
+        } => list(
+            &earlier.merged(later),
+            Narrowing::default(),
+            &output,
+            || Prompts,
+            markdown::prompts,
+        )?,
         Command::Replies {
             activity,
             common: later,
             output,
-        } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
-            let (corpus, zone) = flags.collect(activity.into(), || Replies)?;
-            let out = format.write(&corpus.records, |records| markdown::replies(records, &zone))?;
-            (out, corpus.warnings)
-        }
+        } => list(
+            &earlier.merged(later),
+            activity.into(),
+            &output,
+            || Replies,
+            markdown::replies,
+        )?,
         Command::Results {
             activity,
             common: later,
@@ -376,18 +457,18 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
             output,
             tools,
         } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
             let narrowing = Narrowing {
                 errors,
                 tools,
                 ..activity.into()
             };
-            let (corpus, zone) = flags.collect(narrowing, Results::default)?;
-            let out = format.write(&corpus.records, |records| {
-                markdown::tool_results(records, &zone)
-            })?;
-            (out, corpus.warnings)
+            list(
+                &earlier.merged(later),
+                narrowing,
+                &output,
+                Results::default,
+                markdown::tool_results,
+            )?
         }
         Command::Sessions {
             common: later,
@@ -407,17 +488,17 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
             output,
             tools,
         } => {
-            let flags = earlier.merged(later);
-            let format = Format::parse(&output.format)?;
             let narrowing = Narrowing {
                 tools,
                 ..activity.into()
             };
-            let (corpus, zone) = flags.collect(narrowing, || Tools)?;
-            let out = format.write(&corpus.records, |records| {
-                markdown::tool_calls(records, &zone)
-            })?;
-            (out, corpus.warnings)
+            list(
+                &earlier.merged(later),
+                narrowing,
+                &output,
+                || Tools,
+                markdown::tool_calls,
+            )?
         }
         Command::Version(_) => (
             concat!("ccdig v", env!("CARGO_PKG_VERSION"), "\n").to_owned(),
@@ -425,6 +506,35 @@ fn execute(earlier: Common, command: Command) -> Result<Printed, Failure> {
         ),
     };
     Ok(Printed { out, warnings })
+}
+
+/// Collects the records `new_picker` picks under `flags` and `narrowing`,
+/// and writes them in the format of `output`, with `markdown` for Markdown.
+/// Returns the output and the warnings.
+fn list<P>(
+    flags: &Common,
+    narrowing: Narrowing,
+    output: &Output,
+    new_picker: impl Fn() -> P,
+    markdown: impl FnOnce(&[P::Record], &TimeZone) -> Result<String, Failure>,
+) -> Result<(String, Vec<String>), Failure>
+where
+    P: Pick,
+    P::Record: Serialize,
+{
+    let format = Format::parse(&output.format)?;
+    let (corpus, zone) = flags.collect(narrowing, new_picker)?;
+    let out = format.write(&corpus.records, |records| markdown(records, &zone))?;
+    Ok((out, corpus.warnings))
+}
+
+/// The user name in `home`: its last part, or `None` for an empty or root
+/// directory or a name that is not UTF-8.
+fn user_name(home: &str) -> Option<String> {
+    Path::new(home.trim_end_matches('/'))
+        .file_name()?
+        .to_str()
+        .map(str::to_owned)
 }
 
 /// Checks the digest limits and converts them.

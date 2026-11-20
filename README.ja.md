@@ -63,6 +63,10 @@ ccdig results --tool Bash --errors --subagents --format md
 
 # LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
 ccdig digest --since 2026-10-05 --until 2026-10-11
+
+# 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・IP
+# アドレス・ユーザー名・ファイルに書いた値もマスクする
+ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
 ```
 
 ### コマンド
@@ -73,12 +77,13 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 | `replies` | assistant のテキストブロック 1 つにつき 1 レコード |
 | `tools` | ツールの呼び出し 1 件につき 1 レコード |
 | `results` | ツールの結果 1 件につき 1 レコード。呼び出しのツールと入力付き |
+| `conversation` | 依頼文・返答・ツールの呼び出しを、書かれた順に並べたもの |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード |
 | `digest` | 依頼文の Markdown ダイジェスト |
 | `version` | インストールされているバージョン |
 
-`prompts`・`replies`・`tools`・`results`・`sessions` は `--format` を取り、
-値は `jsonl`（既定）・`json`・`md` のいずれかです。`digest` は
+`prompts`・`replies`・`tools`・`results`・`conversation`・`sessions` は
+`--format` を取り、値は `jsonl`（既定）・`json`・`md` のいずれかです。`digest` は
 `--max-prompt-chars`（既定 300）と `--max-session-chars`（既定 2000）を
 取ります。
 
@@ -93,8 +98,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 | `--session` | すべて | ID がこの値で始まるセッション |
 | `--branch` | すべて | この git ブランチ上のレコード |
 | `--limit` | すべて | 先頭 N 件のレコード |
-| `--skill` | replies, tools, results | そのスキルの実行中に書かれたレコード |
-| `--subagents` | replies, tools, results | サブエージェントの履歴も含める |
+| `--skill` | replies, tools, results, conversation | そのスキルの実行中に書かれたレコード |
+| `--subagents` | replies, tools, results, conversation | サブエージェントの履歴も含める |
 | `--tool` | tools, results | このツールの呼び出し |
 | `--errors` | results | ツールが失敗と報告した結果 |
 
@@ -102,7 +107,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 値に一致するレコードを残します。共通のフラグはコマンドの前にも後にも
 置けます。`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ
 `/etc/localtime`）です。`--root` で履歴のルート（既定は
-`~/.claude/projects`）を変え、`--no-redact` でマスクを切ります。
+`~/.claude/projects`）を変えます。`--mask` と `--mask-file` でマスクを足し、
+`--no-mask` ですべてのマスクを切ります（後述の「マスク」の節を参照）。
 
 `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを検索します。
 そのため、秘密情報をその値で探し当てることはできません。対象は、依頼文や
@@ -139,8 +145,10 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 空です。`input` は、
 Claude Code が行の `wireToolInputs` に保存していればそこにある切り詰められて
 いない入力で、なければ `tool_use` ブロックの入力です。呼び出しが見つからな
-かった結果は、`tool` が空で `input` が `null` です。`--format json` は
-レコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
+かった結果は、`tool` が空で `input` が `null` です。`conversation` の
+レコードは、依頼文・返答・ツールの呼び出しのレコードの先頭に、`prompt`・
+`reply`・`tool` のいずれかを値とする `type` キーを付けたものです。
+`--format json` はレコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
 `filter` は次の節のルールセットの名前で、ルールの変更で残る依頼文が変わり
 うるときは必ず変わります。
 
@@ -172,7 +180,8 @@ stderr に報告し、残りの出力はそのまま書きます。
 
 ## マスク
 
-既定で有効です。一致した部分は `***REDACTED***` に置き換えます。
+`--no-mask` を付けない限り常に有効です。一致した部分は
+`***REDACTED***` に置き換えます。
 
 - AWS の認証情報: `AWS_SECRET_ACCESS_KEY` 形式の名前に `=` か `:` が続く
   もの、credentials ファイル、`aws sts` の JSON（`SecretAccessKey`、
@@ -207,11 +216,34 @@ stderr に報告し、残りの出力はそのまま書きます。
 セッションのタイトル、ツールの入力に含まれるすべての文字列、ツールの結果も
 マスクします。
 
+次のマスクは既定では切ってあり、どのコマンドにも足せます。
+
+| フラグ | マスクするもの |
+| --- | --- |
+| `--mask email` | メールアドレス。`git@github.com:` のような SSH のリモートは除く |
+| `--mask ip` | `127.x.x.x`・`0.0.0.0`・`255.255.255.255` 以外の IPv4 アドレスと、3 グループ以上の IPv6 アドレス |
+| `--mask user` | ユーザー名（`$HOME` の最後の部分）。大文字・小文字を問わず、区切りが `.`・`_`・`-` のどれでも。そのため `-Users-alice-b-blog` のようなプロジェクトのディレクトリ名の中でも |
+| `--mask-file FILE` | ファイルの空でない各行を前後の空白を除いて。どこに現れても、書いたとおりに（大文字と小文字を区別） |
+
+`--mask` はカンマ区切りで並べられ、`--mask email,user` のように繰り返しも
+指定できます。`--mask-file` も繰り返し指定できます。これらのマスクは、本文
+でないフィールド、つまり `project`・`cwd`・`git_branch`・ファイルのパス・
+`tool`・`model`・`subagent`・`command` と、stderr の警告にもかかります。
+ツールの入力のキーはそのまま残ります。IPv4 のルールは `1.2.3.4` のような単独のバージョン番号と
+アドレスを区別できないため、それもマスクします。`v1.2.3.4` のように英字や
+ドットの後に続くものは残ります。名字だけのような、ユーザー名の一部だけの
+形は残ります。伏せたいときはマスク用のファイルに書いてください。
+
+`--no-mask` は、秘密情報も含めて書かれたとおりに出します。自分の端末で
+マスクの結果を確かめるためのものです。`--mask` や `--mask-file` とは一緒に
+使えません。
+
 パターンは特徴的なプレフィックスか認証情報らしい名前を手がかりにするため、
 それを持たない秘密情報は見逃します。たとえば空白で区切った
 `--password value` や、`snake_case` の識別子のように見える値です。
 ツールの結果には、ツールが読んだもの、つまりファイルの中身・環境変数・
-コマンドの出力がそのまま入ります。マスクは安全網として扱い、出力を共有する
+コマンドの出力がそのまま入ります。`conversation` が出すツールの入力には、
+`Write` の呼び出しの中身のように、書いたものが入ります。マスクは安全網として扱い、出力を共有する
 前に自分で中身を確かめてください。
 
 Markdown とダイジェストの出力は、履歴のフィールドを信頼できない入力として

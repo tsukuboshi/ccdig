@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use super::{MARKER, Redactor};
+use super::{ExtraMasks, MARKER, Redactor};
 use crate::testing::{TestResult, check_eq};
 
 /// One row of the table: a name, the input, and the expected output.
@@ -681,5 +681,132 @@ fn redact_json_reports_no_change_when_nothing_matches() -> TestResult {
     let before = value.clone();
     check_eq(&redactor.redact_json(&mut value), &false, "changed")?;
     check_eq(&value, &before, "untouched input")?;
+    Ok(())
+}
+
+/// The extra masks on, with `alice.b` as the user name and three values
+/// from a mask file.
+fn extra_redactor() -> Result<Redactor, regex::Error> {
+    Redactor::with(ExtraMasks {
+        emails: true,
+        ips: true,
+        user: Some("alice.b".to_owned()),
+        values: vec![
+            "corp-internal".to_owned(),
+            "corp-internal.example".to_owned(),
+            "RED".to_owned(),
+        ],
+    })
+}
+
+/// The rows for the masks that `--mask` and `--mask-file` turn on.
+fn extra_cases() -> Vec<Case> {
+    vec![
+        case(
+            "email address",
+            "mail alice.b+ci@mail.example.co.jp now".to_owned(),
+            "mail ***REDACTED*** now",
+        ),
+        case(
+            "SSH remote is not an email address",
+            "git clone git@github.com:alice/blog.git".to_owned(),
+            "git clone git@github.com:alice/blog.git",
+        ),
+        case(
+            "user name in a path and with other separators or case",
+            "cd /Users/alice.b/blog by Alice-B in users-alice_b-x".to_owned(),
+            "cd /Users/***REDACTED***/blog by ***REDACTED*** in users-***REDACTED***-x",
+        ),
+        case(
+            "a longer name or a part of the user name stays",
+            "ls /Users/alice.bx and malice.b and alice".to_owned(),
+            "ls /Users/alice.bx and malice.b and alice",
+        ),
+        case(
+            "project directory name",
+            "-Users-alice-b-blog".to_owned(),
+            "-Users-***REDACTED***-blog",
+        ),
+        case(
+            "IPv4 address",
+            "ssh 10.0.12.34 and 192.168.1.255:8080".to_owned(),
+            "ssh ***REDACTED*** and ***REDACTED***:8080",
+        ),
+        case(
+            "loopback, unspecified, broadcast, versions, and non-addresses stay",
+            "127.0.0.1 0.0.0.0 255.255.255.255 v1.2.3.4 1.2.3.4.5 300.1.1.1".to_owned(),
+            "127.0.0.1 0.0.0.0 255.255.255.255 v1.2.3.4 1.2.3.4.5 300.1.1.1",
+        ),
+        case(
+            "IPv6 address",
+            "ping 2001:db8::1 and fe80:0:0:0:0:0:0:1a".to_owned(),
+            "ping ***REDACTED*** and ***REDACTED***",
+        ),
+        case(
+            "IPv6 loopback, times, and paths stay",
+            "::1 at 12:30:45 in std::fs and a::b".to_owned(),
+            "::1 at 12:30:45 in std::fs and a::b",
+        ),
+        case(
+            "IPv4 address at the end of a sentence",
+            "server is 10.0.0.5.".to_owned(),
+            "server is ***REDACTED***.",
+        ),
+        case(
+            "email address followed by a colon in prose",
+            "From alice@example.com: ok".to_owned(),
+            "From ***REDACTED***: ok",
+        ),
+        case(
+            "an email address that holds a value is masked whole",
+            "mail bob@corp-internal.example".to_owned(),
+            "mail ***REDACTED***",
+        ),
+        case(
+            "a value inside the marker does not break it",
+            "alice@example.com and RED".to_owned(),
+            "***REDACTED*** and ***REDACTED***",
+        ),
+        case(
+            "values from the mask file, longest first",
+            "host corp-internal.example for corp-internal".to_owned(),
+            "host ***REDACTED*** for ***REDACTED***",
+        ),
+    ]
+}
+
+#[test]
+fn extra_masks_apply_only_when_asked_for() -> TestResult {
+    let extra = extra_redactor()?;
+    let plain = Redactor::new()?;
+    for row in extra_cases() {
+        let (got, changed) = extra.redact(&row.input);
+        check_eq(got.as_str(), row.want.as_str(), row.name)?;
+        check_eq(&changed, &(row.input != row.want), row.name)?;
+        let (untouched, _) = plain.redact(&row.input);
+        check_eq(untouched.as_str(), row.input.as_str(), row.name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn meta_applies_only_the_masks_asked_for() -> TestResult {
+    let extra = extra_redactor()?;
+    check_eq(
+        &extra.meta("/Users/alice.b/.claude/projects/-Users-alice-b-blog/s.jsonl"),
+        &"/Users/***REDACTED***/.claude/projects/-Users-***REDACTED***-blog/s.jsonl".to_owned(),
+        "path",
+    )?;
+    let key = key_id();
+    check_eq(
+        &extra.meta(&format!("feat/corp-internal-{key}")),
+        &format!("feat/***REDACTED***-{key}"),
+        "branch keeps what only the built-in rules mask",
+    )?;
+    check_eq(
+        &Redactor::new()?.meta("/Users/alice/x"),
+        &"/Users/alice/x".to_owned(),
+        "nothing asked for",
+    )?;
     Ok(())
 }

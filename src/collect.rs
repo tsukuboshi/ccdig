@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::failure::Failure;
-use crate::redact::Redactor;
+use crate::redact::{ExtraMasks, Redactor};
 use crate::render::record::{AGENT, Head, Record, Session};
 use crate::select::{Facts, Query};
 use crate::text::clean_text;
@@ -33,8 +33,8 @@ pub struct Corpus<T> {
 /// block's index in the line.
 type FileRecords<'file, T> = (&'file SessionFile, Stamp, Vec<(usize, T)>);
 
-/// The masking applied to what is printed: the rules, or none under
-/// `--no-redact`.
+/// The masking applied to what is printed: the built-in rules and the masks
+/// `--mask` and `--mask-file` ask for, or none under `--no-mask`.
 pub struct Mask(Option<Redactor>);
 
 /// One kind of record and how it is picked out of transcript lines. A
@@ -66,6 +66,10 @@ pub trait Select: Record {
 
     /// The shared keys, to fill in the session title.
     fn head_mut(&mut self) -> &mut Head;
+
+    /// The kind's own fields that are not text, such as the tool's name,
+    /// for the masks `--mask-file` asks for.
+    fn labels_mut(&mut self) -> Vec<&mut String>;
 }
 
 /// The facts the filters see that only some kinds have.
@@ -120,16 +124,24 @@ impl Mask {
             .is_some_and(|rules| rules.redact_json(value))
     }
 
-    /// The rules, or none when `off`.
+    /// Applies the masks `--mask` and `--mask-file` ask for to `field`, a
+    /// path, a branch, a tool's name, or another field that is not text.
+    pub fn meta(&self, field: &str) -> String {
+        self.0
+            .as_ref()
+            .map_or_else(|| field.to_owned(), |rules| rules.meta(field))
+    }
+
+    /// The built-in rules and the masks in `extra`, or none when `off`.
     ///
     /// # Errors
     ///
     /// When the rules do not compile, which is a bug.
-    pub fn new(off: bool) -> Result<Self, Failure> {
+    pub fn new(off: bool, extra: ExtraMasks) -> Result<Self, Failure> {
         if off {
             return Ok(Self(None));
         }
-        Redactor::new()
+        Redactor::with(extra)
             .map(|rules| Self(Some(rules)))
             .map_err(Failure::Rules)
     }
@@ -266,13 +278,15 @@ where
             .then_with(|| left_file.modified.cmp(&right_file.modified))
             .then_with(|| walk::bytes(&left_file.path).cmp(walk::bytes(&right_file.path)))
     });
-    Ok(gather(sessions, warnings))
+    // A warning quotes a path, which can hold a masked value.
+    let shown = warnings.iter().map(|warning| mask.meta(warning)).collect();
+    Ok(gather(sessions, shown, mask))
 }
 
 /// Keeps each record once across sessions, in session order, and builds
 /// the session records. A resumed or forked session starts with a copy of
 /// earlier entries, IDs included; the first session in order wins.
-fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>) -> Corpus<T>
+fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>, mask: &Mask) -> Corpus<T>
 where
     T: Select,
 {
@@ -299,10 +313,10 @@ where
             agent: AGENT,
             id: head.session_id.clone(),
             title: head.session_title.clone(),
-            project: file.project.clone(),
+            project: head.project.clone(),
             cwd: head.cwd.clone(),
             git_branch: head.git_branch.clone(),
-            file: file.path.to_string_lossy().into_owned(),
+            file: mask.meta(&file.path.to_string_lossy()),
             // UTC keeps the output the same on every machine.
             mtime: modified,
             started_at: head.timestamp,
@@ -381,7 +395,15 @@ where
     // end up in one.
     let (masked_title, _) = mask.text(&title);
     for pair in &mut records {
-        pair.1.head_mut().session_title.clone_from(&masked_title);
+        let head = pair.1.head_mut();
+        head.session_title.clone_from(&masked_title);
+        // After the filters, so --project still matches the real paths.
+        head.cwd = mask.meta(&head.cwd);
+        head.git_branch = mask.meta(&head.git_branch);
+        head.project = mask.meta(&head.project);
+        for label in pair.1.labels_mut() {
+            *label = mask.meta(label);
+        }
     }
     let stats = lines.stats();
     Ok(Read {

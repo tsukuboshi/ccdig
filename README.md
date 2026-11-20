@@ -62,6 +62,10 @@ ccdig results --tool Bash --errors --subagents --format md
 
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
+
+# One session as a thread to share, with emails, IP addresses, the user
+# name, and the values in a file masked too
+ccdig conversation --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
 ```
 
 ### Commands
@@ -72,11 +76,12 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 | `replies` | One record per text block of the assistant |
 | `tools` | One record per tool call |
 | `results` | One record per tool result, with the call's tool and input |
+| `conversation` | Prompts, replies, and tool calls in the order they were written |
 | `sessions` | One record per session with a selected prompt |
 | `digest` | Markdown digest of the prompts |
 | `version` | The installed version |
 
-`prompts`, `replies`, `tools`, `results`, and `sessions` take `--format`:
+`prompts`, `replies`, `tools`, `results`, `conversation`, and `sessions` take `--format`:
 `jsonl` (default), `json`, or `md`. `digest` takes `--max-prompt-chars`
 (default 300) and `--max-session-chars` (default 2000).
 
@@ -91,8 +96,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 | `--session` | all | Sessions whose ID starts with the value |
 | `--branch` | all | Records on this git branch |
 | `--limit` | all | The first N records |
-| `--skill` | replies, tools, results | Records written while the skill ran |
-| `--subagents` | replies, tools, results | Sub-agent transcripts too |
+| `--skill` | replies, tools, results, conversation | Records written while the skill ran |
+| `--subagents` | replies, tools, results, conversation | Sub-agent transcripts too |
 | `--tool` | tools, results | Calls to this tool |
 | `--errors` | results | Results the tool reported as failures |
 
@@ -100,7 +105,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 records that match any value. The shared flags go before or after the
 command. `--tz` defaults to the system time zone (`TZ`, else
 `/etc/localtime`). `--root` sets the transcript root (default
-`~/.claude/projects`), and `--no-redact` turns masking off.
+`~/.claude/projects`). `--mask` and `--mask-file` add masks, and
+`--no-mask` turns all masking off; see Masking.
 
 `--grep` searches the text as it will be printed: after masking, so a
 secret cannot be found by its value. It reads the prompt or reply text, a
@@ -137,7 +143,9 @@ when the session's own transcript was last written before `--since`.
 `input` is the
 untruncated input from the line's `wireToolInputs` when Claude Code stored
 one, and the `tool_use` block's otherwise. A result whose call
-was not found has an empty `tool` and a `null` `input`. `--format json`
+was not found has an empty `tool` and a `null` `input`. A `conversation`
+record is a prompt, reply, or tool call record with a leading `type` key
+of `prompt`, `reply`, or `tool`. `--format json`
 wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
 `filter` names the rule set below and changes whenever a rule change can
 change which prompts are kept.
@@ -166,9 +174,10 @@ session. A directory or file that cannot be read, and lines that cannot be
 decoded, have no timestamp, or exceed 64 MiB, are skipped and reported on
 stderr while the rest of the output is still written.
 
-## Redaction
+## Masking
 
-On by default. Matches are replaced with `***REDACTED***`:
+Always on unless `--no-mask` is given. Matches are replaced with
+`***REDACTED***`:
 
 - AWS credentials: `AWS_SECRET_ACCESS_KEY`-style names with `=` or `:`,
   credentials files, `aws sts` JSON (`SecretAccessKey`, `SessionToken`),
@@ -202,12 +211,35 @@ On by default. Matches are replaced with `***REDACTED***`:
 Session titles, every string in a tool's input, and tool results are
 masked too.
 
+More masks are off by default and can be added to any command:
+
+| Flag | Masks |
+| --- | --- |
+| `--mask email` | Email addresses, but not an SSH remote such as `git@github.com:` |
+| `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more |
+| `--mask user` | The user name, the last part of `$HOME`, in any case and with any of `.`, `_`, and `-` between its parts, so also in a project directory name such as `-Users-alice-b-blog` |
+| `--mask-file FILE` | Each non-empty line of the file, trimmed, wherever it appears, as typed (case matters) |
+
+`--mask` takes a comma-separated list and is repeatable, as in
+`--mask email,user`, and so is `--mask-file`. These masks also apply to
+the fields that are not text: `project`, `cwd`, `git_branch`, file paths,
+`tool`, `model`, `subagent`, `command`, and the warnings on stderr. The
+keys of a tool's input stay as they are. An IPv4 rule cannot tell a bare
+version number such as `1.2.3.4` from an address, so it masks that too;
+one after a letter or a dot, as in `v1.2.3.4`, stays. A part of the user
+name alone, such as a first name, stays; add it to a mask file.
+
+`--no-mask` prints everything as it was written, secrets included, for
+checking the masks on your own machine. It cannot be combined with
+`--mask` or `--mask-file`.
+
 The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a
 value that looks like a `snake_case` identifier. Tool results hold
 whatever the tool read: file contents, environment variables, command
-output. Treat masking as a safety net and check the output yourself
-before you share it.
+output. Tool inputs, which `conversation` prints, hold what was written,
+such as the content of a `Write` call. Treat masking as a safety net and
+check the output yourself before you share it.
 
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened
