@@ -18,7 +18,7 @@ use crate::redact::ExtraMasks;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{document, lines};
 use crate::render::markdown;
-use crate::select::{Query, compile_grep};
+use crate::select::{Filter, Query, patterns};
 use crate::text::one_line;
 use crate::when::{DayRange, load_zone};
 
@@ -48,7 +48,7 @@ struct Cli {
 #[derive(Args)]
 struct Activity {
     /// Keep replies, tool calls, and tool results written while this skill
-    /// ran (repeatable).
+    /// ran, or with a leading !, leave them out (repeatable).
     #[arg(
         long = "skill",
         value_name = "NAME",
@@ -123,7 +123,8 @@ enum Command {
             display_order = 29
         )]
         statuses: Vec<Status>,
-        /// Keep tool calls and results of this tool (repeatable).
+        /// Keep tool calls and results of this tool, or with a leading !,
+        /// leave them out (repeatable).
         #[arg(
             long = "tool",
             value_name = "NAME",
@@ -173,8 +174,8 @@ struct Common {
         display_order = 22
     )]
     tz: Option<String>,
-    /// Keep projects whose directory name or cwd contains this
-    /// (repeatable).
+    /// Keep projects whose directory name or cwd contains this, or with a
+    /// leading !, leave them out (repeatable).
     #[arg(
         long = "project",
         value_name = "SUBSTRING",
@@ -182,7 +183,8 @@ struct Common {
         display_order = 23
     )]
     projects: Vec<String>,
-    /// Keep sessions whose ID starts with this (repeatable).
+    /// Keep sessions whose ID starts with this, or with a leading !, leave
+    /// them out (repeatable).
     #[arg(
         long = "session",
         value_name = "PREFIX",
@@ -190,7 +192,8 @@ struct Common {
         display_order = 24
     )]
     sessions: Vec<String>,
-    /// Keep records on this git branch (repeatable).
+    /// Keep records on this git branch, or with a leading !, leave them
+    /// out (repeatable).
     #[arg(
         long = "branch",
         value_name = "NAME",
@@ -199,23 +202,22 @@ struct Common {
     )]
     branches: Vec<String>,
     /// Keep records whose text matches this regular expression, after
-    /// masking.
+    /// masking, or with a leading !, leave them out (repeatable).
     #[arg(
-        long,
+        long = "grep",
         value_name = "REGEX",
         help_heading = "Filters",
         display_order = 26
     )]
-    grep: Option<String>,
+    grep: Vec<String>,
     /// Like --grep, ignoring case.
     #[arg(
-        long,
+        long = "igrep",
         value_name = "REGEX",
-        conflicts_with = "grep",
         help_heading = "Filters",
         display_order = 27
     )]
-    igrep: Option<String>,
+    igrep: Vec<String>,
     /// Transcript root [default: ~/.claude/projects] [env: `CCDIG_ROOT`].
     #[arg(long, value_name = "DIR", help_heading = "Input", display_order = 40)]
     root: Option<PathBuf>,
@@ -351,22 +353,18 @@ impl Common {
     {
         let zone = load_zone(self.tz.as_deref().unwrap_or("Local"))?;
         let query = Query {
-            branches: self.branches.clone(),
+            branches: Filter::names(self.branches.clone()),
             is_error: narrowing.is_error,
-            grep: match (self.grep.as_deref(), self.igrep.as_deref()) {
-                (Some(pattern), _) => Some(compile_grep(pattern, false)?),
-                (None, Some(pattern)) => Some(compile_grep(pattern, true)?),
-                (None, None) => None,
-            },
-            projects: self.projects.clone(),
+            grep: patterns(&self.grep, &self.igrep)?,
+            projects: Filter::names(self.projects.clone()),
             range: DayRange::parse(
                 self.since.as_deref().unwrap_or_default(),
                 self.until.as_deref().unwrap_or_default(),
                 &zone,
             )?,
-            sessions: self.sessions.clone(),
-            skills: narrowing.skills,
-            tools: narrowing.tools,
+            sessions: Filter::names(self.sessions.clone()),
+            skills: Filter::names(narrowing.skills),
+            tools: Filter::names(narrowing.tools),
         };
         let root = self.history_root()?;
         let mut corpus = collect(
@@ -435,16 +433,12 @@ impl Common {
         self.sessions.extend(later.sessions);
         self.masks.extend(later.masks);
         self.mask_files.extend(later.mask_files);
-        // --grep and --igrep are one pattern: the later level's, if any.
-        let (grep, igrep) = if later.grep.is_some() || later.igrep.is_some() {
-            (later.grep, later.igrep)
-        } else {
-            (self.grep, self.igrep)
-        };
+        self.grep.extend(later.grep);
+        self.igrep.extend(later.igrep);
         Self {
             branches: self.branches,
-            grep,
-            igrep,
+            grep: self.grep,
+            igrep: self.igrep,
             limit: later.limit.or(self.limit),
             mask_files: self.mask_files,
             masks: self.masks,

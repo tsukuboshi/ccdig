@@ -32,27 +32,81 @@ pub struct Facts<'record> {
     pub tool: Option<&'record str>,
 }
 
-/// The filters given on the command line. An empty list or `None` lets
+/// The values of one filter flag. A record passes when it matches one of
+/// `include`, or `include` is empty, and none of `exclude`.
+#[derive(Clone, Debug)]
+pub struct Filter<T> {
+    /// The values given with a leading `!`, without it.
+    pub exclude: Vec<T>,
+    /// The other values.
+    pub include: Vec<T>,
+}
+
+/// The filters given on the command line. An empty filter or `None` lets
 /// everything through.
 #[derive(Clone, Debug, Default)]
 pub struct Query {
     /// `--branch`: exact branch names.
-    pub branches: Vec<String>,
-    /// `--grep`, compiled by `compile_grep`.
-    pub grep: Option<Regex>,
+    pub branches: Filter<String>,
+    /// `--grep` and `--igrep`, compiled by `patterns`.
+    pub grep: Filter<Regex>,
     /// `--status`: only failed tool results when `true`, only the others
     /// when `false`.
     pub is_error: Option<bool>,
     /// `--project`: substrings of the project directory or the cwd.
-    pub projects: Vec<String>,
+    pub projects: Filter<String>,
     /// `--since` and `--until`.
     pub range: DayRange,
     /// `--session`: session ID prefixes.
-    pub sessions: Vec<String>,
+    pub sessions: Filter<String>,
     /// `--skill`: exact skill names.
-    pub skills: Vec<String>,
+    pub skills: Filter<String>,
     /// `--tool`: exact tool names.
-    pub tools: Vec<String>,
+    pub tools: Filter<String>,
+}
+
+impl<T> Default for Filter<T> {
+    fn default() -> Self {
+        Self {
+            exclude: Vec::new(),
+            include: Vec::new(),
+        }
+    }
+}
+
+impl<T> Filter<T> {
+    /// Whether a record for which `test` tells which values it matches
+    /// passes.
+    pub fn allows<F>(&self, test: F) -> bool
+    where
+        F: Fn(&T) -> bool,
+    {
+        (self.include.is_empty() || self.include.iter().any(&test))
+            && !self.exclude.iter().any(test)
+    }
+
+    /// Whether no value was given.
+    pub const fn is_empty(&self) -> bool {
+        self.include.is_empty() && self.exclude.is_empty()
+    }
+}
+
+impl Filter<String> {
+    /// The values of a name flag: one with a leading `!` excludes, and a
+    /// leading `\!` stands for a `!` that does not.
+    pub fn names(values: Vec<String>) -> Self {
+        let mut filter = Self::default();
+        for value in values {
+            if let Some(name) = value.strip_prefix('!') {
+                filter.exclude.push(name.to_owned());
+            } else if let Some(name) = value.strip_prefix("\\!") {
+                filter.include.push(format!("!{name}"));
+            } else {
+                filter.include.push(value);
+            }
+        }
+        filter
+    }
 }
 
 impl Query {
@@ -60,36 +114,29 @@ impl Query {
     pub fn matches(&self, facts: &Facts<'_>) -> bool {
         self.range.contains(facts.timestamp)
             && self.matches_project(facts.project, facts.cwd)
-            && any_or_none(&self.sessions, |id| facts.session_id.starts_with(id))
-            && any_or_none(&self.branches, |branch| branch == facts.branch)
+            && self
+                .sessions
+                .allows(|id| facts.session_id.starts_with(id.as_str()))
+            && self.branches.allows(|branch| branch == facts.branch)
             && facts
                 .skill
-                .is_none_or(|skill| any_or_none(&self.skills, |want| want == skill))
+                .is_none_or(|skill| self.skills.allows(|want| want == skill))
             && facts
                 .tool
-                .is_none_or(|tool| any_or_none(&self.tools, |want| want == tool))
+                .is_none_or(|tool| self.tools.allows(|want| want == tool))
             && self
                 .is_error
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
-            && self
-                .grep
-                .as_ref()
-                .is_none_or(|pattern| pattern.is_match(facts.text))
+            && self.grep.allows(|pattern| pattern.is_match(facts.text))
     }
 
-    /// Whether the project directory's name or the cwd contains any of the
-    /// `--project` filters. The directory name is how Claude Code encodes
+    /// Whether the project directory's name or the cwd contains a
+    /// `--project` value. The directory name is how Claude Code encodes
     /// the cwd (`/` and `.` become `-`), so both spellings work.
     pub fn matches_project(&self, project: &str, cwd: &str) -> bool {
-        any_or_none(&self.projects, |filter| {
-            project.contains(filter.as_str()) || cwd.contains(filter.as_str())
-        })
+        self.projects
+            .allows(|filter| project.contains(filter.as_str()) || cwd.contains(filter.as_str()))
     }
-}
-
-/// Whether `filters` is empty or any of them passes `test`.
-fn any_or_none(filters: &[String], test: impl Fn(&String) -> bool) -> bool {
-    filters.is_empty() || filters.iter().any(test)
 }
 
 /// Compiles the `--grep` pattern, ignoring case when `ignore_case` is set.
@@ -103,6 +150,29 @@ pub fn compile_grep(pattern: &str, ignore_case: bool) -> Result<Regex, Failure> 
         .case_insensitive(ignore_case)
         .build()
         .map_err(Failure::Grep)
+}
+
+/// Compiles the values of `--grep` and of `--igrep`, which ignores case.
+/// One with a leading `!` excludes; a pattern that starts with `\!`
+/// matches a `!`, as the regex crate reads `\!` as `!`.
+///
+/// # Errors
+///
+/// When a pattern is not a valid regular expression.
+pub fn patterns<S>(grep: &[S], igrep: &[S]) -> Result<Filter<Regex>, Failure>
+where
+    S: AsRef<str>,
+{
+    let mut filter = Filter::default();
+    for (values, ignore_case) in [(grep, false), (igrep, true)] {
+        for value in values.iter().map(AsRef::as_ref) {
+            match value.strip_prefix('!') {
+                Some(pattern) => filter.exclude.push(compile_grep(pattern, ignore_case)?),
+                None => filter.include.push(compile_grep(value, ignore_case)?),
+            }
+        }
+    }
+    Ok(filter)
 }
 
 #[cfg(test)]

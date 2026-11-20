@@ -104,19 +104,25 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 | `--skill` | records: `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
 | `--subagents` | records: `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
-`--project`・`--session`・`--branch`・`--tool`・`--skill` は繰り返し指定
-でき、いずれかの値に一致するレコードを残します。`--status` は `--type` と
-同じくカンマ区切りで並べられます。`--tool`・`--status`・`--skill` は、
-調べる値を持つ種類だけを絞り、持たない種類はそのまま残します。そのため
+`--project`・`--session`・`--branch`・`--grep`・`--igrep`・`--tool`・
+`--skill` は繰り返し指定でき、いずれかの値に一致するレコードを残します。
+先頭に `!` を付けた値は、逆に一致するレコードを除きます。たとえば
+`--session '!1a2b'` は 1 つを除くすべてのセッションを、`--grep '!WIP'` は
+`WIP` に触れたレコードを除いた残りを出します。`!` で始まる値そのものに
+一致させるときは `\!` と書きます。たいていのシェルでは `!` が履歴展開に
+なるので、引用符で囲んでください。`--status` は `--type` と同じく
+カンマ区切りで並べられます。
+
+`--tool`・`--status`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
+種類はそのまま残します。そのため
 `ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
 `tdd` の実行中に書かれた返答と呼び出しを残します。`--type` を省略すると、
 `records` は付けたフラグがすべて効く種類だけを出します。
 `ccdig records --tool Bash` なら、`Bash` の呼び出しとその結果です。表の
 最後の 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
 
-共通のフラグはコマンドの前にも後にも置けます。`--grep` と `--igrep` は
-一緒に指定できず、コマンドの前後の両方にあるときは後ろのものが使われます。
-`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`）
+共通のフラグはコマンドの前にも後にも置け、繰り返し指定できるフラグの値は
+前後で足し合わせます。`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`）
 です。`--root` で履歴のルート（既定は `~/.claude/projects`）を変えます。
 `--mask` と `--mask-file` でマスクを足し、`--no-mask` ですべてのマスクを
 切ります（後述の「マスク」の節を参照）。

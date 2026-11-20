@@ -102,22 +102,27 @@ the call's tool and input), comma-separated or repeated, and defaults to
 | `--skill` | records: `reply`, `call`, `result` | Records written while the skill ran |
 | `--subagents` | records: `reply`, `call`, `result` | Sub-agent transcripts too |
 
-`--project`, `--session`, `--branch`, `--tool`, and `--skill` are
-repeatable and keep records that match any value; `--status` takes a
-comma-separated list like `--type`. `--tool`, `--status`, and `--skill`
-narrow only the kinds that have what they test and let the other kinds
-through, so `ccdig records --type prompt,reply,call --skill tdd` keeps
-every prompt along with the replies and calls written while `tdd` ran.
-Without `--type`, `records` lists only the kinds every one of them given
-applies to: `ccdig records --tool Bash` prints the `Bash` calls and their
-results. Each of the last four flags needs a `--type` it applies to, or
-the command fails.
+`--project`, `--session`, `--branch`, `--grep`, `--igrep`, `--tool`, and
+`--skill` are repeatable and keep records that match any value. A value
+with a leading `!` leaves out the records that match it instead, so
+`--session '!1a2b'` keeps every session but one and `--grep '!WIP'` drops
+the records that mention `WIP`; write `\!` for a value that starts with
+`!`. Quote such a value, as `!` starts a history expansion in most
+shells. `--status` takes a comma-separated list like `--type`.
 
-The shared flags go before or after the command. `--grep` and `--igrep`
-cannot be given together; given on both sides, the one after the command
-wins. `--tz` defaults to the system time zone (`TZ`, else
-`/etc/localtime`). `--root` sets the transcript root (default
-`~/.claude/projects`). `--mask` and `--mask-file` add masks, and
+`--tool`, `--status`, and `--skill` narrow only the kinds that have what
+they test and let the other kinds through, so
+`ccdig records --type prompt,reply,call --skill tdd` keeps every prompt
+along with the replies and calls written while `tdd` ran. Without
+`--type`, `records` lists only the kinds every one of them given applies
+to: `ccdig records --tool Bash` prints the `Bash` calls and their results.
+Each of the last four flags needs a `--type` it applies to, or the
+command fails.
+
+The shared flags go before or after the command, and the values of a
+repeatable flag on both sides add up. `--tz` defaults to the system time
+zone (`TZ`, else `/etc/localtime`). `--root` sets the transcript root
+(default `~/.claude/projects`). `--mask` and `--mask-file` add masks, and
 `--no-mask` turns all masking off; see Masking.
 
 `CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of

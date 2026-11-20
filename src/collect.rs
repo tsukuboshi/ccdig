@@ -425,10 +425,10 @@ where
 {
     let head = record.head();
     let extra = record.extra();
-    let text = if query.grep.is_some() {
-        record.grep_text()
-    } else {
+    let text = if query.grep.is_empty() {
         Cow::Borrowed("")
+    } else {
+        record.grep_text()
     };
     query.matches(&Facts {
         branch: &head.git_branch,

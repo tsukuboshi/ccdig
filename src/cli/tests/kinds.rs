@@ -205,18 +205,23 @@ fn grep_sees_the_text_after_masking() -> TestResult {
             &["records", "--type", "reply", "--igrep", "^done"][..],
             vec!["Done."],
         ),
-        // One slot across the levels: the one after the subcommand wins.
+        // Patterns add up across the levels; a record needs to match one.
         (
             &[
                 "--igrep", "^done", "records", "--type", "reply", "--grep", "^I ",
             ][..],
+            vec!["I will run the tests.", "Done."],
+        ),
+        // A leading ! leaves out what matches.
+        (
+            &["records", "--type", "reply", "--igrep", "!^done"][..],
             vec!["I will run the tests."],
         ),
         (
             &[
-                "--grep", "^I ", "records", "--type", "reply", "--igrep", "^done",
+                "records", "--type", "reply", "--grep", "run", "--grep", "!tests",
             ][..],
-            vec!["Done."],
+            vec![],
         ),
     ] {
         check_eq(
@@ -225,15 +230,6 @@ fn grep_sees_the_text_after_masking() -> TestResult {
             &args.join(" "),
         )?;
     }
-    let both = history.run(&["records", "--grep", "a", "--igrep", "b"]);
-    check_eq(&both.code, &1, "both")?;
-    check_eq(
-        &both.err.starts_with(
-            "ccdig: the argument '--grep <REGEX>' cannot be used with '--igrep <REGEX>'",
-        ),
-        &true,
-        &both.err,
-    )?;
     Ok(())
 }
 
@@ -390,6 +386,47 @@ fn kind_filters_without_type_list_the_kinds_they_apply_to() -> TestResult {
     ] {
         check_eq(
             &strings(&records(&history, args)?, "type"),
+            &want,
+            &args.join(" "),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_leading_bang_leaves_out_a_name() -> TestResult {
+    let history = History::new("kinds/root")?;
+    for (args, key, want) in [
+        (
+            &["records", "--type", "reply", "--session", "!dddd"][..],
+            "text",
+            vec![],
+        ),
+        (
+            &["records", "--type", "reply", "--project", "!blog"][..],
+            "text",
+            vec!["I will run the tests.", "Done."],
+        ),
+        (
+            &["records", "--type", "reply", "--branch", "!main"][..],
+            "text",
+            vec!["I will run the tests."],
+        ),
+        (
+            &["records", "--type", "reply", "--skill", "!tdd"][..],
+            "text",
+            vec!["Done."],
+        ),
+        // Without --type, the kinds --tool applies to; a result whose call
+        // was not found has no tool to leave out.
+        (
+            &["records", "--tool", "!Bash"][..],
+            "tool_use_id",
+            vec!["t-2", "t-2", "t-9"],
+        ),
+    ] {
+        check_eq(
+            &strings(&records(&history, args)?, key),
             &want,
             &args.join(" "),
         )?;
