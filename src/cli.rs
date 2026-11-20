@@ -22,15 +22,17 @@ use crate::select::{Filter, Query, patterns};
 use crate::text::one_line;
 use crate::when::{DayRange, load_zone};
 
-/// Dig prompts, replies, tool calls, and tool results out of Claude Code
-/// session transcripts.
+/// Pull the logs you want to share out of Claude Code session transcripts,
+/// formatted and masked.
 #[derive(Parser)]
 #[command(
     name = "ccdig",
-    long_about = "ccdig reads Claude Code session transcripts and lists the prompts a person\n\
-                  typed, the assistant's replies, tool calls, and tool results, one kind or\n\
-                  several in the order they were written. Harness noise is dropped, slash\n\
-                  commands are folded back, and secrets are masked.",
+    long_about = "ccdig pulls the logs you want to share out of Claude Code session\n\
+                  transcripts, formatted and masked. Filters for time, project, session,\n\
+                  branch, text, kind of record, tool, outcome, and skill narrow the history\n\
+                  down, and the result is Markdown to read or JSON Lines to process. Harness\n\
+                  noise is dropped, slash commands are folded back, and common secrets are\n\
+                  masked by default.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
