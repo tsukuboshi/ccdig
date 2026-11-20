@@ -19,6 +19,9 @@ pub struct Found {
 pub struct SessionFile {
     /// When the file was last written to.
     pub modified: SystemTime,
+    /// The transcript of the session a sub-agent's transcript belongs to,
+    /// `<project>/<session>.jsonl`; `None` for the session itself.
+    pub parent: Option<PathBuf>,
     /// The transcript file.
     pub path: PathBuf,
     /// The project directory's name, such as `-Users-alice-blog`; Claude
@@ -40,8 +43,8 @@ pub struct Warning {
 
 impl Found {
     /// Adds `entry` when it is a regular `.jsonl` file, as a sub-agent's
-    /// transcript when `subagent` is set.
-    fn add(&mut self, entry: &DirEntry, project: &str, subagent: bool) {
+    /// transcript of the session in `parent` when that is set.
+    fn add(&mut self, entry: &DirEntry, project: &str, parent: Option<&Path>) {
         if !is(entry, fs::FileType::is_file) {
             return;
         }
@@ -59,15 +62,17 @@ impl Found {
         };
         self.sessions.push(SessionFile {
             modified,
+            parent: parent.map(Path::to_path_buf),
             path,
             project: project.to_owned(),
-            subagent: subagent.then(|| stem.to_owned()),
+            subagent: parent.map(|_| stem.to_owned()),
         });
     }
 
     /// Adds the sub-agent transcripts in `dir`, which most sessions do not
-    /// have. A `dir` that is a symlink is skipped.
-    fn add_subagents(&mut self, dir: &Path, project: &str) {
+    /// have, as those of the session in `parent`. A `dir` that is a symlink
+    /// is skipped.
+    fn add_subagents(&mut self, dir: &Path, project: &str, parent: &Path) {
         // read_dir follows a symlink, which could lead outside the root.
         match fs::symlink_metadata(dir) {
             Ok(metadata) if metadata.file_type().is_dir() => {}
@@ -88,7 +93,7 @@ impl Found {
         };
         for item in entries {
             match item {
-                Ok(entry) => self.add(&entry, project, true),
+                Ok(entry) => self.add(&entry, project, Some(parent)),
                 Err(error) => self.warn(dir, error),
             }
         }
@@ -162,9 +167,12 @@ pub fn find_sessions(root: &Path, subagents: bool) -> io::Result<Found> {
         };
         for entry in entries {
             if subagents && is(&entry, fs::FileType::is_dir) {
-                found.add_subagents(&entry.path().join("subagents"), &name);
+                let session = entry.path();
+                let mut parent = session.clone().into_os_string();
+                parent.push(".jsonl");
+                found.add_subagents(&session.join("subagents"), &name, Path::new(&parent));
             } else {
-                found.add(&entry, &name, false);
+                found.add(&entry, &name, None);
             }
         }
     }

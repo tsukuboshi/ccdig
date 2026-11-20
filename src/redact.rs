@@ -30,7 +30,7 @@ pub const MARKER: &str = "***REDACTED***";
 ///
 /// Token formats without a source comment follow the default rules of
 /// gitleaks: <https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml>.
-const RULES: [(&str, Replacement); 24] = [
+const RULES: [(&str, Replacement); 25] = [
     // AWS credentials by variable name: export lines from the SSO portal,
     // YAML, credentials files, and JSON with snake_case keys. The value must
     // be 16+ characters so that "AWS_SESSION_TOKEN: is it required?" keeps
@@ -88,7 +88,10 @@ const RULES: [(&str, Replacement); 24] = [
         ),
         Replacement::KeepPrefix,
     ),
-    // Slack tokens, app-level tokens, and incoming webhook URLs.
+    // Slack tokens, app-level tokens, and incoming webhook URLs. The path of
+    // a workflow or trigger URL has no upper bound, as it runs longer than
+    // the 56 characters gitleaks allows; an incoming webhook's stays at 56 so
+    // that the text after it is kept.
     (
         concat!(boundary!(), r"xox[abposr]-[A-Za-z0-9-]{10,}"),
         Replacement::KeepPrefix,
@@ -102,7 +105,11 @@ const RULES: [(&str, Replacement); 24] = [
         Replacement::KeepPrefix,
     ),
     (
-        r"hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
+        r"hooks\.slack\.com/services/[A-Za-z0-9+/]{43,56}",
+        Replacement::Marker,
+    ),
+    (
+        r"hooks\.slack\.com/(?:workflows|triggers)/[A-Za-z0-9+/]{43,}",
         Replacement::Marker,
     ),
     // SendGrid API keys.

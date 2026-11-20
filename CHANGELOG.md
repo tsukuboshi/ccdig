@@ -46,4 +46,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Markdown and digest output neutralize terminal control characters, bidi
   overrides, and Markdown or HTML in transcript fields.
 
+### Fixed
+
+- With `--subagents`, a sub-agent's records carry the title of their
+  session instead of an empty `session_title`, unless the session's own
+  transcript was last written before `--since`.
+- Slack workflow and trigger webhook URLs longer than 56 characters are
+  masked to the end.
+
 [Unreleased]: https://github.com/tsukuboshi/ccdig/commits/main
