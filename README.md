@@ -131,7 +131,9 @@ end with `redacted` and `source`:
 | `results` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 
 Every key is always present. `subagent` is empty for the session itself and
-the file name, such as `agent-1a2b`, for a sub-agent. A result whose call
+the file name, such as `agent-1a2b`, for a sub-agent. `input` is the
+untruncated input from the line's `wireToolInputs` when Claude Code stored
+one, and the `tool_use` block's otherwise. A result whose call
 was not found has an empty `tool` and a `null` `input`. `--format json`
 wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
 `filter` names the rule set below and changes whenever a rule change can

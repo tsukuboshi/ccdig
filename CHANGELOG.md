@@ -10,6 +10,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `ccdig tools` and `ccdig results` print the untruncated tool input that
+  Claude Code stores in `wireToolInputs`, instead of the shortened copy in
+  the `tool_use` block.
 - `ccdig prompts`: the prompts a person typed in Claude Code sessions, as
   JSON Lines, JSON, or Markdown. Harness traffic is dropped by the
   `strict-v2` rules, and slash command expansions are folded back into

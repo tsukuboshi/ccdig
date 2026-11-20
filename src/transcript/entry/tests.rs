@@ -263,3 +263,57 @@ fn a_tool_use_without_a_name_is_not_a_tool_call() -> TestResult {
     check_eq(&entry.content.blocks, &vec![Block::Other], "blocks")?;
     Ok(())
 }
+
+#[test]
+fn wire_tool_inputs_replace_the_input_of_the_call_with_the_same_id() -> TestResult {
+    let entry = decode(concat!(
+        r#"{"type":"assistant","message":{"content":["#,
+        r#"{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"echo cut"}},"#,
+        r#"{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"echo kept"}},"#,
+        r#"{"type":"tool_use","id":"toolu_3","name":"Bash","input":{"command":"echo also kept"}}]},"#,
+        r#""wireToolInputs":{"toolu_1":{"command":"echo cut and the rest"},"toolu_3":"not an object","toolu_9":{"command":"echo nothing calls me"}}}"#,
+    ))?;
+    let inputs: Vec<_> = entry
+        .content
+        .blocks
+        .iter()
+        .filter_map(|block| match *block {
+            Block::ToolUse(ref call) => Some(call.input.clone()),
+            Block::Other | Block::Text(_) | Block::ToolResult(_) => None,
+        })
+        .collect();
+    check_eq(
+        &inputs,
+        &vec![
+            json!({"command": "echo cut and the rest"}),
+            json!({"command": "echo kept"}),
+            json!({"command": "echo also kept"}),
+        ],
+        "inputs",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn wire_tool_inputs_that_are_not_an_object_leave_the_line_as_it_is() -> TestResult {
+    for wire in ["[]", "\"text\"", "3"] {
+        let entry = decode(&format!(
+            concat!(
+                r#"{{"type":"assistant","message":{{"content":["#,
+                r#"{{"type":"tool_use","id":"toolu_1","name":"Bash","input":{{"command":"ls"}}}}]}},"#,
+                r#""wireToolInputs":{}}}"#,
+            ),
+            wire
+        ))?;
+        check_eq(
+            &entry.content.blocks,
+            &vec![Block::ToolUse(ToolUse {
+                id: "toolu_1".to_owned(),
+                input: json!({"command": "ls"}),
+                name: "Bash".to_owned(),
+            })],
+            wire,
+        )?;
+    }
+    Ok(())
+}
