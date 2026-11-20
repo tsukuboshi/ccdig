@@ -195,6 +195,10 @@ pub struct ToolResult {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// The skill running when the call was made, for `--skill`; not
+    /// written.
+    #[serde(skip)]
+    pub skill: String,
 }
 
 impl Record for Prompt {

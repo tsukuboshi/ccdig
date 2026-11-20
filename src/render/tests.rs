@@ -274,6 +274,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
             3,
             "u-3",
         ),
+        skill: "weekly-report".to_owned(),
     };
     let orphan = ToolResult {
         tool: String::new(),

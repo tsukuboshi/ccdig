@@ -2,6 +2,11 @@
 
 use crate::transcript::entry::{Entry, Role};
 
+/// Names the rule set `classify` applies. It changes whenever a rule change
+/// can change which entries are kept. strict-v1 was the Python extractor;
+/// strict-v2, promptdig's, added the origin rule.
+pub const FILTER_VERSION: &str = "strict-v2";
+
 /// Tags the harness writes at the start of a body under the user role.
 /// `local-command` also covers `<local-command-caveat>` and
 /// `<local-command-stdout>`.
