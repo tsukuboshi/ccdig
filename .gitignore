@@ -1,0 +1,5 @@
+# Build output
+/target/
+
+# Local, never committed
+*.local.*
