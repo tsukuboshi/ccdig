@@ -3,3 +3,11 @@
 
 #[cfg(test)]
 mod testing;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the renderers that call these come in a later stage"
+    )
+)]
+mod text;
