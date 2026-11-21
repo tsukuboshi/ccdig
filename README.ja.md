@@ -44,7 +44,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 
 # 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・IP
 # アドレス・ユーザー名・ファイルに書いた値もマスクする
-ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json
 ```
 
 ### コマンド
@@ -54,15 +55,19 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 | `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果 1 件につき 1 レコード。書かれた順に並ぶ |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード |
 | `digest` | 依頼文の Markdown ダイジェスト |
-| `version` | インストールされているバージョン |
+| `version` | インストールされているバージョン。`--format json` では `{"version":"0.1.0","schema":2,"filter":"strict-v2"}` |
 
 `--type` は `prompt`（人間が打った依頼文）・`reply`（assistant の
 テキストブロック）・`call`（ツールの呼び出し）・`result`（ツールの結果。
-呼び出しのツールと入力付き）を取り、カンマ区切りでも繰り返しでも指定
+呼び出しのツールと入力付き）・`summary`（コンテキストを圧縮したときに
+Claude Code が書く要約）を取り、カンマ区切りでも繰り返しでも指定
 できます。既定は `prompt,reply,call` です。`records` と `sessions` は
 `--format` を取り、値は `jsonl`（既定）・`json`・`md` のいずれかです。
 `digest` は `--max-prompt-chars`（既定 300）と `--max-session-chars`
-（既定 2000）を取ります。
+（既定 2000）を取ります。`--format md` の `records` は `--max-input-chars N`
+を取り、ツールの呼び出しの入力にある文字列をそれぞれ N 文字で切って
+`… (M more characters)` を付けます。ファイル全体を書く `Write` でページが
+埋まらずに済みます。JSON と JSON Lines は切りません。
 
 ### 絞り込み
 
@@ -100,13 +105,16 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 
 共通のフラグはコマンドの前にも後にも置け、繰り返し指定できるフラグの値は
 前後で足し合わせます。`--tz` の既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`）
-です。`--root` で履歴のルート（既定は `~/.claude/projects`）を変えます。
-`--mask` と `--mask-file` でマスクを足し、`--no-mask` ですべてのマスクを
+です。`--root` で履歴のルートを変えます。既定は、Claude Code の
+`CLAUDE_CONFIG_DIR` が設定されていれば `$CLAUDE_CONFIG_DIR/projects`、
+なければ `~/.claude/projects` です。
+`--mask` と `--mask-values` でマスクを足し、`--no-mask` ですべてのマスクを
 切ります（後述の「マスク」の節を参照）。
 
-`CCDIG_ROOT`・`CCDIG_MASK`・`CCDIG_MASK_FILE` で、`--root`・`--mask`
-（カンマ区切り）・`--mask-file`（`PATH` と同じ区切りでパスを並べる）の
-既定値を与えられます。コマンドラインのフラグは対応する変数を置き換え、
+`CCDIG_ROOT`・`CCDIG_ON_SKIP`・`CCDIG_MASK`・`CCDIG_MASK_VALUES` で、
+`--root`・`--on-skip`・`--mask`（カンマ区切り）・`--mask-values`
+（値は 1 つ）の既定値を与えられます。`CCDIG_ROOT` は `CLAUDE_CONFIG_DIR` より優先します。
+コマンドラインのフラグは対応する変数を置き換え、
 `--no-mask` はマスクの変数を無視し、空の変数は未設定と同じに扱います。
 
 `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを検索します。
@@ -124,7 +132,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T01:00:01Z",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "redacted":false,
+ "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"}}
 ```
@@ -135,9 +143,24 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 
 | 種類 | 間に入るキー |
 | --- | --- |
-| `reply` | `text`, `model`, `skill`, `subagent` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
+| `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `summary` | `text` |
+
+`permission_mode` は、Claude Code が依頼文の行に記録したモード
+（`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
+スラッシュコマンドや古いセッションでは Claude Code が書きません。
+
+`usage` は応答のトークン数で、
+`{"input":12,"output":340,"cache_read":51000,"cache_creation":800}` の形です。
+1 回の応答は同じトークン数を持つ複数の行に分けて書かれるため、ファイルの中で
+その応答の最初の返答か呼び出しだけが値を持ち、残りと、トークン数の無い行は
+`null` です。`--type` や絞り込みでその記録が外れると、記録を足しても全体には
+なりません。思考だけの応答のように返答も呼び出しも無い応答は、トークン数を
+載せる記録がありません。`sessions` のレコードは最後に、範囲内のセッションの
+応答を 1 回ずつ足した同じ 4 つのキーを `usage` に持ちます。そのため
+`sessions` は assistant の行も読みます。
 
 どのキーも常に出力されます。`subagent` は、セッション本体では空で、
 サブエージェントでは `agent-1a2b` のようなファイル名です。サブエージェントの
@@ -147,9 +170,24 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 Claude Code が行の `wireToolInputs` に保存していればそこにある切り詰められて
 いない入力で、なければ `tool_use` ブロックの入力です。呼び出しが見つからな
 かった結果は、`tool` が空で `input` が `null` です。
-`--format json` はレコードを `{"schema":1,"filter":"strict-v2","items":[...]}` で包みます。
+`--format json` は、レコードをバージョンと実行時のフラグで包みます。
+
+```json
+{"schema":2,"filter":"strict-v2","ccdig":"0.1.0",
+ "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
+        "mask":["email","user"],"mask_values":["repo","person"],
+        "no_mask":false},
+ "items":[...]}
+```
+
+`ccdig` は文書を書いたバージョンです。`run` には、指定されたままの `--since`・
+`--until`・`--tz`（指定が無ければ `null`）、`--mask` の名前、値を除いた
+`--mask-values` のラベル、`--no-mask` が入ります。そのため、レコードの欠けが
+履歴の欠落なのか、狭い条件で実行したためなのかを見分けられます。
 `filter` は次の節のルールセットの名前で、ルールの変更で残る依頼文が変わり
-うるときは必ず変わります。
+うるときは必ず変わります。`schema` は、レコードや包みのキーが増えたり、
+減ったり、意味が変わったりするたびに上がります。スクリプトは出力を読む前に、
+`ccdig version --format json` で両方を確かめられます。
 
 ## 依頼文とみなすもの
 
@@ -175,7 +213,9 @@ thinking ブロックは決して出力しません。
 エントリを繰り返しますが、各エントリ（`uuid` と行内の位置で識別）は元の
 セッションで 1 回だけ出力されます。読めないディレクトリやファイル、
 デコードできない行、タイムスタンプのない行、64 MiB を超える行は飛ばして
-stderr に報告し、残りの出力はそのまま書きます。
+stderr に報告し、残りの出力はそのまま書きます。終了コードは 0 のままですが、
+`--on-skip fail`（または `CCDIG_ON_SKIP=fail`）を付けると、出力を書いたうえで
+終了コード 1 で終えます。スクリプトは、不完全な出力で前回の結果を置き換えずに済みます。
 
 ## マスク
 
@@ -219,22 +259,56 @@ stderr に報告し、残りの出力はそのまま書きます。
 
 | フラグ | マスクするもの |
 | --- | --- |
+| `--mask aws-account` | 文脈のある 12 桁の AWS アカウント ID。ARN の中、`Account`・`AWS_ACCOUNT_ID`・`OwnerId`・`AWS` のプリンシパルなどの名前への代入、ECR・S3・コンソールのサインインのホスト名、`--account-id` や `--owners` の後。単独の 12 桁は残す |
+| `--mask aws-profile` | 文脈のある AWS のプロファイル名。`--profile` の後、`AWS_PROFILE`・`AWS_DEFAULT_PROFILE`・`profile` キーへの代入、`[profile name]`・`[sso-session name]`・認証情報ファイルの見出し、`source_profile`。文中の名前は残す |
 | `--mask email` | メールアドレス。`git@github.com:` のような SSH のリモートは除く |
+| `--mask git-user` | git config の `user.name` と `user.email`。大文字・小文字を問わない。どちらかが未設定ならコマンドは失敗する |
 | `--mask ip` | `127.x.x.x`・`0.0.0.0`・`255.255.255.255` 以外の IPv4 アドレスと、3 グループ以上の IPv6 アドレス |
 | `--mask user` | ユーザー名（`$HOME` の最後の部分）。大文字・小文字を問わず、区切りが `.`・`_`・`-` のどれでも。そのため `-Users-alice-b-blog` のようなプロジェクトのディレクトリ名の中でも |
-| `--mask-file FILE` | ファイルの空でない各行を前後の空白を除いて。どこに現れても、書いたとおりに（大文字と小文字を区別） |
+| `--mask-values JSON` | ラベルから値の一覧への JSON オブジェクト（先頭が `@` ならそのファイル）にある値。どこに現れても、書いたとおりに（大文字と小文字を区別） |
+
+`--mask-values` には次のようなオブジェクトを渡します。
+
+```json
+{"repo": ["acme-billing", "acme-portal"],
+ "person": [["Taro Yamada", "yamada"], "Hanako Sato"],
+ "": ["secret-word"]}
+```
+
+ラベルの下の値は、ラベルと番号を全角の角かっこで囲んだものに置き換わり、
+番号はラベルごとに渡した順に振ります。`acme-billing` は `［repo1］`、
+`acme-portal` は `［repo2］` になるので、名前を伏せたまま 2 つのリポジトリの
+レコードを区別できます。値の代わりに一覧を書くと、その中の表記はどれも同じ
+番号になり、`Taro Yamada` と `yamada` はどちらも `［person1］` です。`""` の
+下の値は `***REDACTED***` になります。形の崩れたオブジェクトを渡すと
+コマンドは止まります。
 
 `--mask` はカンマ区切りで並べられ、`--mask email,user` のように繰り返しも
-指定できます。`--mask-file` も繰り返し指定できます。これらのマスクは、本文
+指定できます。`--mask-values` も繰り返し指定でき、番号はオブジェクトを
+またいで続き、2 回渡した値は最初のラベルのままです。これらのマスクは、本文
 でないフィールド、つまり `project`・`cwd`・`git_branch`・ファイルのパス・
-`tool`・`model`・`subagent`・`command` と、stderr の警告にもかかります。
-ツールの入力のキーはそのまま残ります。IPv4 のルールは `1.2.3.4` のような単独のバージョン番号と
-アドレスを区別できないため、それもマスクします。`v1.2.3.4` のように英字や
-ドットの後に続くものは残ります。名字だけのような、ユーザー名の一部だけの
-形は残ります。伏せたいときはマスク用のファイルに書いてください。
+`tool`・`model`・`subagent`・`command`・ツールの入力のキーと、stderr の
+警告にもかかります。マスクした結果、前のキーと同じになったキー（伏せた
+ファイルのパス 2 つなど）には `#2`・`#3` と番号を付け、どちらの値も残します。
+組み込みのルールはキーにはかけません。IPv4 のルールは `1.2.3.4` のような
+単独のバージョン番号とアドレスを区別できないため、それもマスクします。
+`v1.2.3.4` のように英字やドットの後に続くものは残ります。名字だけのような、ユーザー名の一部だけの
+形は残ります。伏せたいときは `--mask-values` に書いてください。
+
+`--mask-report text` は、出力の後で stderr に、出力したレコードの中で各
+ルールが何回マスクしたかを多い順に書きます。
+`ccdig: masked 3 by github-token, 2 by values/repo, 1 by email` のような 1 行
+です。`--mask-report json` は同じ内容を `{"masked":{"github-token":3,...}}`
+で書きます。絞り込みや `--limit` で出力しなかったレコードは数えず、値そのものは
+決して書きません。数えるのは `--format jsonl` が出す各レコードの全フィールドで、
+フィールドを省いたり本文を切ったりする Markdown と `digest` では、見えるマスクが
+件数より少ないことがあります。組み込みのルールは `aws-key-id` や
+`credential-assignment` のように見つけるものの名前で、ツールの入力でキーを理由に丸ごと伏せた文字列は
+`credential-key` です。ほかのマスクは `--mask` の名前のとおりで、
+`--mask-values` の値は `values`、ラベル付きなら `values/` とラベルです。
 
 `--no-mask` は、秘密情報も含めて書かれたとおりに出します。自分の端末で
-マスクの結果を確かめるためのものです。`--mask` や `--mask-file` とは一緒に
+マスクの結果を確かめるためのものです。`--mask` や `--mask-values` とは一緒に
 使えません。
 
 パターンは特徴的なプレフィックスか認証情報らしい名前を手がかりにするため、

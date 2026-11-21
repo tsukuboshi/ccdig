@@ -4,6 +4,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::redact::Counts;
+use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
 /// The `agent` of every record.
@@ -30,6 +32,9 @@ pub struct Head {
     pub git_branch: String,
     /// When the line was written.
     pub timestamp: Stamp,
+    /// What masking these keys counted, for `--mask-report`; not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
 /// How a prompt was typed.
@@ -58,16 +63,31 @@ pub struct Prompt {
     pub kind: Kind,
     /// The slash command's name, or empty for plain text.
     pub command: String,
+    /// The permission mode the line was written in, such as `plan` or
+    /// `auto`, or empty when the line does not say, as for slash commands.
+    pub permission_mode: String,
     /// Whether masking changed the text.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What masking the kind's own fields counted, for `--mask-report`;
+    /// not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
 /// What the Markdown writers need of every kind of record.
 pub trait Record {
     /// The shared keys.
     fn head(&self) -> &Head;
+    /// What masking the record counted, its shared keys included.
+    fn masked(&self) -> Counts {
+        let mut all = self.head().masked.clone();
+        all.merge(self.own_masked());
+        all
+    }
+    /// What masking the record's own fields counted.
+    fn own_masked(&self) -> &Counts;
     /// Where the line is.
     fn source(&self) -> &Source;
     /// The sub-agent file name, or empty for the session itself.
@@ -92,10 +112,17 @@ pub struct Reply {
     pub skill: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
+    /// The tokens of the response, on the first record of the response in
+    /// the file; `null` on the others and when the line has none.
+    pub usage: Option<Usage>,
     /// Whether masking changed the text.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What masking the kind's own fields counted, for `--mask-report`;
+    /// not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
 /// One session with at least one selected prompt: a line of
@@ -130,6 +157,35 @@ pub struct Session {
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
+    /// The tokens of the session's responses in the range, each response
+    /// once.
+    pub usage: Usage,
+    /// What masking these keys counted, for `--mask-report`; not written.
+    #[serde(skip)]
+    pub masked: Counts,
+}
+
+/// The summary Claude Code writes when it compacts the context: a
+/// `summary` of `ccdig records`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Summary {
+    /// The shared keys.
+    #[serde(flatten)]
+    pub head: Head,
+    /// The summary, trimmed and masked.
+    pub text: String,
+    /// Whether masking changed the text.
+    pub redacted: bool,
+    /// Where the line is.
+    pub source: Source,
+    /// What masking the kind's own fields counted, for `--mask-report`;
+    /// not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
 /// Where a record's line is.
@@ -163,10 +219,16 @@ pub struct ToolCall {
     pub skill: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
+    /// The tokens of the response, as for a reply.
+    pub usage: Option<Usage>,
     /// Whether masking changed the input.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What masking the kind's own fields counted, for `--mask-report`;
+    /// not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
 /// A tool's output, with the call it answers: a `result` of
@@ -200,10 +262,14 @@ pub struct ToolResult {
     /// written.
     #[serde(skip)]
     pub skill: String,
+    /// What masking the kind's own fields counted, for `--mask-report`;
+    /// not written.
+    #[serde(skip)]
+    pub masked: Counts,
 }
 
-/// One line of `ccdig records`: a prompt, a reply, a tool call, or a tool
-/// result, written with a `type` key naming which.
+/// One line of `ccdig records`: a prompt, a reply, a tool call, a tool
+/// result, or a summary, written with a `type` key naming which.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Turn {
@@ -215,11 +281,17 @@ pub enum Turn {
     Reply(Reply),
     /// A tool result.
     Result(ToolResult),
+    /// A compaction summary.
+    Summary(Summary),
 }
 
 impl Record for Prompt {
     fn head(&self) -> &Head {
         &self.head
+    }
+
+    fn own_masked(&self) -> &Counts {
+        &self.masked
     }
 
     fn source(&self) -> &Source {
@@ -236,6 +308,10 @@ impl Record for Reply {
         &self.head
     }
 
+    fn own_masked(&self) -> &Counts {
+        &self.masked
+    }
+
     fn source(&self) -> &Source {
         &self.source
     }
@@ -245,9 +321,31 @@ impl Record for Reply {
     }
 }
 
+impl Record for Summary {
+    fn head(&self) -> &Head {
+        &self.head
+    }
+
+    fn own_masked(&self) -> &Counts {
+        &self.masked
+    }
+
+    fn source(&self) -> &Source {
+        &self.source
+    }
+
+    fn subagent(&self) -> &'static str {
+        ""
+    }
+}
+
 impl Record for ToolCall {
     fn head(&self) -> &Head {
         &self.head
+    }
+
+    fn own_masked(&self) -> &Counts {
+        &self.masked
     }
 
     fn source(&self) -> &Source {
@@ -262,6 +360,10 @@ impl Record for ToolCall {
 impl Record for ToolResult {
     fn head(&self) -> &Head {
         &self.head
+    }
+
+    fn own_masked(&self) -> &Counts {
+        &self.masked
     }
 
     fn source(&self) -> &Source {
@@ -281,6 +383,7 @@ impl Turn {
             Self::Reply(ref reply) => reply,
             Self::Call(ref call) => call,
             Self::Result(ref result) => result,
+            Self::Summary(ref summary) => summary,
         }
     }
 }
@@ -288,6 +391,10 @@ impl Turn {
 impl Record for Turn {
     fn head(&self) -> &Head {
         self.inner().head()
+    }
+
+    fn own_masked(&self) -> &Counts {
+        self.inner().own_masked()
     }
 
     fn source(&self) -> &Source {

@@ -44,7 +44,8 @@ ccdig digest --since 2026-10-05 --until 2026-10-11
 
 # One session as a thread to share, with emails, IP addresses, the user
 # name, and the values in a file masked too
-ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secrets.txt
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json
 ```
 
 ### Commands
@@ -54,14 +55,18 @@ ccdig records --session 1a2b --format md --mask email,ip,user --mask-file secret
 | `records` | One record per prompt, reply, tool call, or tool result, of the kinds `--type` picks, in the order they were written |
 | `sessions` | One record per session with a selected prompt |
 | `digest` | Markdown digest of the prompts |
-| `version` | The installed version |
+| `version` | The installed version, or with `--format json`, `{"version":"0.1.0","schema":2,"filter":"strict-v2"}` |
 
 `--type` takes `prompt` (a prompt a person typed), `reply` (a text block
-of the assistant), `call` (a tool call), and `result` (a tool result, with
-the call's tool and input), comma-separated or repeated, and defaults to
-`prompt,reply,call`. `records` and `sessions` take `--format`: `jsonl`
+of the assistant), `call` (a tool call), `result` (a tool result, with
+the call's tool and input), and `summary` (the summary Claude Code writes
+when it compacts the context), comma-separated or repeated, and defaults
+to `prompt,reply,call`. `records` and `sessions` take `--format`: `jsonl`
 (default), `json`, or `md`. `digest` takes `--max-prompt-chars` (default
-300) and `--max-session-chars` (default 2000).
+300) and `--max-session-chars` (default 2000). With `--format md`,
+`records` takes `--max-input-chars N` to cut each string in a tool call's
+input to N characters, followed by `… (M more characters)`, so a `Write`
+of a whole file does not fill the page; JSON and JSON Lines are never cut.
 
 ### Filters
 
@@ -100,12 +105,15 @@ command fails.
 The shared flags go before or after the command, and the values of a
 repeatable flag on both sides add up. `--tz` defaults to the system time
 zone (`TZ`, else `/etc/localtime`). `--root` sets the transcript root
-(default `~/.claude/projects`). `--mask` and `--mask-file` add masks, and
-`--no-mask` turns all masking off; see Masking.
+(default `$CLAUDE_CONFIG_DIR/projects` when Claude Code's
+`CLAUDE_CONFIG_DIR` is set, else `~/.claude/projects`). `--mask` and
+`--mask-values` add masks, and `--no-mask` turns all masking off; see
+Masking.
 
-`CCDIG_ROOT`, `CCDIG_MASK`, and `CCDIG_MASK_FILE` set the defaults of
-`--root`, `--mask` (comma-separated), and `--mask-file` (paths separated
-as in `PATH`). The flag on the command line replaces its variable,
+`CCDIG_ROOT`, `CCDIG_ON_SKIP`, `CCDIG_MASK`, and `CCDIG_MASK_VALUES` set
+the defaults of `--root`, `--on-skip`, `--mask` (comma-separated), and
+`--mask-values` (one value). `CCDIG_ROOT` comes before
+`CLAUDE_CONFIG_DIR`. The flag on the command line replaces its variable,
 `--no-mask` ignores the mask variables, and an empty variable counts as
 unset.
 
@@ -124,7 +132,7 @@ call's input as compact JSON, or a result's text. For `sessions` and
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T01:00:01Z",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "redacted":false,
+ "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"}}
 ```
@@ -135,9 +143,26 @@ have the same keys from `type` to `timestamp`, and end with `redacted` and
 
 | Type | Keys in between |
 | --- | --- |
-| `reply` | `text`, `model`, `skill`, `subagent` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent` |
+| `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `summary` | `text` |
+
+`permission_mode` is the mode Claude Code recorded on the prompt's line,
+such as `default`, `plan`, or `auto`, and is empty when the line does not
+say: Claude Code writes none for a slash command or in older sessions.
+
+`usage` is the tokens of the response, as
+`{"input":12,"output":340,"cache_read":51000,"cache_creation":800}`. A
+response is written over several lines, each with the same tokens, so only
+the first reply or call of a response in a file carries them, and the
+others have `null`, as do lines without tokens; with `--type` or a filter
+that leaves that record out, the records no longer add up to the whole,
+and a response with no reply or call, such as one of thinking alone, has
+no record to carry its tokens. A
+`sessions` record ends with the same four keys in `usage`, the sum over
+the session's responses in the range, each once; for it, `sessions` also
+reads the assistant lines.
 
 Every key is always present. `subagent` is empty for the session itself and
 the file name, such as `agent-1a2b`, for a sub-agent, whose record carries
@@ -147,9 +172,25 @@ when the session's own transcript was last written before `--since`.
 untruncated input from the line's `wireToolInputs` when Claude Code stored
 one, and the `tool_use` block's otherwise. A result whose call
 was not found has an empty `tool` and a `null` `input`. `--format json`
-wraps the records as `{"schema":1,"filter":"strict-v2","items":[...]}`.
+wraps the records with the versions and the flags of the run:
+
+```json
+{"schema":2,"filter":"strict-v2","ccdig":"0.1.0",
+ "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
+        "mask":["email","user"],"mask_values":["repo","person"],
+        "no_mask":false},
+ "items":[...]}
+```
+
+`ccdig` is the version that wrote the document. `run` holds `--since`,
+`--until`, and `--tz` as given, `null` when not given, the `--mask` names,
+the labels of `--mask-values` without their values, and `--no-mask`, so a
+gap in the records can be told apart from a narrower run.
 `filter` names the rule set below and changes whenever a rule change can
-change which prompts are kept.
+change which prompts are kept. `schema` goes up whenever a key of the
+records or the envelope is added, removed, or changes meaning, so a script
+can check both with `ccdig version --format json` before it reads the
+output.
 
 ## What counts as a typed prompt
 
@@ -173,7 +214,10 @@ are not followed. A resumed session repeats earlier entries; each entry
 (by `uuid` and position in the line) is listed once, in the original
 session. A directory or file that cannot be read, and lines that cannot be
 decoded, have no timestamp, or exceed 64 MiB, are skipped and reported on
-stderr while the rest of the output is still written.
+stderr while the rest of the output is still written. The run still ends
+with status 0 unless `--on-skip fail` (or `CCDIG_ON_SKIP=fail`) is given;
+then it ends with status 1 after writing the output, so a script can keep
+its previous copy instead of an incomplete one.
 
 ## Masking
 
@@ -216,23 +260,61 @@ More masks are off by default and can be added to any command:
 
 | Flag | Masks |
 | --- | --- |
+| `--mask aws-account` | 12-digit AWS account IDs in context: in an ARN, assigned to a name such as `Account`, `AWS_ACCOUNT_ID`, `OwnerId`, or an `AWS` principal, in an ECR, S3, or console sign-in host, and after `--account-id` or `--owners`; 12 digits on their own stay |
+| `--mask aws-profile` | AWS profile names in context: after `--profile`, assigned to `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, or a `profile` key, in a `[profile name]` or `[sso-session name]` header or a credentials file header, and as a `source_profile`; a name in prose stays |
 | `--mask email` | Email addresses, but not an SSH remote such as `git@github.com:` |
+| `--mask git-user` | The `user.name` and `user.email` of git config, in any case; the command fails when either is not set |
 | `--mask ip` | IPv4 addresses other than `127.x.x.x`, `0.0.0.0`, and `255.255.255.255`, and IPv6 addresses of three groups or more |
 | `--mask user` | The user name, the last part of `$HOME`, in any case and with any of `.`, `_`, and `-` between its parts, so also in a project directory name such as `-Users-alice-b-blog` |
-| `--mask-file FILE` | Each non-empty line of the file, trimmed, wherever it appears, as typed (case matters) |
+| `--mask-values JSON` | The values in a JSON object of labels to lists of values, or with a leading `@`, in a file, wherever they appear, as typed (case matters) |
+
+`--mask-values` takes an object such as this:
+
+```json
+{"repo": ["acme-billing", "acme-portal"],
+ "person": [["Taro Yamada", "yamada"], "Hanako Sato"],
+ "": ["secret-word"]}
+```
+
+A value under a label becomes the label and a number in full-width
+brackets, numbered per label in the order given: `acme-billing` becomes
+`［repo1］` and `acme-portal` `［repo2］`, so the records of two
+repositories stay apart while their names are hidden. A list in place of a
+value gives each spelling in it the same number, so `Taro Yamada` and
+`yamada` both become `［person1］`. A value under `""` becomes
+`***REDACTED***`. A malformed object stops the command.
 
 `--mask` takes a comma-separated list and is repeatable, as in
-`--mask email,user`, and so is `--mask-file`. These masks also apply to
-the fields that are not text: `project`, `cwd`, `git_branch`, file paths,
-`tool`, `model`, `subagent`, `command`, and the warnings on stderr. The
-keys of a tool's input stay as they are. An IPv4 rule cannot tell a bare
-version number such as `1.2.3.4` from an address, so it masks that too;
+`--mask email,user`, and so is `--mask-values`; the numbers go on across
+the objects, and a value given twice keeps its first label. These masks
+also apply to the fields that are not text: `project`, `cwd`,
+`git_branch`, file paths, `tool`, `model`, `subagent`, `command`, the keys
+of a tool's input, and
+the warnings on stderr. A key that masking makes equal to an earlier one,
+such as two masked file paths, gets `#2`, `#3`, and so on, so both values
+stay. The built-in rules leave the keys alone. An IPv4 rule cannot tell a
+bare version number such as `1.2.3.4` from an address, so it masks that too;
 one after a letter or a dot, as in `v1.2.3.4`, stays. A part of the user
-name alone, such as a first name, stays; add it to a mask file.
+name alone, such as a first name, stays; add it to `--mask-values`.
+
+`--mask-report text` writes on stderr, after the output, how many times
+each rule masked something in the records printed, as in
+`ccdig: masked 3 by github-token, 2 by values/repo, 1 by email`, most
+first; `--mask-report json` writes the same as
+`{"masked":{"github-token":3,...}}`. Records left out by a filter or
+`--limit` are not counted, and the values themselves are never written.
+Each record counts in all its fields, as `--format jsonl` prints them, so
+Markdown and `digest`, which leave fields out or cut the text, can show
+fewer masks than the report counts.
+The built-in rules are named after what they find, such as `aws-key-id`
+or `credential-assignment`; a string masked whole for its key in a tool's
+input is `credential-key`; the other masks are named as `--mask` names
+them, and the values of `--mask-values` are `values`, or `values/` and the
+label.
 
 `--no-mask` prints everything as it was written, secrets included, for
 checking the masks on your own machine. It cannot be combined with
-`--mask` or `--mask-file`.
+`--mask` or `--mask-values`.
 
 The patterns need a distinctive prefix or a credential-like name, so they
 miss secrets without one, such as `--password value` with a space or a

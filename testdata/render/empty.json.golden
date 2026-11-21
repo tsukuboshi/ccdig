@@ -1,5 +1,14 @@
 {
-  "schema": 1,
+  "schema": 2,
   "filter": "strict-v2",
+  "ccdig": "0.1.0",
+  "run": {
+    "since": null,
+    "until": null,
+    "tz": null,
+    "mask": [],
+    "mask_values": [],
+    "no_mask": false
+  },
   "items": []
 }

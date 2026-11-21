@@ -2,9 +2,9 @@
 
 use std::time::Instant;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
-use super::{ExtraMasks, MARKER, Redactor};
+use super::{Counts, ExtraMasks, MARKER, Redactor};
 use crate::testing::{TestResult, check_eq};
 
 /// One row of the table: a name, the input, and the expected output.
@@ -684,6 +684,60 @@ fn redact_json_reports_no_change_when_nothing_matches() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn redact_json_masks_keys_with_the_extra_masks() -> TestResult {
+    let redactor = extra_redactor()?;
+    let mut value = json!({
+        "corp-internal": "kept",
+        "/home/alice.b/notes": 1_i32,
+        "plain": "corp-internal",
+    });
+    let changed = redactor.redact_json(&mut value);
+    let want = json!({
+        "***REDACTED***": "kept",
+        "/home/***REDACTED***/notes": 1_i32,
+        "plain": "***REDACTED***",
+    });
+    check_eq(&value, &want, "tool input")?;
+    check_eq(&changed, &true, "changed")?;
+    Ok(())
+}
+
+#[test]
+fn redact_json_numbers_the_keys_that_masking_makes_equal() -> TestResult {
+    let redactor = extra_redactor()?;
+    let mut value = json!({
+        "corp-internal": 1_i32,
+        "RED": 2_i32,
+        "corp-internal.example": 3_i32,
+    });
+    redactor.redact_json(&mut value);
+    let got: Vec<(String, Value)> = value
+        .as_object()
+        .ok_or("not an object")?
+        .iter()
+        .map(|(key, field)| (key.clone(), field.clone()))
+        .collect();
+    let want = vec![
+        ("***REDACTED***".to_owned(), json!(1_i32)),
+        ("***REDACTED***#2".to_owned(), json!(2_i32)),
+        ("***REDACTED***#3".to_owned(), json!(3_i32)),
+    ];
+    check_eq(&got, &want, "keys in order")?;
+    Ok(())
+}
+
+#[test]
+fn redact_json_leaves_keys_alone_without_extra_masks() -> TestResult {
+    let redactor = Redactor::new()?;
+    let token = fake_github("ghp");
+    let mut value = json!({ "corp-internal": 1_i32, token: 2_i32 });
+    let before = value.clone();
+    check_eq(&redactor.redact_json(&mut value), &false, "changed")?;
+    check_eq(&value, &before, "keys")?;
+    Ok(())
+}
+
 /// The extra masks on, with `alice.b` as the user name and three values
 /// from a mask file.
 fn extra_redactor() -> Result<Redactor, regex::Error> {
@@ -691,15 +745,14 @@ fn extra_redactor() -> Result<Redactor, regex::Error> {
         emails: true,
         ips: true,
         user: Some("alice.b".to_owned()),
-        values: vec![
-            "corp-internal".to_owned(),
-            "corp-internal.example".to_owned(),
-            "RED".to_owned(),
-        ],
+        values: ["corp-internal", "corp-internal.example", "RED"]
+            .map(|value| (value.to_owned(), MARKER.to_owned(), String::new()))
+            .into(),
+        ..ExtraMasks::default()
     })
 }
 
-/// The rows for the masks that `--mask` and `--mask-file` turn on.
+/// The rows for the masks that `--mask` and `--mask-values` turn on.
 fn extra_cases() -> Vec<Case> {
     vec![
         case(
@@ -776,11 +829,204 @@ fn extra_cases() -> Vec<Case> {
 }
 
 #[test]
+fn counts_name_each_rule_that_masked_something() -> TestResult {
+    let redactor = extra_redactor()?;
+    let mut counts = Counts::default();
+    let (_, changed) = redactor.redact_counted(
+        &format!(
+            "mail bob@example.com about corp-internal with password={} on 10.0.12.34 and 10.0.12.35",
+            fake(20)
+        ),
+        &mut counts,
+    );
+    check_eq(&changed, &true, "changed")?;
+    check_eq(
+        &counts.ranked(),
+        &vec![
+            ("ip".to_owned(), 2_usize),
+            ("credential-assignment".to_owned(), 1),
+            ("email".to_owned(), 1),
+            ("values".to_owned(), 1),
+        ],
+        "text",
+    )?;
+    let mut json_counts = Counts::default();
+    let mut value = json!({"password": fake(10), "corp-internal": "kept"});
+    redactor.redact_json_counted(&mut value, &mut json_counts);
+    check_eq(
+        &json_counts.ranked(),
+        &vec![
+            ("credential-key".to_owned(), 1_usize),
+            ("values".to_owned(), 1),
+        ],
+        "tool input",
+    )?;
+    let mut none = Counts::default();
+    redactor.redact_counted("nothing here", &mut none);
+    check_eq(&none.ranked(), &Vec::new(), "nothing")?;
+    Ok(())
+}
+
+#[test]
 fn extra_masks_apply_only_when_asked_for() -> TestResult {
     let extra = extra_redactor()?;
     let plain = Redactor::new()?;
     for row in extra_cases() {
         let (got, changed) = extra.redact(&row.input);
+        check_eq(got.as_str(), row.want.as_str(), row.name)?;
+        check_eq(&changed, &(row.input != row.want), row.name)?;
+        let (untouched, _) = plain.redact(&row.input);
+        check_eq(untouched.as_str(), row.input.as_str(), row.name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn labels_and_user_names_do_not_cut_a_secret_short() -> TestResult {
+    let redactor = Redactor::with(ExtraMasks {
+        user: Some("bob".to_owned()),
+        values: vec![
+            (
+                "acme".to_owned(),
+                "\u{FF3B}org1\u{FF3D}".to_owned(),
+                "org".to_owned(),
+            ),
+            (
+                "bob-secret-infra".to_owned(),
+                "\u{FF3B}repo1\u{FF3D}".to_owned(),
+                "repo".to_owned(),
+            ),
+        ],
+        ..ExtraMasks::default()
+    })?;
+    for (input, want) in [
+        (
+            format!("password={}acme-{}", fake(9), fake(10)),
+            "password=***REDACTED***",
+        ),
+        (format!("token=xacme-{}", fake(6)), "token=***REDACTED***"),
+        (
+            format!("DB_PASSWORD=acme-{}!x", fake(10)),
+            "DB_PASSWORD=***REDACTED***",
+        ),
+        (
+            "clone acme/bob-secret-infra as bob".to_owned(),
+            "clone \u{FF3B}org1\u{FF3D}/\u{FF3B}repo1\u{FF3D} as ***REDACTED***",
+        ),
+    ] {
+        check_eq(&redactor.redact(&input).0, &want.to_owned(), &input)?;
+    }
+    Ok(())
+}
+
+/// The AWS account, AWS profile, and git user masks on, with
+/// `Hanako Sato` and `hanako@example.com` from git.
+fn account_redactor() -> Result<Redactor, regex::Error> {
+    Redactor::with(ExtraMasks {
+        aws_accounts: true,
+        aws_profiles: true,
+        git_users: vec!["Hanako Sato".to_owned(), "hanako@example.com".to_owned()],
+        ..ExtraMasks::default()
+    })
+}
+
+/// The AWS account IDs, AWS profiles, and git user names in context.
+fn account_cases() -> Vec<Case> {
+    vec![
+        case(
+            "account in an ARN",
+            "arn:aws:iam::123456789012:role/deploy".to_owned(),
+            "arn:aws:iam::***REDACTED***:role/deploy",
+        ),
+        case(
+            "an ARN without an account",
+            "arn:aws:s3:::my-bucket/key".to_owned(),
+            "arn:aws:s3:::my-bucket/key",
+        ),
+        case(
+            "account from aws sts",
+            r#"{"Account": "123456789012"}"#.to_owned(),
+            r#"{"Account": "***REDACTED***"}"#,
+        ),
+        case(
+            "account assigned to a name",
+            "export AWS_ACCOUNT_ID=123456789012 account_id: 210987654321".to_owned(),
+            "export AWS_ACCOUNT_ID=***REDACTED*** account_id: ***REDACTED***",
+        ),
+        case(
+            "account in an ECR host",
+            "docker push 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/app:1".to_owned(),
+            "docker push ***REDACTED***.dkr.ecr.ap-northeast-1.amazonaws.com/app:1",
+        ),
+        case(
+            "account after a flag",
+            "aws organizations describe-account --account-id 123456789012".to_owned(),
+            "aws organizations describe-account --account-id ***REDACTED***",
+        ),
+        case(
+            "twelve digits without context and thirteen digits stay",
+            "order 123456789012 shipped, account_id: 1234567890123".to_owned(),
+            "order 123456789012 shipped, account_id: 1234567890123",
+        ),
+        case(
+            "profile after the flag",
+            "aws s3 ls --profile org_read && aws sso login --profile=prod-admin".to_owned(),
+            "aws s3 ls --profile ***REDACTED*** && aws sso login --profile=***REDACTED***",
+        ),
+        case(
+            "profile in a variable",
+            "export AWS_PROFILE=prod-admin AWS_DEFAULT_PROFILE='org_read'".to_owned(),
+            "export AWS_PROFILE=***REDACTED*** AWS_DEFAULT_PROFILE='***REDACTED***'",
+        ),
+        case(
+            "profile in a config file",
+            "[profile prod-admin]\nsource_profile = org_read".to_owned(),
+            "[profile ***REDACTED***]\nsource_profile = ***REDACTED***",
+        ),
+        case(
+            "account in a console host, a hyphenated key, an owner, and a principal",
+            r#"https://123456789012.signin.aws.amazon.com/console account-id: 210987654321 "OwnerId": "111122223333" {"AWS": "222233334444"}"#.to_owned(),
+            r#"https://***REDACTED***.signin.aws.amazon.com/console account-id: ***REDACTED*** "OwnerId": "***REDACTED***" {"AWS": "***REDACTED***"}"#,
+        ),
+        case(
+            "account after an owners flag",
+            "aws ec2 describe-images --owners 444455556666".to_owned(),
+            "aws ec2 describe-images --owners ***REDACTED***",
+        ),
+        case(
+            "profile in a credentials file, an SSO session, and a YAML key",
+            "[acme-prod]\naws_access_key_id = x\n[sso-session acme]\nprovider:\n  profile: acme-stg".to_owned(),
+            "[***REDACTED***]\naws_access_key_id = x\n[sso-session ***REDACTED***]\nprovider:\n  profile: ***REDACTED***",
+        ),
+        case(
+            "a section of another file stays",
+            "[dependencies]\nserde = \"1\"".to_owned(),
+            "[dependencies]\nserde = \"1\"",
+        ),
+        case(
+            "a profile name in prose stays",
+            "use the org_read profile".to_owned(),
+            "use the org_read profile",
+        ),
+        case(
+            "git user name and email, in any case",
+            "Author: Hanako Sato <hanako@example.com> and hanako sato".to_owned(),
+            "Author: ***REDACTED*** <***REDACTED***> and ***REDACTED***",
+        ),
+        case(
+            "a longer word stays",
+            "Hanako Satox".to_owned(),
+            "Hanako Satox",
+        ),
+    ]
+}
+
+#[test]
+fn account_masks_apply_only_when_asked_for() -> TestResult {
+    let masked = account_redactor()?;
+    let plain = Redactor::new()?;
+    for row in account_cases() {
+        let (got, changed) = masked.redact(&row.input);
         check_eq(got.as_str(), row.want.as_str(), row.name)?;
         check_eq(&changed, &(row.input != row.want), row.name)?;
         let (untouched, _) = plain.redact(&row.input);
