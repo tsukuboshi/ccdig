@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use jiff::Timestamp;
 use tempfile::TempDir;
 
-use super::Environment;
+use super::{Environment, VERSION};
 use crate::testing::{TestResult, check_eq, golden};
 
 /// The flags that pin the sample week, in JST so the goldens do not
@@ -619,14 +619,18 @@ fn the_digest_rejects_a_prompt_limit_not_below_the_session_limit() -> TestResult
 fn version_and_help() -> TestResult {
     let history = History::new("root")?;
     let version = history.run(&["version"]);
-    check_eq(version.out.as_str(), "ccdig v0.1.0\n", "version")?;
+    check_eq(&version.out, &format!("ccdig v{VERSION}\n"), "version")?;
     let text = history.run(&["version", "--format", "text"]);
-    check_eq(text.out.as_str(), "ccdig v0.1.0\n", "version --format text")?;
+    check_eq(
+        &text.out,
+        &format!("ccdig v{VERSION}\n"),
+        "version --format text",
+    )?;
     let json = history.run(&["version", "--format", "json"]);
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
-        json.out.as_str(),
-        "{\"version\":\"0.1.0\",\"schema\":2,\"filter\":\"strict-v2\"}\n",
+        &json.out,
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":2,\"filter\":\"strict-v2\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -1635,7 +1639,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("ccdig"),
-        &Some(&serde_json::json!("0.1.0")),
+        &Some(&serde_json::json!(VERSION)),
         "version",
     )?;
     check_eq(
