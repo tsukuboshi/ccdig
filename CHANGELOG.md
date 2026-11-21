@@ -10,6 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Each release has a prebuilt binary for macOS on Apple silicon,
+  `ccdig-aarch64-apple-darwin.tar.gz`, with its SHA-256 checksum.
 - `--mask email`, `--mask ip`, and `--mask user` mask email addresses, IP
   addresses, and the user name from `$HOME`; `--mask aws-account` and
   `--mask aws-profile` mask AWS account IDs and profile names in context,

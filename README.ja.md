@@ -14,7 +14,25 @@ Claude Code の会話履歴から、共有したいログだけを、整形・�
 
 ## インストール
 
-Rust 1.99.1 以降が必要です。
+各[リリース](https://github.com/tsukuboshi/ccdig/releases)に、
+Apple silicon の macOS 向けビルド済みバイナリを添付しています。
+署名のないバイナリを macOS に隔離されないよう、ブラウザではなく `curl` で
+取得してください。
+次の手順は `ccdig` を `~/.local/bin` に置きます。
+このディレクトリが `PATH` に入っていなければ追加してください。
+
+```sh
+base=https://github.com/tsukuboshi/ccdig/releases/latest/download
+curl -fsSLO "$base/ccdig-aarch64-apple-darwin.tar.gz"
+curl -fsSLO "$base/ccdig-aarch64-apple-darwin.tar.gz.sha256"
+shasum -a 256 -c ccdig-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf ccdig-aarch64-apple-darwin.tar.gz
+install -d ~/.local/bin
+install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
+~/.local/bin/ccdig version
+```
+
+ほかのプラットフォームでは、Rust 1.99.1 以降でビルドします。
 
 ```sh
 cargo install --locked --git https://github.com/tsukuboshi/ccdig

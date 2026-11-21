@@ -1,0 +1,71 @@
+---
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+# Never cancel a release halfway through publishing it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    # macos-latest is Apple silicon, so the binary is built natively.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      TARGET: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # releases/latest/download serves the newest release to every user,
+      # so publish only what is on main.
+      - name: Check that the tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points to a commit that is not on main"
+            exit 1
+          fi
+      - run: rustup toolchain install
+      - name: Check that the tag matches the version in Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked |
+            jq -r '.packages[0].version')
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+      - run: cargo test --locked
+      - run: cargo build --release --locked --target "$TARGET"
+      # The asset names carry no version, so the README can link to
+      # releases/latest/download/. Leave out extended attributes and ._
+      # files, so extracting does not bring back a quarantine flag.
+      - name: Package
+        run: |
+          name="ccdig-$TARGET"
+          mkdir "$name"
+          cp "target/$TARGET/release/ccdig" LICENSE README.md "$name/"
+          COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
+            -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      # On a re-run after a failed upload, replace the assets of the
+      # release the first run created.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=("ccdig-$TARGET.tar.gz" "ccdig-$TARGET.tar.gz.sha256")
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --clobber "${assets[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+              "${assets[@]}"
+          fi
