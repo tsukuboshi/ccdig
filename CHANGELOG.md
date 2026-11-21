@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-11-21
+
 ### Added
 
 - Each release has a prebuilt binary for macOS on Apple silicon,
@@ -97,4 +99,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Slack workflow and trigger webhook URLs longer than 56 characters are
   masked to the end.
 
-[Unreleased]: https://github.com/tsukuboshi/ccdig/commits/main
+[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/tsukuboshi/ccdig/releases/tag/v0.0.1
