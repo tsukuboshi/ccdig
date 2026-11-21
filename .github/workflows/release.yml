@@ -1,0 +1,53 @@
+---
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+# Never cancel a release halfway through publishing it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    # macos-latest is Apple silicon, so the binary is built natively.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      TARGET: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - name: Check that the tag matches the version in Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked |
+            jq -r '.packages[0].version')
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+      - run: cargo test --locked
+      - run: cargo build --release --locked --target "$TARGET"
+      # The asset names carry no version, so the README can link to
+      # releases/latest/download/.
+      - name: Package
+        run: |
+          name="ccdig-$TARGET"
+          mkdir "$name"
+          cp "target/$TARGET/release/ccdig" LICENSE README.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          "ccdig-$TARGET.tar.gz" "ccdig-$TARGET.tar.gz.sha256"
