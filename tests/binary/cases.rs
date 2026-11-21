@@ -7,7 +7,13 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// The variables ccdig reads its defaults from.
-const VARIABLES: [&str; 3] = ["CCDIG_MASK", "CCDIG_MASK_FILE", "CCDIG_ROOT"];
+const VARIABLES: [&str; 5] = [
+    "CCDIG_MASK",
+    "CCDIG_MASK_VALUES",
+    "CCDIG_ON_SKIP",
+    "CCDIG_ROOT",
+    "CLAUDE_CONFIG_DIR",
+];
 
 /// Runs ccdig with `args` and `TZ` set to `tz`, without the `CCDIG_*`
 /// variables of the test process.

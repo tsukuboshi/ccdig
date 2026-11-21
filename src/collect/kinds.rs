@@ -8,8 +8,11 @@ use serde_json::Value;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
-use crate::render::record::{Head, Kind, Prompt, Reply, Source, ToolCall, ToolResult, Turn};
-use crate::transcript::entry::{Block, Entry, Role};
+use crate::redact::Counts;
+use crate::render::record::{
+    Head, Kind, Prompt, Reply, Source, Summary, ToolCall, ToolResult, Turn,
+};
+use crate::transcript::entry::{Block, Entry, Role, Usage};
 use crate::transcript::reader::Roles;
 
 /// What a result needs of the call it answers.
@@ -46,10 +49,15 @@ pub struct Types {
     pub replies: bool,
     /// Tool results.
     pub results: bool,
+    /// Compaction summaries.
+    pub summaries: bool,
 }
 
 /// Picks the prompts a person typed.
 pub struct Prompts;
+
+/// Picks the compaction summaries.
+pub struct Summaries;
 
 /// Picks the assistant's text blocks.
 pub struct Replies;
@@ -87,7 +95,7 @@ impl Records {
 impl Pick for Records {
     type Record = Turn;
 
-    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Turn)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Turn)> {
         let mut turns: Vec<(usize, Turn)> = Vec::new();
         match entry.role {
             Role::User => {
@@ -96,9 +104,14 @@ impl Pick for Records {
                 // result, as `classify` turns such a line down, so the
                 // prompt's block index 0 cannot clash with a result's in the
                 // check for resumed copies.
-                if self.types.prompts && (!self.types.results || classify(entry) == Reason::Human) {
+                let reason = classify(entry);
+                if self.types.prompts && reason == Reason::Human {
                     let prompts = Prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, Turn::Prompt(prompt))));
+                }
+                if self.types.summaries && reason == Reason::CompactSummary {
+                    let summaries = Summaries.pick(spot, entry).into_iter();
+                    turns.extend(summaries.map(|(index, summary)| (index, Turn::Summary(summary))));
                 }
                 if self.types.results {
                     let results = self.results.pick(spot, entry).into_iter();
@@ -124,7 +137,7 @@ impl Pick for Records {
     fn roles(&self) -> Roles {
         Roles {
             assistant: self.types.reads_assistant(),
-            user: self.types.prompts || self.types.results,
+            user: self.types.prompts || self.types.results || self.types.summaries,
         }
     }
 
@@ -132,7 +145,11 @@ impl Pick for Records {
         // Always called, so the results see every call before its result.
         let result = self.types.results && self.results.wants(entry);
         match entry.role {
-            Role::User => result || (self.types.prompts && Prompts.wants(entry)),
+            Role::User => {
+                result
+                    || (self.types.prompts && Prompts.wants(entry))
+                    || (self.types.summaries && Summaries.wants(entry))
+            }
             Role::Assistant => self.types.replies || self.types.calls,
             Role::AiTitle | Role::Other => false,
         }
@@ -142,12 +159,14 @@ impl Pick for Records {
 impl Pick for Prompts {
     type Record = Prompt;
 
-    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Prompt)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Prompt)> {
         let (typed, kind, command) = match fold(&entry.content.text) {
             Some(folded) => (folded.text, Kind::Slash, folded.command),
             None => (entry.content.text.clone(), Kind::Text, String::new()),
         };
-        let (text, redacted) = spot.mask.text(typed.trim());
+        let mut masked = Counts::default();
+        let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
+        let source = source(spot, entry, &mut masked);
         vec![(
             0,
             Prompt {
@@ -155,8 +174,10 @@ impl Pick for Prompts {
                 text,
                 kind,
                 command,
+                permission_mode: entry.permission_mode.clone(),
                 redacted,
-                source: source(spot, entry),
+                source,
+                masked,
             },
         )]
     }
@@ -170,21 +191,53 @@ impl Pick for Prompts {
     }
 }
 
+impl Pick for Summaries {
+    type Record = Summary;
+
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Summary)> {
+        let mut masked = Counts::default();
+        let (text, redacted) = spot.mask.text(entry.content.text.trim(), &mut masked);
+        let source = source(spot, entry, &mut masked);
+        vec![(
+            0,
+            Summary {
+                head: spot.head(entry),
+                text,
+                redacted,
+                source,
+                masked,
+            },
+        )]
+    }
+
+    fn roles(&self) -> Roles {
+        Roles::USER
+    }
+
+    fn wants(&mut self, entry: &Entry) -> bool {
+        classify(entry) == Reason::CompactSummary
+    }
+}
+
 impl Pick for Replies {
     type Record = Reply;
 
-    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Reply)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Reply)> {
         blocks(entry, |block| match *block {
             Block::Text(ref written) if !written.trim().is_empty() => {
-                let (text, redacted) = spot.mask.text(written.trim());
+                let mut masked = Counts::default();
+                let (text, redacted) = spot.mask.text(written.trim(), &mut masked);
+                let source = source(spot, entry, &mut masked);
                 Some(Reply {
                     head: spot.head(entry),
                     text,
                     model: entry.model.clone(),
                     skill: entry.skill.clone(),
                     subagent: spot.subagent(),
+                    usage: None,
                     redacted,
-                    source: source(spot, entry),
+                    source,
+                    masked,
                 })
             }
             Block::Text(_) | Block::Other | Block::ToolResult(_) | Block::ToolUse(_) => None,
@@ -203,13 +256,15 @@ impl Pick for Replies {
 impl Pick for Results {
     type Record = ToolResult;
 
-    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolResult)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolResult)> {
         blocks(entry, |block| match *block {
             Block::ToolResult(ref result) => {
                 let call = self.calls.get(&result.tool_use_id);
+                let mut masked = Counts::default();
                 let mut input = call.map_or(Value::Null, |found| found.input.clone());
-                let input_redacted = spot.mask.json(&mut input);
-                let (text, text_redacted) = spot.mask.text(&result.text);
+                let input_redacted = spot.mask.json(&mut input, &mut masked);
+                let (text, text_redacted) = spot.mask.text(&result.text, &mut masked);
+                let source = source(spot, entry, &mut masked);
                 Some(ToolResult {
                     head: spot.head(entry),
                     tool: call.map_or_else(String::new, |found| found.name.clone()),
@@ -219,8 +274,9 @@ impl Pick for Results {
                     text,
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
-                    source: source(spot, entry),
+                    source,
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
+                    masked,
                 })
             }
             Block::Other | Block::Text(_) | Block::ToolUse(_) => None,
@@ -263,11 +319,13 @@ impl Pick for Results {
 impl Pick for Tools {
     type Record = ToolCall;
 
-    fn pick(&self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolCall)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolCall)> {
         blocks(entry, |block| match *block {
             Block::ToolUse(ref call) => {
+                let mut masked = Counts::default();
                 let mut input = call.input.clone();
-                let redacted = spot.mask.json(&mut input);
+                let redacted = spot.mask.json(&mut input, &mut masked);
+                let source = source(spot, entry, &mut masked);
                 Some(ToolCall {
                     head: spot.head(entry),
                     tool: call.name.clone(),
@@ -275,8 +333,10 @@ impl Pick for Tools {
                     tool_use_id: call.id.clone(),
                     skill: entry.skill.clone(),
                     subagent: spot.subagent(),
+                    usage: None,
                     redacted,
-                    source: source(spot, entry),
+                    source,
+                    masked,
                 })
             }
             Block::Other | Block::Text(_) | Block::ToolResult(_) => None,
@@ -312,6 +372,10 @@ impl Select for Prompt {
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.command]
     }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        &mut self.masked
+    }
 }
 
 impl Select for Reply {
@@ -333,6 +397,40 @@ impl Select for Reply {
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.model, &mut self.subagent]
+    }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        &mut self.masked
+    }
+
+    fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
+        Some(&mut self.usage)
+    }
+}
+
+impl Select for Summary {
+    fn extra(&self) -> Extra<'_> {
+        Extra {
+            is_error: None,
+            skill: None,
+            tool: None,
+        }
+    }
+
+    fn grep_text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.text)
+    }
+
+    fn head_mut(&mut self) -> &mut Head {
+        &mut self.head
+    }
+
+    fn labels_mut(&mut self) -> Vec<&mut String> {
+        Vec::new()
+    }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        &mut self.masked
     }
 }
 
@@ -357,6 +455,14 @@ impl Select for ToolCall {
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.tool, &mut self.subagent]
     }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        &mut self.masked
+    }
+
+    fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
+        Some(&mut self.usage)
+    }
 }
 
 impl Select for Turn {
@@ -374,6 +480,14 @@ impl Select for Turn {
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
         selected_mut(self).labels_mut()
+    }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        selected_mut(self).masked_mut()
+    }
+
+    fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
+        selected_mut(self).usage_mut()
     }
 }
 
@@ -397,6 +511,10 @@ impl Select for ToolResult {
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.tool, &mut self.subagent]
     }
+
+    fn masked_mut(&mut self) -> &mut Counts {
+        &mut self.masked
+    }
 }
 
 /// The records `make` builds from the blocks of `entry`, each with its
@@ -418,6 +536,7 @@ fn selected(turn: &Turn) -> &dyn Select {
         Turn::Reply(ref reply) => reply,
         Turn::Call(ref call) => call,
         Turn::Result(ref result) => result,
+        Turn::Summary(ref summary) => summary,
     }
 }
 
@@ -428,13 +547,14 @@ fn selected_mut(turn: &mut Turn) -> &mut dyn Select {
         Turn::Reply(ref mut reply) => reply,
         Turn::Call(ref mut call) => call,
         Turn::Result(ref mut result) => result,
+        Turn::Summary(ref mut summary) => summary,
     }
 }
 
-/// Where `entry` is.
-fn source(spot: &Spot<'_>, entry: &Entry) -> Source {
+/// Where `entry` is, counting what masking the path counted in `masked`.
+fn source(spot: &Spot<'_>, entry: &Entry, masked: &mut Counts) -> Source {
     Source {
-        file: spot.mask.meta(&spot.file.path.to_string_lossy()),
+        file: spot.mask.meta(&spot.file.path.to_string_lossy(), masked),
         line: spot.line,
         uuid: entry.uuid.clone(),
     }

@@ -21,32 +21,62 @@ pub enum Failure {
         /// The unknown name.
         name: String,
     },
+    /// A variable holds a value its flag does not take.
+    #[error("{variable}: unknown value {name:?}: use {known}")]
+    EnvValue {
+        /// The values the flag takes, listed.
+        known: String,
+        /// The unknown value.
+        name: String,
+        /// The variable.
+        variable: &'static str,
+    },
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),
     /// `--root` is not given and there is no home directory to default to.
     #[error("find the default --root: HOME is not set")]
     Home,
+    /// `--max-input-chars` is given for a format other than Markdown.
+    #[error("--max-input-chars needs --format md")]
+    InputLimitNeedsMarkdown,
+    /// `--max-input-chars` is not positive.
+    #[error("--max-input-chars must be positive")]
+    InputLimitNotPositive,
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),
     /// The history root cannot be listed.
     #[error("list projects: {0}")]
     ListProjects(#[source] io::Error),
-    /// The `--mask-file` cannot be read.
-    #[error("read mask file {path}: {source}")]
+    /// The file after `@` in `--mask-values` cannot be read.
+    #[error("read mask values file {path}: {source}")]
     MaskFile {
-        /// The file given to `--mask-file`.
+        /// The file given to `--mask-values`.
         path: String,
         /// Why it could not be read.
         #[source]
         source: io::Error,
     },
+    /// `--mask git-user` is given and git config has no `key`.
+    #[error("mask git-user: git config has no {key}")]
+    MaskGitUser {
+        /// `user.name` or `user.email`.
+        key: &'static str,
+    },
     /// `--mask user` is given and `$HOME` names no user.
     #[error("mask user: HOME is not set or has no last part")]
     MaskUser,
-    /// `--no-mask` is given with `--mask` or `--mask-file`.
-    #[error("--no-mask cannot be used with --mask or --mask-file")]
+    /// `--mask-values` is not a JSON object of labels to lists of values.
+    #[error("{given}: {reason}")]
+    MaskValues {
+        /// `--mask-values`, with the file when one was given.
+        given: String,
+        /// What is wrong.
+        reason: String,
+    },
+    /// `--no-mask` is given with `--mask` or `--mask-values`.
+    #[error("--no-mask cannot be used with --mask or --mask-values")]
     MaskWithNoMask,
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]

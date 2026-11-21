@@ -4,7 +4,6 @@ mod kinds;
 
 use core::error::Error;
 use std::env;
-use std::ffi::OsString;
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -67,13 +66,12 @@ impl History {
         self.run_in(&Environment::default(), args)
     }
 
-    /// Runs ccdig with `args`, `--root` pointing at the copy, and the
-    /// `CCDIG_*` variables in `environment`.
-    fn run_in(&self, environment: &Environment, args: &[&str]) -> Ran {
+    /// Runs ccdig with `args` alone, without `--root`, and the variables in
+    /// `environment`.
+    fn run_bare(&self, environment: &Environment, args: &[&str]) -> Ran {
         let root = self.root.to_string_lossy().into_owned();
         let mut full = vec!["ccdig"];
         full.extend_from_slice(args);
-        full.extend(["--root", &root]);
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = super::run_in(full, environment, &mut out, &mut err);
@@ -83,6 +81,15 @@ impl History {
             err: shown(&err),
             out: shown(&out),
         }
+    }
+
+    /// Runs ccdig with `args`, `--root` pointing at the copy, and the
+    /// `CCDIG_*` variables in `environment`.
+    fn run_in(&self, environment: &Environment, args: &[&str]) -> Ran {
+        let root = self.root.to_string_lossy().into_owned();
+        let mut full = args.to_vec();
+        full.extend(["--root", &root]);
+        self.run_bare(environment, &full)
     }
 
     /// Runs ccdig with `args` followed by the sample week.
@@ -211,8 +218,9 @@ fn usable_user() -> Option<(String, String)> {
 }
 
 /// A history with one prompt that holds an email address, the home
-/// directory, an IP address, and a value for `--mask-file`, in a project
-/// under the home directory. Returns it with the mask file's path.
+/// directory, an IP address, and a value for `--mask-values`, in a project
+/// under the home directory. Returns it with `@` and the values file's
+/// path.
 fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     let history = History::new("root")?;
     let home = env::var("HOME")?;
@@ -228,9 +236,9 @@ fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
         fixture_time()?,
         &[&prompt],
     )?;
-    let values = history.root.with_file_name("mask.txt");
-    fs::write(&values, "corp-hidden\n\n")?;
-    Ok((history, values.to_string_lossy().into_owned()))
+    let values = history.root.with_file_name("mask.json");
+    fs::write(&values, r#"{"": ["corp-hidden"]}"#)?;
+    Ok((history, format!("@{}", values.to_string_lossy())))
 }
 
 /// `path` as Claude Code names a project directory after it.
@@ -241,7 +249,7 @@ fn encoded(path: &str) -> String {
 }
 
 #[test]
-fn mask_hides_emails_the_user_name_and_ips_and_mask_file_hides_its_values() -> TestResult {
+fn mask_hides_emails_the_user_name_and_ips_and_mask_values_hides_its_values() -> TestResult {
     let Some((parent, _)) = usable_user() else {
         return Ok(());
     };
@@ -256,7 +264,7 @@ fn mask_hides_emails_the_user_name_and_ips_and_mask_file_hides_its_values() -> T
         "email,user",
         "--mask",
         "ip",
-        "--mask-file",
+        "--mask-values",
         &values,
     ]);
     check_eq(&ran.code, &0, "exit")?;
@@ -326,7 +334,7 @@ fn without_mask_the_personal_data_stays() -> TestResult {
 }
 
 #[test]
-fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
+fn mask_values_are_masked_in_the_metadata_too() -> TestResult {
     let history = History::new("root")?;
     history.write(
         "-Users-alice-corp-hidden-portal/nnnn.jsonl",
@@ -336,23 +344,20 @@ fn mask_file_values_are_masked_in_the_metadata_too() -> TestResult {
             r#"{"type":"assistant","uuid":"n-2","sessionId":"nnnn","cwd":"/work/corp-hidden","gitBranch":"feat/corp-hidden","timestamp":"2026-10-15T00:00:10Z","message":{"model":"corp-hidden-model","content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"toolu_n1","name":"mcp__corp-hidden__x","input":{}}]}}"#,
         ],
     )?;
-    // A BOM and surrounding spaces, as an editor may save them; and an
-    // empty file given after the command, which must not replace it.
-    let values = history.root.with_file_name("values.txt");
-    fs::write(&values, "\u{feff}  corp-hidden  \n")?;
-    let empty = history.root.with_file_name("empty.txt");
-    fs::write(&empty, "")?;
-    let values_path = values.to_string_lossy().into_owned();
-    let empty_path = empty.to_string_lossy().into_owned();
+    // A BOM, as an editor may save one; and an empty object given after the
+    // command, which must not replace the values.
+    let values = history.root.with_file_name("values.json");
+    fs::write(&values, "\u{feff}{\"\": [\"corp-hidden\"]}\n")?;
+    let values_path = format!("@{}", values.to_string_lossy());
     for format in ["jsonl", "md"] {
         let ran = history.run_week(&[
-            "--mask-file",
+            "--mask-values",
             &values_path,
             "records",
             "--project",
             "corp-hidden",
-            "--mask-file",
-            &empty_path,
+            "--mask-values",
+            "{}",
             "--format",
             format,
         ]);
@@ -384,8 +389,8 @@ fn no_mask_with_a_mask_is_an_error() -> TestResult {
             "--type",
             "prompt",
             "--no-mask",
-            "--mask-file",
-            "x.txt",
+            "--mask-values",
+            "{}",
         ],
     ] {
         let ran = history.run_week(&args);
@@ -396,7 +401,7 @@ fn no_mask_with_a_mask_is_an_error() -> TestResult {
     Ok(())
 }
 #[test]
-fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
+fn an_unknown_mask_or_a_missing_mask_values_file_is_an_error() -> TestResult {
     let history = History::new("root")?;
     let unknown = history.run_week(&["records", "--type", "prompt", "--mask", "phone"]);
     check_eq(&(unknown.code != 0), &true, "unknown mask")?;
@@ -404,12 +409,12 @@ fn an_unknown_mask_or_a_missing_mask_file_is_an_error() -> TestResult {
         "records",
         "--type",
         "prompt",
-        "--mask-file",
-        "/nonexistent/mask.txt",
+        "--mask-values",
+        "@/nonexistent/mask.json",
     ]);
     check_eq(&(missing.code != 0), &true, "missing file")?;
     check_eq(
-        &missing.err.contains("/nonexistent/mask.txt"),
+        &missing.err.contains("/nonexistent/mask.json"),
         &true,
         "names the file",
     )?;
@@ -615,6 +620,15 @@ fn version_and_help() -> TestResult {
     let history = History::new("root")?;
     let version = history.run(&["version"]);
     check_eq(version.out.as_str(), "ccdig v0.1.0\n", "version")?;
+    let text = history.run(&["version", "--format", "text"]);
+    check_eq(text.out.as_str(), "ccdig v0.1.0\n", "version --format text")?;
+    let json = history.run(&["version", "--format", "json"]);
+    check_eq(&json.code, &0, &json.err)?;
+    check_eq(
+        json.out.as_str(),
+        "{\"version\":\"0.1.0\",\"schema\":2,\"filter\":\"strict-v2\"}\n",
+        "version --format json",
+    )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
         let ran = history.run(args);
         let name = format!("help for {args:?}");
@@ -667,7 +681,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--subagents",
                 "Masking:\n",
                 "--mask <KIND>",
-                "--mask-file <FILE>",
+                "--mask-values <JSON>",
                 "--no-mask",
                 "Output:\n",
                 "--format <FORMAT>",
@@ -1015,17 +1029,15 @@ fn ccdig_variables_give_the_masks_and_the_command_line_replaces_them() -> TestRe
     let Some(_) = usable_user() else {
         return Ok(());
     };
-    let (history, values) = history_with_personal_data()?;
-    let emails = history.root.with_file_name("emails.txt");
-    fs::write(&emails, "bob@example.com\n")?;
-    let emails_path = emails.to_string_lossy().into_owned();
-    let both = env::join_paths([values.as_str(), emails_path.as_str()])?;
+    let (history, _) = history_with_personal_data()?;
+    let both = r#"{"": ["corp-hidden", "bob@example.com"]}"#;
+    let emails = r#"{"": ["bob@example.com"]}"#;
     let mask = |value: &str| Environment {
         mask: Some(value.into()),
         ..Environment::default()
     };
-    let mask_file = |value: OsString| Environment {
-        mask_file: Some(value),
+    let mask_values = |value: &str| Environment {
+        mask_values: Some(value.into()),
         ..Environment::default()
     };
     // (environment, extra flags, what must be hidden, what must be shown)
@@ -1052,16 +1064,16 @@ fn ccdig_variables_give_the_masks_and_the_command_line_replaces_them() -> TestRe
             &["bob@", "10.1.2.3"][..],
         ),
         (
-            "mask files",
-            mask_file(both.clone()),
+            "mask values",
+            mask_values(both),
             &[][..],
             &["corp-hidden", "bob@"][..],
             &["10.1.2.3"][..],
         ),
         (
-            "--mask-file replaces them",
-            mask_file(both),
-            &["--mask-file", &emails_path][..],
+            "--mask-values replaces them",
+            mask_values(both),
+            &["--mask-values", emails][..],
             &["bob@"][..],
             &["corp-hidden"][..],
         ),
@@ -1089,8 +1101,641 @@ fn ccdig_variables_give_the_masks_and_the_command_line_replaces_them() -> TestRe
     check_eq(&bad.code, &1, "unknown mask")?;
     check_eq(
         bad.err.as_str(),
-        "ccdig: CCDIG_MASK: unknown mask \"phone\": use email, ip, or user\n",
+        "ccdig: CCDIG_MASK: unknown mask \"phone\": use aws-account, aws-profile, email, git-user, ip, or user\n",
         "unknown mask",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn claude_config_dir_gives_the_default_root_after_ccdig_root() -> TestResult {
+    let history = History::new("root")?;
+    let config = history
+        .root
+        .parent()
+        .ok_or("no parent")?
+        .as_os_str()
+        .to_owned();
+    let mut args = vec!["records", "--type", "prompt"];
+    args.extend(WEEK);
+    let from_config = history.run_bare(
+        &Environment {
+            claude_config_dir: Some(config.clone()),
+            ..Environment::default()
+        },
+        &args,
+    );
+    check_eq(&from_config.code, &0, &from_config.err)?;
+    check_eq(&line_count(&from_config.out), &3, "CLAUDE_CONFIG_DIR")?;
+    let ccdig_root_wins = history.run_bare(
+        &Environment {
+            claude_config_dir: Some(config),
+            root: Some("/nonexistent/ccdig-root".into()),
+            ..Environment::default()
+        },
+        &args,
+    );
+    check_eq(&ccdig_root_wins.code, &1, "CCDIG_ROOT wins")?;
+    check_eq(
+        &ccdig_root_wins.err.starts_with("ccdig: list projects:"),
+        &true,
+        &ccdig_root_wins.err,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn on_skip_fail_ends_with_status_1_after_writing_the_output() -> TestResult {
+    let clean = History::new("root")?;
+    let broken = History::new("root")?;
+    broken.write(
+        "-Users-alice-blog/eeee.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"user", not json"#],
+    )?;
+    let on_skip = |value: &str| Environment {
+        on_skip: Some(value.into()),
+        ..Environment::default()
+    };
+    // (name, history, environment, extra flags, status, warned)
+    for (name, history, environment, extra, code, warned) in [
+        (
+            "broken, fail",
+            &broken,
+            Environment::default(),
+            &["--on-skip", "fail"][..],
+            1_u8,
+            true,
+        ),
+        (
+            "broken, default",
+            &broken,
+            Environment::default(),
+            &[][..],
+            0,
+            true,
+        ),
+        (
+            "broken, warn",
+            &broken,
+            Environment::default(),
+            &["--on-skip", "warn"][..],
+            0,
+            true,
+        ),
+        (
+            "broken, CCDIG_ON_SKIP",
+            &broken,
+            on_skip("fail"),
+            &[][..],
+            1,
+            true,
+        ),
+        (
+            "broken, --on-skip replaces it",
+            &broken,
+            on_skip("fail"),
+            &["--on-skip", "warn"][..],
+            0,
+            true,
+        ),
+        (
+            "clean, fail",
+            &clean,
+            Environment::default(),
+            &["--on-skip", "fail"][..],
+            0,
+            false,
+        ),
+    ] {
+        let mut args = vec!["records", "--type", "prompt"];
+        args.extend_from_slice(extra);
+        args.extend(WEEK);
+        let ran = history.run_in(&environment, &args);
+        check_eq(&ran.code, &code, &format!("{name}: {}", ran.err))?;
+        check_eq(&line_count(&ran.out), &3, &format!("{name}: output"))?;
+        check_eq(
+            &ran.err.contains("ccdig: warning: skipped 1 undecodable"),
+            &warned,
+            &format!("{name}: {}", ran.err),
+        )?;
+    }
+    let bad = clean.run_in(&on_skip("stop"), &["records"]);
+    check_eq(&bad.code, &1, &format!("unknown on-skip: {}", bad.err))?;
+    check_eq(
+        bad.err.as_str(),
+        "ccdig: CCDIG_ON_SKIP: unknown value \"stop\": use fail or warn\n",
+        "unknown on-skip",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn max_input_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/wwww.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"w-1","sessionId":"wwww","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_w1","name":"Write","input":{"file_path":"/tmp/a.md","content":"0123456789abcdefghij","lines":["short","abcdefghijklmnop"],"count":12}}]}}"#,
+        ],
+    )?;
+    let cut = history.run_week(&[
+        "records",
+        "--session",
+        "wwww",
+        "--type",
+        "call",
+        "--format",
+        "md",
+        "--max-input-chars",
+        "10",
+    ]);
+    check_eq(&cut.code, &0, &cut.err)?;
+    golden("cli/records-cut.md.golden", &cut.out)?;
+    let whole = history.run_week(&["records", "--session", "wwww", "--type", "call"]);
+    check_eq(
+        &whole.out.contains(r#""content":"0123456789abcdefghij""#),
+        &true,
+        &whole.out,
+    )?;
+    for (args, want) in [
+        (
+            &["--max-input-chars", "10"][..],
+            "ccdig: --max-input-chars needs --format md\n",
+        ),
+        (
+            &["--format", "md", "--max-input-chars", "0"][..],
+            "ccdig: --max-input-chars must be positive\n",
+        ),
+    ] {
+        let mut full = vec!["records", "--type", "call"];
+        full.extend_from_slice(args);
+        let ran = history.run(&full);
+        check_eq(&ran.code, &1, &format!("{args:?}"))?;
+        check_eq(ran.err.as_str(), want, &format!("{args:?}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn type_summary_lists_the_compaction_summaries_only_when_asked_for() -> TestResult {
+    let history = history_with_a_conversation()?;
+    let before = history.run_week(&["records", "--session", "cccc", "--type", "prompt"]);
+    history.write(
+        "-Users-alice-blog/cccc.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"c-1","sessionId":"cccc","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"list the posts"}}"#,
+            r#"{"type":"user","uuid":"c-5","sessionId":"cccc","timestamp":"2026-10-15T00:00:30Z","isCompactSummary":true,"message":{"role":"user","content":"Summary: listed the posts for bob@example.com."}}"#,
+            r#"{"type":"user","uuid":"c-4","sessionId":"cccc","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"thanks"}}"#,
+            r#"{"type":"ai-title","sessionId":"cccc","aiTitle":"List posts"}"#,
+        ],
+    )?;
+    for (args, want) in [
+        (&[][..], vec!["prompt", "prompt"]),
+        (&["--type", "summary"][..], vec!["summary"]),
+        (
+            &["--type", "prompt,summary"][..],
+            vec!["prompt", "summary", "prompt"],
+        ),
+    ] {
+        let mut full = vec!["records", "--session", "cccc", "--mask", "email"];
+        full.extend_from_slice(args);
+        let ran = history.run_week(&full);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&types(&ran.out), &want, &format!("{args:?}"))?;
+    }
+    let prompts = history.run_week(&["records", "--session", "cccc", "--type", "prompt"]);
+    // The rewritten file has fewer lines, so the line numbers differ.
+    let no_line = regex::Regex::new(r#""line":[0-9]+"#)?;
+    check_eq(
+        &no_line.replace_all(&prompts.out, ""),
+        &no_line.replace_all(&before.out, ""),
+        "prompts unchanged",
+    )?;
+    let summary = history.run_week(&[
+        "records",
+        "--session",
+        "cccc",
+        "--type",
+        "summary",
+        "--mask",
+        "email",
+    ]);
+    check_eq(
+        &summary
+            .out
+            .contains(r#""text":"Summary: listed the posts for ***REDACTED***.","redacted":true"#),
+        &true,
+        &summary.out,
+    )?;
+    let markdown = history.run_week(&[
+        "records",
+        "--session",
+        "cccc",
+        "--type",
+        "summary",
+        "--format",
+        "md",
+    ]);
+    golden("cli/summaries.md.golden", &markdown.out)?;
+    Ok(())
+}
+
+/// What a git with `Hanako Sato <hanako@example.com>` configured answers.
+fn configured_git(key: &str) -> Option<String> {
+    match key {
+        "user.name" => Some("Hanako Sato".to_owned()),
+        "user.email" => Some("hanako@example.com".to_owned()),
+        _ => None,
+    }
+}
+
+/// What a git with only `user.email` configured answers.
+fn git_without_a_name(key: &str) -> Option<String> {
+    (key == "user.email").then(|| "hanako@example.com".to_owned())
+}
+
+#[test]
+fn mask_git_user_hides_the_configured_name_and_email() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/gggg.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"g-1","sessionId":"gggg","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"commit as Hanako Sato <hanako@example.com> to arn:aws:iam::123456789012:role/x with --profile org_read"}}"#,
+        ],
+    )?;
+    let git = |lookup: fn(&str) -> Option<String>| Environment {
+        git_config: Some(lookup),
+        ..Environment::default()
+    };
+    let mut args = vec![
+        "records",
+        "--session",
+        "gggg",
+        "--mask",
+        "git-user,aws-account,aws-profile",
+    ];
+    args.extend(WEEK);
+    let ran = history.run_in(&git(configured_git), &args);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out.contains(
+            r#""text":"commit as ***REDACTED*** <***REDACTED***> to arn:aws:iam::***REDACTED***:role/x with --profile ***REDACTED***""#,
+        ),
+        &true,
+        &ran.out,
+    )?;
+    let missing = history.run_in(&git(git_without_a_name), &args);
+    check_eq(&missing.code, &1, "no user.name")?;
+    check_eq(
+        missing.err.as_str(),
+        "ccdig: mask git-user: git config has no user.name\n",
+        "no user.name",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn labeled_mask_values_get_a_number_per_label_kept_across_fields() -> TestResult {
+    let history = History::new("root")?;
+    for (project, session, content) in [
+        (
+            "acme-billing",
+            "pppp",
+            "ask \u{5C71}\u{7530} \u{592A}\u{90CE} and Yamada about acme-infra, token=\\\"acme-billing\\\", secret-word",
+        ),
+        ("acme-portal", "qqqq", "deploy acme-portal"),
+    ] {
+        history.write(
+            &format!("-Users-alice-{project}/{session}.jsonl"),
+            fixture_time()?,
+            &[&format!(
+                r#"{{"type":"user","uuid":"{session}-1","sessionId":"{session}","cwd":"/Users/alice/{project}","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"{content}"}}}}"#
+            )],
+        )?;
+    }
+    let values = history.root.with_file_name("values.json");
+    fs::write(
+        &values,
+        "{\"repo\": [\"acme-billing\", \"acme-portal\"], \"person\": [[\"\u{5C71}\u{7530} \u{592A}\u{90CE}\", \"Yamada\"]]}",
+    )?;
+    let values_path = format!("@{}", values.to_string_lossy());
+    let ran = history.run_week(&[
+        "records",
+        "--type",
+        "prompt",
+        "--project",
+        "acme",
+        "--mask-values",
+        &values_path,
+        "--mask-values",
+        r#"{"repo": ["acme-infra", "acme-billing"], "": ["secret-word"]}"#,
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    for want in [
+        "\"project\":\"-Users-alice-\u{FF3B}repo1\u{FF3D}\",\"cwd\":\"/Users/alice/\u{FF3B}repo1\u{FF3D}\"",
+        "\"text\":\"ask \u{FF3B}person1\u{FF3D} and \u{FF3B}person1\u{FF3D} about \u{FF3B}repo3\u{FF3D}, token=\\\"***REDACTED***\\\", ***REDACTED***\"",
+        "\"project\":\"-Users-alice-\u{FF3B}repo2\u{FF3D}\",\"cwd\":\"/Users/alice/\u{FF3B}repo2\u{FF3D}\"",
+        "\"text\":\"deploy \u{FF3B}repo2\u{FF3D}\"",
+    ] {
+        check_eq(
+            &ran.out.contains(want),
+            &true,
+            &format!("{want} in {}", ran.out),
+        )?;
+    }
+    for (given, want) in [
+        (
+            "[]",
+            "ccdig: --mask-values: expected an object of labels to lists of values\n",
+        ),
+        (
+            r#"{"repo": "a"}"#,
+            "ccdig: --mask-values: expected an object of labels to lists of values\n",
+        ),
+        (
+            r#"{"repo": [1]}"#,
+            "ccdig: --mask-values: expected an object of labels to lists of values\n",
+        ),
+        (
+            r#"{"repo": [["a", 1]]}"#,
+            "ccdig: --mask-values: expected an object of labels to lists of values\n",
+        ),
+        (
+            "{oops",
+            "ccdig: --mask-values: not JSON: key must be a string at line 1 column 2\n",
+        ),
+    ] {
+        let bad = history.run_week(&["records", "--type", "prompt", "--mask-values", given]);
+        check_eq(&bad.code, &1, given)?;
+        check_eq(bad.err.as_str(), want, given)?;
+    }
+    let bad_file = history.root.with_file_name("bad.json");
+    fs::write(&bad_file, "[]")?;
+    let bad_path = format!("@{}", bad_file.to_string_lossy());
+    let bad = history.run_week(&["records", "--type", "prompt", "--mask-values", &bad_path]);
+    check_eq(
+        bad.err.as_str(),
+        &format!(
+            "ccdig: --mask-values {bad_path}: expected an object of labels to lists of values\n"
+        ),
+        "a file names itself",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn mask_report_counts_what_was_masked_in_the_printed_records_by_rule() -> TestResult {
+    let history = History::new("root")?;
+    // Assembled at run time so that no secret-shaped literal is committed.
+    let secret = "a1B2".repeat(5);
+    let first = format!(
+        r#"{{"type":"user","uuid":"r-1","sessionId":"rrrr","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about acme-billing with password={secret}"}}}}"#
+    );
+    history.write(
+        "-Users-alice-blog/rrrr.jsonl",
+        fixture_time()?,
+        &[
+            &first,
+            r#"{"type":"user","uuid":"r-2","sessionId":"rrrr","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"mail carol@example.com"}}"#,
+        ],
+    )?;
+    let base = [
+        "records",
+        "--type",
+        "prompt",
+        "--session",
+        "rrrr",
+        "--mask",
+        "email",
+        "--mask-values",
+        r#"{"repo": ["acme-billing"]}"#,
+    ];
+    let plain = history.run_week(&base);
+    for (extra, want) in [
+        (
+            &["--mask-report", "text"][..],
+            "ccdig: masked 2 by email, 1 by credential-assignment, 1 by values/repo\n",
+        ),
+        (
+            &["--mask-report", "json"][..],
+            "{\"masked\":{\"email\":2,\"credential-assignment\":1,\"values/repo\":1}}\n",
+        ),
+        (
+            &["--mask-report", "text", "--grep", "!password"][..],
+            "ccdig: masked 1 by email\n",
+        ),
+        (
+            &["--mask-report", "text", "--grep", "nobody"][..],
+            "ccdig: masked nothing\n",
+        ),
+    ] {
+        let mut args = base.to_vec();
+        args.extend_from_slice(extra);
+        let ran = history.run_week(&args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(ran.err.as_str(), want, &format!("{extra:?}"))?;
+        check_eq(&ran.err.contains(&secret), &false, "no value")?;
+        if extra.len() == 2 {
+            check_eq(&ran.out, &plain.out, "stdout unchanged")?;
+        }
+    }
+    let sessions = history.run_week(&[
+        "sessions",
+        "--session",
+        "rrrr",
+        "--mask-values",
+        r#"{"place": ["blog"]}"#,
+        "--mask-report",
+        "text",
+    ]);
+    check_eq(
+        sessions.err.as_str(),
+        "ccdig: masked 2 by values/place\n",
+        "sessions count their own fields: here the project and the file",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_prompt_carries_the_permission_mode_recorded_on_its_line() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/kkkk.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"permission-mode","permissionMode":"auto","sessionId":"kkkk"}"#,
+            r#"{"type":"user","uuid":"k-1","sessionId":"kkkk","timestamp":"2026-10-15T00:00:00Z","permissionMode":"plan","message":{"role":"user","content":"plan the change"}}"#,
+            r#"{"type":"user","uuid":"k-2","sessionId":"kkkk","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"<command-name>/goal</command-name>\n<command-message>goal</command-message>\n<command-args>tests pass</command-args>"}}"#,
+        ],
+    )?;
+    let ran = history.run_week(&["records", "--type", "prompt", "--session", "kkkk"]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    let modes: Vec<String> = ran
+        .out
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line).map(|record| {
+                record
+                    .get("permission_mode")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("(missing)")
+                    .to_owned()
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    check_eq(&modes, &vec!["plan".to_owned(), String::new()], &ran.out)?;
+    check_eq(
+        &ran.out
+            .contains(r#""command":"","permission_mode":"plan","redacted""#),
+        &true,
+        &ran.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
+    let history = History::new("root")?;
+    let mut args = vec![
+        "records",
+        "--type",
+        "prompt",
+        "--format",
+        "json",
+        "--mask",
+        "email",
+        "--mask",
+        "ip,email",
+        "--mask-values",
+        r#"{"repo": ["secret-repo"], "": ["secret-word"], "person": ["Hanako"]}"#,
+    ];
+    args.extend(WEEK);
+    let ran = history.run(&args);
+    check_eq(&ran.code, &0, &ran.err)?;
+    let document: serde_json::Value = serde_json::from_str(&ran.out)?;
+    let keys: Vec<&str> = document
+        .as_object()
+        .ok_or("not an object")?
+        .keys()
+        .map(String::as_str)
+        .collect();
+    check_eq(
+        &keys,
+        &vec!["schema", "filter", "ccdig", "run", "items"],
+        "keys in order",
+    )?;
+    check_eq(
+        &document.get("schema"),
+        &Some(&serde_json::json!(2_i32)),
+        "schema",
+    )?;
+    check_eq(
+        &document.get("ccdig"),
+        &Some(&serde_json::json!("0.1.0")),
+        "version",
+    )?;
+    check_eq(
+        &document.get("run"),
+        &Some(&serde_json::json!({
+            "since": "2026-10-13",
+            "until": "2026-10-19",
+            "tz": "Asia/Tokyo",
+            "mask": ["email", "ip"],
+            "mask_values": ["repo", "person"],
+            "no_mask": false,
+        })),
+        "run",
+    )?;
+    check_eq(&ran.out.contains("secret-"), &false, "no values")?;
+    check_eq(
+        &document
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        &Some(3),
+        "items",
+    )?;
+    let sessions = history.run(&["sessions", "--format", "json", "--no-mask"]);
+    let sessions_document: serde_json::Value = serde_json::from_str(&sessions.out)?;
+    check_eq(
+        &sessions_document.get("run"),
+        &Some(&serde_json::json!({
+            "since": null,
+            "until": null,
+            "tz": null,
+            "mask": [],
+            "mask_values": [],
+            "no_mask": true,
+        })),
+        "sessions run",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/uuuu.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"t-1","sessionId":"uuuu","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"count the posts"}}"#,
+            r#"{"type":"assistant","uuid":"t-2","sessionId":"uuuu","timestamp":"2026-10-15T00:00:10Z","message":{"id":"msg_1","content":[{"type":"text","text":"Counting."}],"usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20,"service_tier":"standard"}}}"#,
+            r#"{"type":"assistant","uuid":"t-3","sessionId":"uuuu","timestamp":"2026-10-15T00:00:11Z","message":{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_t1","name":"Bash","input":{"command":"ls | wc -l"}}],"usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}}"#,
+            r#"{"type":"assistant","uuid":"t-4","sessionId":"uuuu","timestamp":"2026-10-15T00:00:20Z","message":{"id":"msg_2","content":[{"type":"text","text":"Three."}],"usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}}"#,
+            r#"{"type":"assistant","uuid":"t-5","sessionId":"uuuu","timestamp":"2026-10-15T00:00:30Z","message":{"content":[{"type":"text","text":"From an older Claude Code."}]}}"#,
+        ],
+    )?;
+    let ran = history.run_week(&["records", "--session", "uuuu", "--type", "reply,call"]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    let usages: Vec<serde_json::Value> = ran
+        .out
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .map(|record| record.get("usage").cloned().unwrap_or_default())
+        })
+        .collect::<Result<_, _>>()?;
+    check_eq(
+        &usages,
+        &vec![
+            serde_json::json!({"input": 10_u64, "output": 5_u64, "cache_read": 100_u64, "cache_creation": 20_u64}),
+            serde_json::Value::Null,
+            serde_json::json!({"input": 1_u64, "output": 2_u64, "cache_read": 3_u64, "cache_creation": 4_u64}),
+            serde_json::Value::Null,
+        ],
+        &ran.out,
+    )?;
+    let filtered = history.run_week(&[
+        "records",
+        "--session",
+        "uuuu",
+        "--type",
+        "reply,call",
+        "--tool",
+        "Bash",
+    ]);
+    check_eq(
+        &filtered
+            .out
+            .contains(r#""usage":{"input":10,"output":5,"cache_read":100,"cache_creation":20}"#),
+        &true,
+        &format!(
+            "the call left after the filter carries them: {}",
+            filtered.out
+        ),
+    )?;
+    let sessions = history.run_week(&["sessions", "--session", "uuuu"]);
+    check_eq(
+        &sessions.out.contains(
+            r#""prompt_count":1,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
+        ),
+        &true,
+        &sessions.out,
     )?;
     Ok(())
 }

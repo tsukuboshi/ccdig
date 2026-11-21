@@ -4,13 +4,15 @@ use jiff::tz::TimeZone;
 use serde_json::json;
 
 use super::digest::{Limits, digest};
-use super::json::{document, lines};
+use super::json::{Run, document, lines};
 use super::markdown;
 use super::record::{
     AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult, Turn,
 };
 use crate::failure::Failure;
+use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, golden};
+use crate::transcript::entry::Usage;
 use crate::when::{Stamp, load_zone};
 
 /// The blog session's transcript file.
@@ -27,6 +29,7 @@ fn at(text: &str) -> Result<Stamp, String> {
 /// The shared keys of a record in the blog session at `time`.
 fn blog_head(time: &str) -> Result<Head, String> {
     Ok(Head {
+        masked: Counts::default(),
         agent: AGENT,
         session_id: BLOG_SESSION.to_owned(),
         session_title: "Weekly report draft".to_owned(),
@@ -40,6 +43,8 @@ fn blog_head(time: &str) -> Result<Head, String> {
 /// A plain prompt with only the fields the digest and grouping look at.
 fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
     Prompt {
+        permission_mode: String::new(),
+        masked: Counts::default(),
         head,
         text: text.to_owned(),
         kind: Kind::Text,
@@ -62,6 +67,8 @@ fn source(file: &str, line: usize, uuid: &str) -> Source {
 fn sample_prompts() -> Result<Vec<Prompt>, String> {
     Ok(vec![
         Prompt {
+            permission_mode: String::new(),
+            masked: Counts::default(),
             head: blog_head("2026-10-13T01:23:45.678Z")?,
             text: "/weekly-report last week".to_owned(),
             kind: Kind::Slash,
@@ -70,6 +77,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             source: source(BLOG_FILE, 4, "u-1"),
         },
         Prompt {
+            permission_mode: String::new(),
+            masked: Counts::default(),
             head: blog_head("2026-10-13T01:30:00Z")?,
             text: "keep <b> tags & \u{65e5}\u{672c}\u{8a9e} as is\nexport AWS_SECRET_ACCESS_KEY=***REDACTED***".to_owned(),
             kind: Kind::Text,
@@ -83,6 +92,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
 /// A sample session.
 fn sample_session() -> Result<Session, String> {
     Ok(Session {
+        usage: Usage::default(),
+        masked: Counts::default(),
         agent: AGENT,
         id: BLOG_SESSION.to_owned(),
         title: "Weekly report | draft".to_owned(),
@@ -120,7 +131,12 @@ fn prompts_as_a_json_document() -> TestResult {
     let prompts = prompt_turns(sample_prompts()?);
     golden(
         "render/prompts.json.golden",
-        &document("strict-v2", prompts.get(..1).ok_or("no prompts")?)?,
+        &document(
+            "strict-v2",
+            "0.1.0",
+            &Run::default(),
+            prompts.get(..1).ok_or("no prompts")?,
+        )?,
     )
 }
 
@@ -128,7 +144,7 @@ fn prompts_as_a_json_document() -> TestResult {
 fn an_empty_json_document_has_an_empty_list() -> TestResult {
     golden(
         "render/empty.json.golden",
-        &document::<Prompt>("strict-v2", &[])?,
+        &document::<Prompt>("strict-v2", "0.1.0", &Run::default(), &[])?,
     )
 }
 
@@ -152,7 +168,7 @@ fn prompts_as_markdown() -> TestResult {
     });
     golden(
         "render/prompts.md.golden",
-        &markdown::records(&prompt_turns(prompts), &tokyo()?)?,
+        &markdown::records(&prompt_turns(prompts), &tokyo()?, None)?,
     )
 }
 
@@ -181,6 +197,7 @@ fn markdown_groups_by_file_not_by_session_id() -> TestResult {
             bare_prompt(head, "/b.jsonl", "two"),
         ]),
         &TimeZone::UTC,
+        None,
     )?;
     check_eq(&out.matches("\n## ").count(), &2, "session headings")?;
     Ok(())
@@ -207,6 +224,7 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
     let blog = |time: &str, text: &str| -> Result<Prompt, String> {
         Ok(bare_prompt(
             Head {
+                masked: Counts::default(),
                 session_title: "Weekly report".to_owned(),
                 ..blog_head(time)?
             },
@@ -216,6 +234,7 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
     };
     let other = bare_prompt(
         Head {
+            masked: Counts::default(),
             session_title: String::new(),
             project: "-Users-alice-notes".to_owned(),
             cwd: String::new(),
@@ -245,6 +264,8 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
 #[test]
 fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     let reply = Reply {
+        usage: None,
+        masked: Counts::default(),
         head: blog_head("2026-10-13T01:24:00Z")?,
         text: "Drafted the report.".to_owned(),
         model: "claude-opus-5-5".to_owned(),
@@ -254,6 +275,8 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         source: source(BLOG_FILE, 5, "a-1"),
     };
     let call = ToolCall {
+        usage: None,
+        masked: Counts::default(),
         head: blog_head("2026-10-13T01:25:00Z")?,
         tool: "Bash".to_owned(),
         input: json!({"command": "git log --oneline", "description": "List commits"}),
@@ -268,6 +291,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         ),
     };
     let result = ToolResult {
+        masked: Counts::default(),
         head: blog_head("2026-10-13T01:25:01Z")?,
         tool: "Bash".to_owned(),
         input: json!({"command": "git log --oneline", "description": "List commits"}),
@@ -284,6 +308,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         skill: "weekly-report".to_owned(),
     };
     let orphan = ToolResult {
+        masked: Counts::default(),
         tool: String::new(),
         input: serde_json::Value::Null,
         tool_use_id: "toolu_9".to_owned(),
@@ -298,15 +323,18 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     golden("kinds/replies.jsonl.golden", &lines(&replies)?)?;
     golden(
         "kinds/replies.md.golden",
-        &markdown::records(&replies, &zone)?,
+        &markdown::records(&replies, &zone, None)?,
     )?;
     let calls = [Turn::Call(call)];
     golden("kinds/tools.jsonl.golden", &lines(&calls)?)?;
-    golden("kinds/tools.md.golden", &markdown::records(&calls, &zone)?)?;
+    golden(
+        "kinds/tools.md.golden",
+        &markdown::records(&calls, &zone, None)?,
+    )?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
     golden("kinds/results.jsonl.golden", &lines(&results)?)?;
     golden(
         "kinds/results.md.golden",
-        &markdown::records(&results, &zone)?,
+        &markdown::records(&results, &zone, None)?,
     )
 }

@@ -1,6 +1,15 @@
 {
-  "schema": 1,
+  "schema": 2,
   "filter": "strict-v2",
+  "ccdig": "0.1.0",
+  "run": {
+    "since": null,
+    "until": null,
+    "tz": null,
+    "mask": [],
+    "mask_values": [],
+    "no_mask": false
+  },
   "items": [
     {
       "type": "prompt",
@@ -14,6 +23,7 @@
       "text": "/weekly-report last week",
       "kind": "slash",
       "command": "/weekly-report",
+      "permission_mode": "",
       "redacted": false,
       "source": {
         "file": "/home/alice/.claude/projects/-Users-alice-blog/1111.jsonl",

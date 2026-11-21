@@ -5,7 +5,7 @@
 //! U+FFFD, and one mistyped block empties the prompt text. Tool blocks are read one by one, so a broken block hides only
 //! itself.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
@@ -49,11 +49,16 @@ pub struct Entry {
     pub flags: Flags,
     /// The git branch checked out at the time.
     pub git_branch: String,
+    /// The ID of the response an assistant line is part of, or empty.
+    pub message_id: String,
     /// The model that wrote an assistant line.
     pub model: String,
     /// Who produced a user line, such as `human` or `task-notification`.
     /// `None` for sessions recorded before Claude Code wrote the field.
     pub origin: Option<String>,
+    /// The permission mode a user line was written in, such as `plan` or
+    /// `auto`; empty when the line does not say.
+    pub permission_mode: String,
     /// What kind of line this is.
     pub role: Role,
     /// The session the line belongs to; a sub-agent's lines carry the
@@ -65,6 +70,9 @@ pub struct Entry {
     pub timestamp: Option<Stamp>,
     /// The session title, on `ai-title` lines.
     pub title: String,
+    /// The tokens of the response an assistant line is part of, which
+    /// every line of the response repeats.
+    pub usage: Option<Usage>,
     /// The line's ID, which a resumed session repeats.
     pub uuid: String,
 }
@@ -115,6 +123,9 @@ struct RawEntry<'line> {
     message: Option<RawMessage<'line>>,
     /// `origin`.
     origin: Option<RawOrigin>,
+    /// `permissionMode`, on the user lines of recent Claude Code.
+    #[serde(rename = "permissionMode")]
+    permission_mode: Option<String>,
     /// `sessionId`.
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
@@ -135,8 +146,48 @@ struct RawMessage<'line> {
     /// A string or an array of blocks, decoded after the line.
     #[serde(borrow)]
     content: Option<&'line RawValue>,
+    /// The response's ID, which every line of the response repeats.
+    id: Option<String>,
     /// The model that wrote an assistant message.
     model: Option<String>,
+    /// The tokens the response used, decoded after the line so that a
+    /// value of another shape cannot reject it.
+    #[serde(borrow)]
+    usage: Option<&'line RawValue>,
+}
+
+/// The JSON of `message.usage`.
+#[derive(Deserialize)]
+struct RawUsage {
+    /// `cache_creation_input_tokens`.
+    #[serde(rename = "cache_creation_input_tokens")]
+    cache_creation: Option<u64>,
+    /// `cache_read_input_tokens`.
+    #[serde(rename = "cache_read_input_tokens")]
+    cache_read: Option<u64>,
+    /// `input_tokens`.
+    #[serde(rename = "input_tokens")]
+    input: Option<u64>,
+    /// `output_tokens`.
+    #[serde(rename = "output_tokens")]
+    output: Option<u64>,
+}
+
+/// The tokens a response used, as Claude Code recorded them.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Usage {
+    /// Input tokens not read from or written to the cache.
+    pub input: u64,
+    /// Output tokens.
+    pub output: u64,
+    /// Input tokens read from the cache.
+    pub cache_read: u64,
+    /// Input tokens written to the cache.
+    pub cache_creation: u64,
 }
 
 /// The JSON of `origin`.
@@ -181,6 +232,16 @@ pub struct ToolUse {
     pub name: String,
 }
 
+impl Usage {
+    /// Adds the tokens in `other`.
+    pub const fn add(&mut self, other: Self) {
+        self.input = self.input.saturating_add(other.input);
+        self.output = self.output.saturating_add(other.output);
+        self.cache_read = self.cache_read.saturating_add(other.cache_read);
+        self.cache_creation = self.cache_creation.saturating_add(other.cache_creation);
+    }
+}
+
 /// Decodes one JSONL line, or `None` when it is not a transcript entry.
 pub fn decode_line(line: &[u8]) -> Option<Entry> {
     let text = String::from_utf8_lossy(line);
@@ -193,12 +254,14 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         Some(ref value) => Some(Stamp::parse_rfc3339(value)?),
         None => None,
     };
-    let (mut content, model) = raw.message.map_or_else(
-        || (Content::default(), String::new()),
+    let (mut content, model, message_id, usage) = raw.message.map_or_else(
+        || (Content::default(), String::new(), String::new(), None),
         |message| {
             (
                 decode_content(message.content),
                 message.model.unwrap_or_default(),
+                message.id.unwrap_or_default(),
+                message.usage.and_then(decode_usage),
             )
         },
     );
@@ -214,8 +277,10 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
             sidechain: raw.is_sidechain.unwrap_or_default(),
         },
         git_branch: raw.git_branch.unwrap_or_default(),
+        message_id,
         model,
         origin: raw.origin.map(|origin| origin.kind.unwrap_or_default()),
+        permission_mode: raw.permission_mode.unwrap_or_default(),
         role: match raw.kind.as_deref() {
             Some("ai-title") => Role::AiTitle,
             Some("assistant") => Role::Assistant,
@@ -226,7 +291,19 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         skill: raw.attribution_skill.unwrap_or_default(),
         timestamp,
         title: raw.ai_title.unwrap_or_default(),
+        usage,
         uuid: raw.uuid.unwrap_or_default(),
+    })
+}
+
+/// Reads `message.usage`, or `None` when it is not an object.
+fn decode_usage(raw: &RawValue) -> Option<Usage> {
+    let usage: RawUsage = serde_json::from_str(raw.get()).ok()?;
+    Some(Usage {
+        input: usage.input.unwrap_or_default(),
+        output: usage.output.unwrap_or_default(),
+        cache_read: usage.cache_read.unwrap_or_default(),
+        cache_creation: usage.cache_creation.unwrap_or_default(),
     })
 }
 

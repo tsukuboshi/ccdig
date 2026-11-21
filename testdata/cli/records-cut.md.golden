@@ -1,0 +1,22 @@
+# Records
+
+## (untitled)
+
+- Project: `-Users-alice-blog`
+- Session: `wwww`
+
+### 2026-10-15 09:00 JST - Tool call
+
+- Tool: `Write`
+
+```json
+{
+  "file_path": "/tmp/a.md",
+  "content": "0123456789… (10 more characters)",
+  "lines": [
+    "short",
+    "abcdefghij… (6 more characters)"
+  ],
+  "count": 12
+}
+```

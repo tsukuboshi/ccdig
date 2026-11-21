@@ -5,9 +5,10 @@ use serde::Serialize;
 use crate::failure::Failure;
 
 /// The version of the JSON envelope and the record keys.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
-/// The JSON document: the records with the schema and filter versions.
+/// The JSON document: the records with the schema and filter versions,
+/// the ccdig version, and how the run was asked for.
 #[derive(Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -18,8 +19,50 @@ struct Envelope<'items, T> {
     schema: u32,
     /// The name of the rules that selected the prompts.
     filter: &'items str,
+    /// The ccdig version that wrote the document.
+    ccdig: &'items str,
+    /// The flags that decide what the records hold.
+    run: &'items Run,
     /// The records; an empty list is `[]`, not `null`.
     items: &'items [T],
+}
+
+/// The flags of a run that decide what its records hold, so that a missing
+/// stretch of time can be told apart from a narrower run, and a document
+/// says how it was masked. The values masked are left out.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Run {
+    /// `--since` as given, or `None`.
+    pub since: Option<String>,
+    /// `--until` as given, or `None`.
+    pub until: Option<String>,
+    /// `--tz` as given, or `None` for the system zone.
+    pub tz: Option<String>,
+    /// The names `--mask` turned on, each once, in the order given.
+    pub mask: Vec<String>,
+    /// The labels of `--mask-values`, without the empty one.
+    pub mask_values: Vec<String>,
+    /// Whether `--no-mask` turned masking off.
+    pub no_mask: bool,
+}
+
+/// What `ccdig version --format json` prints.
+#[derive(Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+struct Build<'text> {
+    /// The ccdig version.
+    version: &'text str,
+    /// `SCHEMA_VERSION`.
+    schema: u32,
+    /// The name of the rules that select the prompts.
+    filter: &'text str,
 }
 
 /// One compact JSON object per line.
@@ -41,19 +84,35 @@ where
     Ok(out)
 }
 
-/// One indented document of `items`, wrapped with the schema version and
-/// `filter`.
+/// `version`, with the schema version and `filter`, as one compact JSON
+/// object on a line.
+///
+/// # Errors
+///
+/// When the object cannot be encoded.
+pub fn version(version: &str, filter: &str) -> Result<String, Failure> {
+    lines(&[Build {
+        version,
+        schema: SCHEMA_VERSION,
+        filter,
+    }])
+}
+
+/// One indented document of `items`, wrapped with the schema version,
+/// `filter`, the ccdig `version`, and `run`.
 ///
 /// # Errors
 ///
 /// When a record cannot be encoded.
-pub fn document<T>(filter: &str, items: &[T]) -> Result<String, Failure>
+pub fn document<T>(filter: &str, version: &str, run: &Run, items: &[T]) -> Result<String, Failure>
 where
     T: Serialize,
 {
     let json = serde_json::to_string_pretty(&Envelope {
         schema: SCHEMA_VERSION,
         filter,
+        ccdig: version,
+        run,
         items,
     })
     .map_err(Failure::Json)?;
