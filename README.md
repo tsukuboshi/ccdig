@@ -16,8 +16,9 @@ masked too.
 
 Each [release](https://github.com/tsukuboshi/ccdig/releases) has a
 prebuilt binary for macOS on Apple silicon. Download it with `curl`
-rather than a browser, so macOS does not quarantine the unsigned binary,
-and put `ccdig` in a directory on your `PATH`:
+rather than a browser, so macOS does not quarantine the unsigned binary.
+This puts `ccdig` in `~/.local/bin`; add that directory to your `PATH` if
+it is not there yet:
 
 ```sh
 base=https://github.com/tsukuboshi/ccdig/releases/latest/download
@@ -25,8 +26,9 @@ curl -fsSLO "$base/ccdig-aarch64-apple-darwin.tar.gz"
 curl -fsSLO "$base/ccdig-aarch64-apple-darwin.tar.gz.sha256"
 shasum -a 256 -c ccdig-aarch64-apple-darwin.tar.gz.sha256
 tar -xzf ccdig-aarch64-apple-darwin.tar.gz
+install -d ~/.local/bin
 install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
-ccdig version
+~/.local/bin/ccdig version
 ```
 
 On other platforms, build it with Rust 1.99.1 or later:
