@@ -140,7 +140,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.1.0","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":2,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -276,7 +276,7 @@ Every key is always present.
 run:
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.1.0",
+{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

@@ -141,7 +141,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.1.0","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":2,"filter":"strict-v2"}
 ```
 
 ## 共通オプション
@@ -277,7 +277,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.1.0",
+{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
