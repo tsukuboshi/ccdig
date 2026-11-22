@@ -1,0 +1,20 @@
+id: no-super-super
+snapshots:
+  "fn f() { super::super::run(); }":
+    labels:
+    - source: super::super
+      style: primary
+      start: 9
+      end: 21
+  "use super::super::collect::Corpus;":
+    labels:
+    - source: super::super
+      style: primary
+      start: 4
+      end: 16
+  "use super::super::{render, filter};":
+    labels:
+    - source: super::super
+      style: primary
+      start: 4
+      end: 16

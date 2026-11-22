@@ -1,5 +1,10 @@
 //! Streaming a session transcript one line at a time.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "opening a transcript is the start of the pipeline"
+)]
+
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, ErrorKind};
 use std::path::Path;

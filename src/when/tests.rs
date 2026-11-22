@@ -1,29 +1,22 @@
 //! Tests for day ranges, transcript timestamps, and time zones.
 
-use core::error::Error;
 use core::time::Duration;
 use std::time::SystemTime;
 
 use jiff::Timestamp;
 use jiff::tz::{TimeZone, TimeZoneDatabase};
 
-use super::{DayRange, Stamp, load_zone, local_zone};
-use crate::testing::{TestResult, check_eq};
+use super::{DayRange, Stamp};
+use crate::testing::{TestResult, check_eq, label_in, zone};
 
 /// The zone the tests use, so day boundaries fall mid-UTC-day.
 fn tokyo() -> Result<TimeZone, jiff::Error> {
-    TimeZone::get("Asia/Tokyo")
+    zone("Asia/Tokyo")
 }
 
 /// Parses an RFC 3339 instant for the test inputs.
 fn at(text: &str) -> Result<Timestamp, jiff::Error> {
     text.parse()
-}
-
-/// Formats a fixed instant in `zone`, to tell zones apart.
-fn label_in(zone: &TimeZone) -> Result<String, Box<dyn Error>> {
-    let stamp = Stamp::parse_rfc3339("2026-10-13T01:00:00Z").ok_or("bad fixture")?;
-    Ok(stamp.minute_label(zone)?)
 }
 
 #[test]
@@ -201,12 +194,12 @@ fn an_offset_and_utc_spelling_of_one_instant_compare_by_instant() -> TestResult 
 #[test]
 fn minute_label_shows_the_zone_abbreviation() -> TestResult {
     let stamp = Stamp::parse_rfc3339("2026-10-13T01:00:00Z").ok_or("fixture")?;
-    for (zone, want) in [
+    for (name, want) in [
         ("Asia/Tokyo", "2026-10-13 10:00 JST"),
         ("UTC", "2026-10-13 01:00 UTC"),
         ("America/Sao_Paulo", "2026-10-12 22:00 -03"),
     ] {
-        check_eq(stamp.minute_label(&load_zone(zone)?)?.as_str(), want, zone)?;
+        check_eq(stamp.minute_label(&zone(name)?)?.as_str(), want, name)?;
     }
     Ok(())
 }
@@ -233,55 +226,6 @@ fn from_system_time_is_utc_with_nanoseconds() -> TestResult {
         "1970-01-01T00:00:01.5Z",
         "epoch plus 1.5s",
     )?;
-    Ok(())
-}
-
-#[test]
-fn load_zone_reads_iana_names_and_treats_empty_as_utc() -> TestResult {
-    check_eq(
-        label_in(&load_zone("Asia/Tokyo")?)?.as_str(),
-        "2026-10-13 10:00 JST",
-        "Tokyo",
-    )?;
-    check_eq(
-        label_in(&load_zone("")?)?.as_str(),
-        "2026-10-13 01:00 UTC",
-        "empty",
-    )?;
-    check_eq(
-        label_in(&load_zone("UTC")?)?.as_str(),
-        "2026-10-13 01:00 UTC",
-        "UTC",
-    )?;
-    Ok(())
-}
-
-#[test]
-fn load_zone_names_an_unknown_zone() -> TestResult {
-    let Err(failure) = load_zone("Mars/Olympus") else {
-        return Err("Mars/Olympus loaded".into());
-    };
-    check_eq(
-        failure.to_string().as_str(),
-        "load time zone: unknown time zone Mars/Olympus",
-        "message",
-    )?;
-    Ok(())
-}
-
-#[test]
-fn local_zone_follows_go_for_the_tz_variable() -> TestResult {
-    for (tz, want) in [
-        ("", "2026-10-13 01:00 UTC"),
-        (":", "2026-10-13 01:00 UTC"),
-        ("UTC", "2026-10-13 01:00 UTC"),
-        ("Asia/Tokyo", "2026-10-13 10:00 JST"),
-        (":Asia/Tokyo", "2026-10-13 10:00 JST"),
-        ("Mars/Olympus", "2026-10-13 01:00 UTC"),
-        ("/nonexistent/zoneinfo", "2026-10-13 01:00 UTC"),
-    ] {
-        check_eq(label_in(&local_zone(Some(tz)))?.as_str(), want, tz)?;
-    }
     Ok(())
 }
 

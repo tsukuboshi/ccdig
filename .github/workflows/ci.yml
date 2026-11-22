@@ -53,6 +53,35 @@ jobs:
           tool: cargo-deny@0.21.0
       - run: cargo deny check
 
+  # The module order and where I/O may happen, as ARCHITECTURE.md describes.
+  # clippy.toml checks the I/O in the check job; ast-grep checks the order,
+  # and check-architecture.sh that ARCHITECTURE.md matches the rules.
+  architecture:
+    name: Module structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/check-architecture.sh
+      # ast-grep/action runs only `ast-grep scan`, so install the CLI to run
+      # the rule tests too. Building it takes minutes, so take the release
+      # binary, checked against the SHA-256 the release lists. To bump it,
+      # change the version and the hash together.
+      - name: Install ast-grep
+        env:
+          VERSION: 0.51.0
+          SHA256: a7eead5552d3a8daad70f5d50d935da44bd0c138e946b5b0a96b1d38169fa639
+        run: |
+          zip=$RUNNER_TEMP/ast-grep.zip
+          curl -fsSL -o "$zip" "https://github.com/ast-grep/ast-grep/releases/download/$VERSION/app-x86_64-unknown-linux-gnu.zip"
+          echo "$SHA256  $zip" | sha256sum -c -
+          unzip -q "$zip" -d "$RUNNER_TEMP/ast-grep"
+          echo "$RUNNER_TEMP/ast-grep" >>"$GITHUB_PATH"
+      - run: ast-grep --version
+      - run: ast-grep test
+      - run: ast-grep scan --error=unused-suppression --error=no-suppress-all
+
   readme:
     name: README translation
     runs-on: ubuntu-latest

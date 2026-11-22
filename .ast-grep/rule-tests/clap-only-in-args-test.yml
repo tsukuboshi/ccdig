@@ -1,0 +1,15 @@
+id: clap-only-in-args
+valid:
+  - use super::args::{Command, Common};
+  - use crate::config::Format;
+  - let clap = 1;
+  - '#[derive(Clone, Debug)] struct A;'
+invalid:
+  - use clap::ValueEnum;
+  - use clap::{Args, Parser};
+  - use clap::builder::PossibleValue;
+  - fn f() { clap::Command::new("x"); }
+  - use ::clap::Parser;
+  - use clap as k;
+  - "fn f() { ::clap::Command::new(\"x\"); }"
+  - "#[derive(clap::Parser)] struct A;"

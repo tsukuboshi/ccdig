@@ -4,7 +4,6 @@
 pub mod digest;
 pub mod json;
 pub mod markdown;
-pub mod record;
 
 #[cfg(test)]
 mod tests;

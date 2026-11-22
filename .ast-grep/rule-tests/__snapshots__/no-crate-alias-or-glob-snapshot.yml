@@ -1,0 +1,22 @@
+id: no-crate-alias-or-glob
+snapshots:
+  use crate as root;:
+    labels:
+    - source: crate as root
+      style: primary
+      start: 4
+      end: 17
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+  "use crate::*;":
+    labels:
+    - source: crate::*
+      style: primary
+      start: 4
+      end: 12
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9

@@ -2,8 +2,8 @@
 
 use jiff::tz::TimeZone;
 
-use super::record::{Head, Prompt};
 use crate::failure::Failure;
+use crate::record::{Head, Prompt};
 use crate::text::{code_span, escape_inline, heading_text, one_line};
 
 /// The size limits of a digest. Lengths count characters, not bytes, so

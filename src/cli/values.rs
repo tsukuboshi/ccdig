@@ -2,7 +2,7 @@
 //! values, given as is or with `@` and a file to read it from.
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::io;
 
 use serde_json::{Map, Value};
 
@@ -23,7 +23,8 @@ pub struct Values {
     pub pairs: Vec<(String, String, String)>,
 }
 
-/// Reads `specs`, each a JSON object or `@` and a file holding one.
+/// Reads `specs`, each a JSON object or `@` and a file holding one, which
+/// `read_file` reads.
 ///
 /// Under a label, each value is replaced with the label and its number in
 /// full-width brackets, as in `［repo1］`; a list in place of a value gives
@@ -34,12 +35,15 @@ pub struct Values {
 /// # Errors
 ///
 /// When a file cannot be read, or a spec is not JSON of that shape.
-pub fn parse(specs: &[String]) -> Result<Values, Failure> {
+pub fn parse<R>(specs: &[String], read_file: R) -> Result<Values, Failure>
+where
+    R: Fn(&str) -> io::Result<String>,
+{
     let mut values = Values::default();
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut seen: HashSet<String> = HashSet::new();
     for spec in specs {
-        let (given, text) = read(spec)?;
+        let (given, text) = read(spec, &read_file)?;
         let invalid = |reason: String| Failure::MaskValues {
             given: given.clone(),
             reason,
@@ -84,13 +88,16 @@ pub fn parse(specs: &[String]) -> Result<Values, Failure> {
 }
 
 /// The text of `spec` and how to name it in an error: the spec itself, or
-/// the file after its `@`, without a byte order mark.
-fn read(spec: &str) -> Result<(String, String), Failure> {
+/// the file after its `@`, read by `read_file`, without a byte order mark.
+fn read<R>(spec: &str, read_file: &R) -> Result<(String, String), Failure>
+where
+    R: Fn(&str) -> io::Result<String>,
+{
     let Some(path) = spec.strip_prefix('@') else {
         // The JSON itself is not quoted: it holds the values to hide.
         return Ok(("--mask-values".to_owned(), spec.to_owned()));
     };
-    let read = fs::read_to_string(path).map_err(|source| Failure::MaskFile {
+    let read = read_file(path).map_err(|source| Failure::MaskFile {
         path: path.to_owned(),
         source,
     })?;

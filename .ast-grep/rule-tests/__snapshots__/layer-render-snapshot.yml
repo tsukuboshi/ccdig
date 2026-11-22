@@ -1,0 +1,38 @@
+id: layer-render
+snapshots:
+  "use crate::collect::Corpus;":
+    labels:
+    - source: crate::collect
+      style: primary
+      start: 4
+      end: 18
+  "use crate::filter::Query;":
+    labels:
+    - source: crate::filter
+      style: primary
+      start: 4
+      end: 17
+  "use crate::redact::Counts;":
+    labels:
+    - source: crate::redact
+      style: primary
+      start: 4
+      end: 17
+  "use crate::{record::Head, transcript::entry::Usage};":
+    labels:
+    - source: transcript::entry::Usage
+      style: primary
+      start: 26
+      end: 50
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+    - source: crate::{record::Head, transcript::entry::Usage}
+      style: secondary
+      start: 4
+      end: 51
+    - source: "{record::Head, transcript::entry::Usage}"
+      style: secondary
+      start: 11
+      end: 51

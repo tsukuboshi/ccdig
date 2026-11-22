@@ -1,0 +1,9 @@
+id: layer-render
+valid:
+  - use crate::record::{Record, Session};
+  - use crate::{failure::Failure, text::fenced, when::Stamp};
+invalid:
+  - use crate::redact::Counts;
+  - use crate::filter::Query;
+  - use crate::{record::Head, transcript::entry::Usage};
+  - use crate::collect::Corpus;

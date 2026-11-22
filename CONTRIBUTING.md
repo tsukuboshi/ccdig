@@ -7,7 +7,9 @@ Thanks for your interest in improving ccdig.
 You need [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml)
 pins the toolchain used for development and CI, with clippy and rustfmt;
 `cargo` installs it on first use. For the dependency check, install
-[cargo-deny](https://github.com/EmbarkStudios/cargo-deny).
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny), and for the
+module structure check, [ast-grep](https://ast-grep.github.io/) 0.51.0
+(`cargo install ast-grep --locked --version 0.51.0`).
 
 ## Checks
 
@@ -19,6 +21,9 @@ cargo fmt --all --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 cargo deny check
+ast-grep test
+ast-grep scan --error=unused-suppression --error=no-suppress-all
+.github/scripts/check-architecture.sh
 .github/scripts/check-readme-sync.sh
 ```
 
@@ -28,6 +33,16 @@ them. In code, silence a lint only with
 `#[expect(clippy::name, reason = "...")]`, so the exception goes away when
 it is no longer needed. Upgrading the toolchain can add lints; review them
 when you do.
+
+[clippy.toml](clippy.toml) and the ast-grep rules under
+[.ast-grep/rules](.ast-grep/rules) hold the module structure in place: which
+module may use which, and where I/O may happen.
+[ARCHITECTURE.md](ARCHITECTURE.md) explains it, and
+`.github/scripts/check-architecture.sh` fails when its module table, the
+rules, and the files that may do I/O disagree. The `layer-*` rules are
+written from the table: change the table, then run the script with
+`--write`. Silence an ast-grep rule on
+one line only with `// ast-grep-ignore: <rule-id>` and a reason next to it.
 
 ## How we work
 

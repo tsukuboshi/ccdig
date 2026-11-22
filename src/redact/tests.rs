@@ -1,5 +1,7 @@
 //! Tests for secret masking.
 
+#![expect(clippy::disallowed_methods, reason = "the test times the masking")]
+
 use std::time::Instant;
 
 use serde_json::{Value, json};

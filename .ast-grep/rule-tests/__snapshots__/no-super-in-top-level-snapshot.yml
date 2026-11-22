@@ -1,0 +1,14 @@
+id: no-super-in-top-level
+snapshots:
+  "fn f() { super::pipeline::execute(); }":
+    labels:
+    - source: super
+      style: primary
+      start: 9
+      end: 14
+  "use super::collect::Corpus;":
+    labels:
+    - source: super
+      style: primary
+      start: 4
+      end: 9

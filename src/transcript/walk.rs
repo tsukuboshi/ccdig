@@ -1,5 +1,10 @@
 //! Finding the session transcripts under the history root.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "listing the transcript files is the start of the pipeline"
+)]
+
 use std::fs::{self, DirEntry};
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};

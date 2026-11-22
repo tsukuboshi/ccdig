@@ -1,0 +1,45 @@
+# Written by .github/scripts/check-architecture.sh --write from the module
+# table in ARCHITECTURE.md. Change the table and run it again.
+id: layer-text
+language: rust
+severity: error
+message: "text may use only failure"
+note: |
+  A module uses only those before it in the module table of
+  ARCHITECTURE.md, or the ones its row names after "uses only".
+files:
+  - src/text.rs
+  - src/text/**/*.rs
+ignores:
+  - src/**/tests.rs
+  - src/**/tests/**/*.rs
+rule:
+  any:
+    # crate::module::item for a module this one may not use, in a use or
+    # a path
+    - kind: scoped_identifier
+      regex: ^crate::(when|transcript|classify|redact|record|filter|collect|render|config|pipeline|cli)$
+    # use crate::{module, module::item, module::{..}, module as x}
+    - any:
+        - kind: identifier
+        - kind: scoped_identifier
+        - kind: scoped_use_list
+        - kind: use_as_clause
+      regex: ^(when|transcript|classify|redact|record|filter|collect|render|config|pipeline|cli)\b
+      inside:
+        kind: use_list
+        inside:
+          kind: scoped_use_list
+          has:
+            field: path
+            kind: crate
+    # crate::module in a macro call or an attribute, which ast-grep sees
+    # as tokens
+    - kind: identifier
+      regex: ^(when|transcript|classify|redact|record|filter|collect|render|config|pipeline|cli)$
+      inside:
+        kind: token_tree
+      follows:
+        regex: ^::$
+        follows:
+          kind: crate

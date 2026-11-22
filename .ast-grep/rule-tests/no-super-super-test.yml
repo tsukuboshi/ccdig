@@ -1,0 +1,8 @@
+id: no-super-super
+valid:
+  - use super::args::Common;
+  - use super::{Extra, Pick};
+invalid:
+  - use super::super::collect::Corpus;
+  - use super::super::{render, filter};
+  - fn f() { super::super::run(); }

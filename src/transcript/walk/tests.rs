@@ -1,5 +1,10 @@
 //! Tests for finding transcripts, including sub-agent transcripts.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the tests build transcript trees on disk"
+)]
+
 use core::time::Duration;
 use std::fs::{self, File};
 use std::io::ErrorKind;

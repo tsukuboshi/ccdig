@@ -1,0 +1,12 @@
+id: no-super-super
+language: rust
+severity: error
+message: "name a module outside your parent with crate::, not super::super::"
+note: |
+  The layer rules check paths that start with crate::, and
+  super::super:: would pass them by.
+files:
+  - src/**/*.rs
+rule:
+  kind: scoped_identifier
+  regex: ^super::super$
