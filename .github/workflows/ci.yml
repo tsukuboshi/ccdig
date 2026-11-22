@@ -65,20 +65,20 @@ jobs:
           persist-credentials: false
       - run: .github/scripts/check-architecture.sh
       # ast-grep/action runs only `ast-grep scan`, so install the CLI to run
-      # the rule tests too. ast-grep publishes no binaries cargo-binstall
-      # finds, so build it once per version and keep the binaries. They do
-      # not use the toolchain once built, so a toolchain bump keeps them.
-      - id: ast-grep
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/bin/ast-grep
-            ~/.cargo/bin/sg
-          key: ast-grep-0.51.0-${{ runner.os }}-${{ runner.arch }}
-      - if: steps.ast-grep.outputs.cache-hit != 'true'
-        run: rustup toolchain install
-      - if: steps.ast-grep.outputs.cache-hit != 'true'
-        run: cargo install ast-grep --locked --version 0.51.0
+      # the rule tests too. Building it takes minutes, so take the release
+      # binary, checked against the SHA-256 the release lists. To bump it,
+      # change the version and the hash together.
+      - name: Install ast-grep
+        env:
+          VERSION: 0.51.0
+          SHA256: a7eead5552d3a8daad70f5d50d935da44bd0c138e946b5b0a96b1d38169fa639
+        run: |
+          zip=$RUNNER_TEMP/ast-grep.zip
+          curl -fsSL -o "$zip" "https://github.com/ast-grep/ast-grep/releases/download/$VERSION/app-x86_64-unknown-linux-gnu.zip"
+          echo "$SHA256  $zip" | sha256sum -c -
+          unzip -q "$zip" -d "$RUNNER_TEMP/ast-grep"
+          echo "$RUNNER_TEMP/ast-grep" >>"$GITHUB_PATH"
+      - run: ast-grep --version
       - run: ast-grep test
       - run: ast-grep scan --error=unused-suppression --error=no-suppress-all
 
