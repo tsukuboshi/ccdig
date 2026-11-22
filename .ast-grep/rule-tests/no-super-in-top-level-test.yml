@@ -1,0 +1,7 @@
+id: no-super-in-top-level
+valid:
+  - use crate::record::Head;
+  - "mod tests { use super::passes; }"
+invalid:
+  - use super::collect::Corpus;
+  - fn f() { super::pipeline::execute(); }

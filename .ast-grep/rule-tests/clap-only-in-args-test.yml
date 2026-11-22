@@ -1,0 +1,10 @@
+id: clap-only-in-args
+valid:
+  - use super::args::{Command, Common};
+  - use crate::config::Format;
+  - let clap = 1;
+invalid:
+  - use clap::ValueEnum;
+  - use clap::{Args, Parser};
+  - use clap::builder::PossibleValue;
+  - fn f() { clap::Command::new("x"); }

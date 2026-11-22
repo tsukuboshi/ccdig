@@ -1,5 +1,10 @@
 //! Tests for the command line, against golden files and synthetic history.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the tests build transcript trees on disk"
+)]
+
 mod kinds;
 
 use core::error::Error;

@@ -1,0 +1,30 @@
+id: clap-only-in-args
+snapshots:
+  "fn f() { clap::Command::new(\"x\"); }":
+    labels:
+    - source: clap::Command
+      style: primary
+      start: 9
+      end: 22
+  "use clap::ValueEnum;":
+    labels:
+    - source: clap::ValueEnum
+      style: primary
+      start: 4
+      end: 19
+  "use clap::builder::PossibleValue;":
+    labels:
+    - source: clap::builder
+      style: primary
+      start: 4
+      end: 17
+  "use clap::{Args, Parser};":
+    labels:
+    - source: clap::{Args, Parser}
+      style: primary
+      start: 4
+      end: 24
+    - source: clap
+      style: secondary
+      start: 4
+      end: 8

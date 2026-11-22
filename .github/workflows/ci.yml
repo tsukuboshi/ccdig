@@ -53,6 +53,34 @@ jobs:
           tool: cargo-deny@0.21.0
       - run: cargo deny check
 
+  # The module order and where I/O may happen, as ARCHITECTURE.md describes.
+  # clippy.toml checks the I/O in the check job; ast-grep checks the order,
+  # and check-architecture.sh that ARCHITECTURE.md matches the rules.
+  architecture:
+    name: Module structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/check-architecture.sh
+      # ast-grep/action runs only `ast-grep scan`, so install the CLI to run
+      # the rule tests too. ast-grep publishes no binaries cargo-binstall
+      # finds, so build it once per version and keep the binaries.
+      - id: ast-grep
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/ast-grep
+            ~/.cargo/bin/sg
+          key: ast-grep-0.51.0-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml') }}
+      - if: steps.ast-grep.outputs.cache-hit != 'true'
+        run: rustup toolchain install
+      - if: steps.ast-grep.outputs.cache-hit != 'true'
+        run: cargo install ast-grep --locked --version 0.51.0
+      - run: ast-grep test
+      - run: ast-grep scan --error=unused-suppression --error=no-suppress-all
+
   readme:
     name: README translation
     runs-on: ubuntu-latest

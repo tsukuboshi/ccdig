@@ -1,0 +1,6 @@
+# ast-grep checks the module structure that ARCHITECTURE.md describes:
+#   ast-grep test && ast-grep scan --error=unused-suppression --error=no-suppress-all
+ruleDirs:
+  - .ast-grep/rules
+testConfigs:
+  - testDir: .ast-grep/rule-tests

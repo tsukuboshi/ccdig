@@ -1,5 +1,10 @@
 //! Command-line entry point for ccdig.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "main hands the real command line, stdout, and stderr to ccdig::run"
+)]
+
 use std::env;
 use std::io;
 use std::process::ExitCode;

@@ -1,6 +1,11 @@
 //! Tests for collecting records from transcripts: the order of masking and
 //! filtering, titles for sub-agents, resumed copies, and tokens.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the tests build transcript trees on disk"
+)]
+
 use core::error::Error;
 use std::fs::{self, File};
 use std::path::Path;

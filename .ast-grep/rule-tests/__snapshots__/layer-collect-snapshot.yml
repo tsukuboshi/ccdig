@@ -1,0 +1,98 @@
+id: layer-collect
+snapshots:
+  "fn f() { crate::pipeline::execute(); }":
+    labels:
+    - source: crate::pipeline
+      style: primary
+      start: 9
+      end: 24
+  "fn f(_: crate::config::Config) {}":
+    labels:
+    - source: crate::config
+      style: primary
+      start: 8
+      end: 21
+  "use crate::render::record::Head;":
+    labels:
+    - source: crate::render
+      style: primary
+      start: 4
+      end: 17
+  "use crate::render::{digest, json};":
+    labels:
+    - source: crate::render
+      style: primary
+      start: 4
+      end: 17
+  "use crate::{record::Head, render::json::Run};":
+    labels:
+    - source: render::json::Run
+      style: primary
+      start: 26
+      end: 43
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+    - source: crate::{record::Head, render::json::Run}
+      style: secondary
+      start: 4
+      end: 44
+    - source: "{record::Head, render::json::Run}"
+      style: secondary
+      start: 11
+      end: 44
+  "use crate::{render as out};":
+    labels:
+    - source: render as out
+      style: primary
+      start: 12
+      end: 25
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+    - source: crate::{render as out}
+      style: secondary
+      start: 4
+      end: 26
+    - source: "{render as out}"
+      style: secondary
+      start: 11
+      end: 26
+  "use crate::{render, text::clean_text};":
+    labels:
+    - source: render
+      style: primary
+      start: 12
+      end: 18
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+    - source: crate::{render, text::clean_text}
+      style: secondary
+      start: 4
+      end: 37
+    - source: "{render, text::clean_text}"
+      style: secondary
+      start: 11
+      end: 37
+  "use crate::{render::{json, markdown}};":
+    labels:
+    - source: render::{json, markdown}
+      style: primary
+      start: 12
+      end: 36
+    - source: crate
+      style: secondary
+      start: 4
+      end: 9
+    - source: crate::{render::{json, markdown}}
+      style: secondary
+      start: 4
+      end: 37
+    - source: "{render::{json, markdown}}"
+      style: secondary
+      start: 11
+      end: 37

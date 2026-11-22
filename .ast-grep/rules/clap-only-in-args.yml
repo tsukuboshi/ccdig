@@ -1,0 +1,22 @@
+id: clap-only-in-args
+language: rust
+severity: error
+message: use clap only in src/cli/args.rs
+note: |
+  cli/args.rs turns what clap parsed into plain values; the rest of the
+  crate, cli/resolve.rs included, sees only those. Add what you need of
+  clap to cli/args.rs. See ARCHITECTURE.md.
+files:
+  - src/**/*.rs
+ignores:
+  - src/cli/args.rs
+rule:
+  any:
+    # clap::Item, in a use or in a path
+    - kind: scoped_identifier
+      regex: ^clap::\w+$
+    # use clap::{..}
+    - kind: scoped_use_list
+      has:
+        field: path
+        regex: ^clap$

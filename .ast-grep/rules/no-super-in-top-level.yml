@@ -1,0 +1,21 @@
+id: no-super-in-top-level
+language: rust
+severity: error
+message: "name another module with crate::, not super::"
+note: |
+  In a top-level module, super:: is the crate root, so a path through it
+  would pass by the layer rules, which check paths that start with
+  crate::.
+files:
+  - src/*.rs
+ignores:
+  # `*` also matches across `/`, so leave out the files below src/.
+  - src/*/**
+  - src/lib.rs
+  - src/main.rs
+rule:
+  kind: super
+  not:
+    inside:
+      stopBy: end
+      kind: mod_item

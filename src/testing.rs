@@ -3,6 +3,11 @@
 //! `panic_in_result_fn` forbids `assert_eq!` in tests that return `Result`,
 //! so comparisons return an error instead of panicking.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "golden files are read and written on disk"
+)]
+
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
 use std::path::Path;

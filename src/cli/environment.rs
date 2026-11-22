@@ -2,6 +2,11 @@
 //! variables, git config, the system time zone, and the files flags name.
 //! The rest of the crate gets what these return and reads nothing itself.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "this module is where ccdig reads the environment, git config, and the files flags name"
+)]
+
 use std::ffi::OsString;
 use std::{env, fs, io, process};
 

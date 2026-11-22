@@ -1,0 +1,17 @@
+id: layer-collect
+valid:
+  - use crate::record::{Head, Record};
+  - use crate::{select::Query, text::clean_text};
+  - use crate::record::render;
+  - use crate::renderer::Draft;
+  - "// crate::render in a comment"
+  - 'const S: &str = "crate::render";'
+invalid:
+  - use crate::render::record::Head;
+  - use crate::render::{digest, json};
+  - use crate::{render, text::clean_text};
+  - use crate::{record::Head, render::json::Run};
+  - use crate::{render::{json, markdown}};
+  - use crate::{render as out};
+  - fn f() { crate::pipeline::execute(); }
+  - "fn f(_: crate::config::Config) {}"
