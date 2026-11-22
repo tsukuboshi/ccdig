@@ -403,6 +403,35 @@ fn assignment_cases() -> Vec<Case> {
     ]
 }
 
+/// Japanese names glued to the text before them, which has no ASCII
+/// boundary for the name.
+fn japanese_name_cases() -> Vec<Case> {
+    vec![
+        case(
+            "Japanese name right after a masked value",
+            format!(
+                "token={}~\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}={}",
+                fake(10),
+                fake(10)
+            ),
+            "token=***REDACTED***\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}=***REDACTED***",
+        ),
+        case(
+            "API key in Japanese right after a value, which would read its ASCII part",
+            format!("token={}API\u{30AD}\u{30FC}={}", fake(10), fake(10)),
+            "token=***REDACTED***\u{30AD}\u{30FC}=***REDACTED***",
+        ),
+        case(
+            "Japanese name right after an ASCII word",
+            format!(
+                "ID\u{FF1A}user1\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}\u{FF1A}{}",
+                fake(10)
+            ),
+            "ID\u{FF1A}user1\u{30D1}\u{30B9}\u{30EF}\u{30FC}\u{30C9}\u{FF1A}***REDACTED***",
+        ),
+    ]
+}
+
 /// Assignments that look like credentials but are not.
 fn non_credential_cases() -> Vec<Case> {
     vec![
@@ -595,6 +624,7 @@ fn cases() -> Vec<Case> {
         token_cases(),
         format_cases(),
         assignment_cases(),
+        japanese_name_cases(),
         non_credential_cases(),
         url_cases(),
         prose_cases(),

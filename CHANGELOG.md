@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A Japanese name for a credential, such as the word for password, now has
+  its value masked when it follows a value or an ASCII word directly, as in
+  `token=...` or `ID：user1` followed by the name and a colon. Its value was
+  left as it was.
+
 ## [0.0.1] - 2026-11-21
 
 ### Added

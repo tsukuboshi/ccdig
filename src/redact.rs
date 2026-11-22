@@ -38,7 +38,7 @@ pub const MARKER: &str = "***REDACTED***";
 ///
 /// Token formats without a source comment follow the default rules of
 /// gitleaks: <https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml>.
-const RULES: [(&str, &str, Replacement); 25] = [
+const RULES: [(&str, &str, Replacement); 26] = [
     // AWS credentials by variable name: export lines from the SSO portal,
     // YAML, credentials files, and JSON with snake_case keys. The value must
     // be 16+ characters so that "AWS_SESSION_TOKEN: is it required?" keeps
@@ -215,16 +215,28 @@ const RULES: [(&str, &str, Replacement); 25] = [
         r"(?s)-----BEGIN [A-Z0-9 _-]*PRIVATE KEY(?: BLOCK)?-----.*?(?:-----END [A-Z0-9 _-]*PRIVATE KEY(?: BLOCK)?-----|\z)",
         Replacement::Marker,
     ),
-    // A value assigned to a name: `name = value`, `name: value`,
-    // `name => value`, `--name=value`, `?name=value`, the same inside escaped
-    // JSON (`\"password\":\"...\"`), and the Japanese words for password,
-    // PIN, API key, access key, secret key, secret, and token
-    // with a full-width colon. The pattern stops after the opening quote;
-    // `Redactor::mask_assignments` finds the value and `name` decides. It
-    // runs last, so a value another rule masked starts with `***` and stays.
+    // A value assigned to a name, as below, for the Japanese words for
+    // password, PIN, API key, access key, secret key, secret, and token, also
+    // with a full-width colon. No boundary is needed before them: Japanese is
+    // written without spaces, so the name may follow a value or an ASCII word
+    // directly. It runs before the ASCII names, whose unquoted value would
+    // otherwise read the ASCII part of a name that follows it, as `API` in
+    // the word for API key. The empty first group keeps the groups where the
+    // rule below has them.
     (
         "credential-assignment",
-        r#"(^|[^A-Za-z0-9_.])((?:\\?["'])?([A-Za-z_][A-Za-z0-9_.-]*|\x{30D1}\x{30B9}\x{30EF}\x{30FC}\x{30C9}|\x{6697}\x{8A3C}\x{756A}\x{53F7}|API\x{30AD}\x{30FC}|\x{30A2}\x{30AF}\x{30BB}\x{30B9}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}|\x{30C8}\x{30FC}\x{30AF}\x{30F3})(?:\\?["'])?\]?[\t ]*(?:=>|[=:\x{FF1A}])[\t ]*(\\?["'])?)"#,
+        r#"()((?:\\?["'])?(\x{30D1}\x{30B9}\x{30EF}\x{30FC}\x{30C9}|\x{6697}\x{8A3C}\x{756A}\x{53F7}|API\x{30AD}\x{30FC}|\x{30A2}\x{30AF}\x{30BB}\x{30B9}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}\x{30AD}\x{30FC}|\x{30B7}\x{30FC}\x{30AF}\x{30EC}\x{30C3}\x{30C8}|\x{30C8}\x{30FC}\x{30AF}\x{30F3})(?:\\?["'])?\]?[\t ]*(?:=>|[=:\x{FF1A}])[\t ]*(\\?["'])?)"#,
+        Replacement::Assignment,
+    ),
+    // A value assigned to a name: `name = value`, `name: value`,
+    // `name => value`, `--name=value`, `?name=value`, and the same inside
+    // escaped JSON (`\"password\":\"...\"`). The pattern stops after the
+    // opening quote; `Redactor::mask_assignments` finds the value and `name`
+    // decides. The two assignment rules run last, so a value another rule
+    // masked starts with `***` and stays.
+    (
+        "credential-assignment",
+        r#"(^|[^A-Za-z0-9_.])((?:\\?["'])?([A-Za-z_][A-Za-z0-9_.-]*)(?:\\?["'])?\]?[\t ]*(?:=>|[=:\x{FF1A}])[\t ]*(\\?["'])?)"#,
         Replacement::Assignment,
     ),
 ];
