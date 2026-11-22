@@ -1,0 +1,46 @@
+id: proptest-only-in-properties
+snapshots:
+  "fn f() { proptest::bool::weighted(0.1); }":
+    labels:
+    - source: proptest::bool
+      style: primary
+      start: 9
+      end: 23
+  "fn f() { proptest::prop_oneof![a, b]; }":
+    labels:
+    - source: proptest::prop_oneof
+      style: primary
+      start: 9
+      end: 29
+  "use ::proptest::sample::select;":
+    labels:
+    - source: "::proptest::sample"
+      style: primary
+      start: 4
+      end: 22
+  use proptest as pt;:
+    labels:
+    - source: proptest as pt
+      style: primary
+      start: 4
+      end: 18
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12
+  "use proptest::collection::vec;":
+    labels:
+    - source: proptest::collection
+      style: primary
+      start: 4
+      end: 24
+  "use proptest::{option, prop_oneof};":
+    labels:
+    - source: proptest::{option, prop_oneof}
+      style: primary
+      start: 4
+      end: 34
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12

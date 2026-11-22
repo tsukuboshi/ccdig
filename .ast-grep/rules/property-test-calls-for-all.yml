@@ -1,0 +1,29 @@
+id: property-test-calls-for-all
+language: rust
+severity: error
+message: run this property with testing::for_all or for_all_cases
+note: |
+  A test in a tests/properties.rs states a property, and for_all draws the
+  inputs, shrinks a failure to the smallest one, and saves nothing to
+  disk. A test with fixed inputs belongs in the tests.rs next to it. See
+  ARCHITECTURE.md.
+files:
+  - src/**/tests/properties.rs
+rule:
+  kind: function_item
+  follows:
+    kind: attribute_item
+    regex: ^#\[test\]$
+    # Past the other attributes and comments between it and the function.
+    stopBy:
+      not:
+        any:
+          - kind: attribute_item
+          - kind: line_comment
+  not:
+    has:
+      kind: call_expression
+      has:
+        field: function
+        regex: ^for_all(_cases)?$
+      stopBy: end

@@ -1,0 +1,41 @@
+id: proptest-only-in-properties
+language: rust
+severity: error
+message: use proptest only in src/testing.rs and in a tests/properties.rs
+note: |
+  A module's properties live in a tests/properties.rs next to its tests,
+  and src/testing.rs holds the runner and the strategies they share,
+  tested in src/testing/tests.rs. See
+  ARCHITECTURE.md and CONTRIBUTING.md.
+files:
+  - src/**/*.rs
+  - tests/**/*.rs
+ignores:
+  - src/testing.rs
+  # The tests of the runner itself.
+  - src/testing/tests.rs
+  - src/**/tests/properties.rs
+rule:
+  any:
+    # proptest::item or ::proptest::item, in a use or in a path
+    - kind: scoped_identifier
+      regex: ^(::)?proptest::\w+$
+    # use proptest::{..}
+    - kind: scoped_use_list
+      has:
+        field: path
+        regex: ^(::)?proptest$
+    # use proptest as name
+    - kind: use_as_clause
+      has:
+        field: path
+        regex: ^(::)?proptest$
+    # proptest::item in a macro call or an attribute
+    - kind: identifier
+      inside:
+        kind: token_tree
+      follows:
+        regex: ^::$
+        follows:
+          kind: identifier
+          regex: ^proptest$

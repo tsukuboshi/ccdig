@@ -1,0 +1,32 @@
+id: property-test-calls-for-all
+snapshots:
+  "#[test]\n#[expect(clippy::panic_in_result_fn, reason = \"x\")]\nfn fixed() -> TestResult { Ok(()) }":
+    labels:
+    - source: fn fixed() -> TestResult { Ok(()) }
+      style: primary
+      start: 60
+      end: 95
+    - source: "#[test]"
+      style: secondary
+      start: 0
+      end: 7
+  "#[test]\nfn fixed() -> TestResult { check_eq(&1, &1, \"one\")?; Ok(()) }":
+    labels:
+    - source: fn fixed() -> TestResult { check_eq(&1, &1, "one")?; Ok(()) }
+      style: primary
+      start: 8
+      end: 69
+    - source: "#[test]"
+      style: secondary
+      start: 0
+      end: 7
+  "#[test]\nfn looped() -> TestResult { for value in 0..9 { check(value)?; } Ok(()) }":
+    labels:
+    - source: fn looped() -> TestResult { for value in 0..9 { check(value)?; } Ok(()) }
+      style: primary
+      start: 8
+      end: 81
+    - source: "#[test]"
+      style: secondary
+      start: 0
+      end: 7

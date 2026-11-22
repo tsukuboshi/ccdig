@@ -1,0 +1,46 @@
+id: properties-through-for-all
+language: rust
+severity: error
+message: run a property with testing::for_all, not with proptest's runner
+note: |
+  for_all and for_all_cases run proptest with failure persistence off, so
+  a failing input, which can look like a secret, is never written under
+  proptest-regressions/, and they report the smallest failing input as the
+  test's error. The proptest! macro, the test_runner module, and the
+  prelude that brings them would save it. See CONTRIBUTING.md.
+files:
+  - src/**/*.rs
+  - tests/**/*.rs
+ignores:
+  - src/testing.rs
+rule:
+  any:
+    # proptest! { .. } or proptest::proptest! { .. }
+    - kind: macro_invocation
+      has:
+        field: macro
+        regex: ^(::)?(proptest::)?proptest$
+    # proptest::test_runner::.., proptest::prelude::.., and
+    # proptest::proptest, in a use or a path
+    - kind: scoped_identifier
+      regex: ^(::)?proptest::(test_runner|prelude|proptest)(::\w+)*$
+    # use proptest::test_runner::{..}
+    - kind: scoped_use_list
+      has:
+        field: path
+        regex: ^(::)?proptest::(test_runner|prelude)$
+    # use proptest::{test_runner, prelude::*, test_runner as t, ..}
+    - any:
+        - kind: identifier
+        - kind: scoped_identifier
+        - kind: scoped_use_list
+        - kind: use_as_clause
+        - kind: use_wildcard
+      regex: ^(test_runner|prelude|proptest)\b
+      inside:
+        kind: use_list
+        inside:
+          kind: scoped_use_list
+          has:
+            field: path
+            regex: ^(::)?proptest$

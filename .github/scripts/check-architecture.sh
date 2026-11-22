@@ -10,6 +10,9 @@
 #   rule, and there is no rule for a module the table does not list.
 # - The .rs files the "I/O happens only at the ends." invariant names are
 #   the files outside the tests that expect clippy::disallowed_methods.
+# - The .rs files the "Properties hold for any input." invariant names are
+#   the tests/properties.rs files under src, and each runs its properties
+#   through testing::for_all or for_all_cases.
 #
 # With --write, the layer rules are written from the table instead of
 # compared; a rule that should not exist is reported, not deleted.
@@ -191,18 +194,24 @@ for rule in "$rules"/layer-*.yml; do
 	esac
 done
 
+# Prints, under src/ and sorted, the .rs files that the invariant whose
+# bold title is $1 names.
+named_files() {
+	awk -v title="**$1**" '
+	  /^## / { inside = 0 }
+	  /^- \*\*/ { inside = index($0, title) > 0 }
+	  inside {
+	    line = $0
+	    while (match(line, /`[^`]*\.rs`/)) {
+	      print "src/" substr(line, RSTART + 1, RLENGTH - 2)
+	      line = substr(line, RSTART + RLENGTH)
+	    }
+	  }
+	' "$doc" | LC_ALL=C sort -u
+}
+
 # The files the I/O invariant names, and the ones that expect the lint.
-named_io=$(awk '
-  /^## / { inside = 0 }
-  /^- \*\*/ { inside = index($0, "**I/O happens only at the ends.**") > 0 }
-  inside {
-    line = $0
-    while (match(line, /`[^`]*\.rs`/)) {
-      print "src/" substr(line, RSTART + 1, RLENGTH - 2)
-      line = substr(line, RSTART + RLENGTH)
-    }
-  }
-' "$doc" | LC_ALL=C sort -u)
+named_io=$(named_files "I/O happens only at the ends.")
 expecting=$(
 	cd "$root" &&
 		find src -name '*.rs' ! -name tests.rs ! -path '*/tests/*' ! -path src/testing.rs -print |
@@ -221,6 +230,22 @@ done < <(LC_ALL=C comm -23 <(printf '%s\n' "$named_io") <(printf '%s\n' "$expect
 while read -r file; do
 	[[ -n $file ]] && drift "$file expects clippy::disallowed_methods, but the I/O invariant does not name it"
 done < <(LC_ALL=C comm -13 <(printf '%s\n' "$named_io") <(printf '%s\n' "$expecting"))
+
+# The property files the invariant names, the ones there are, and whether
+# each runs its properties through for_all.
+named_properties=$(named_files "Properties hold for any input.")
+properties=$(cd "$root" && find src -path '*/tests/properties.rs' -print | LC_ALL=C sort)
+while read -r file; do
+	[[ -n $file ]] && drift "the property invariant names $file, which does not exist"
+done < <(LC_ALL=C comm -23 <(printf '%s\n' "$named_properties") <(printf '%s\n' "$properties"))
+while read -r file; do
+	[[ -n $file ]] && drift "$file holds properties, but the property invariant does not name it"
+done < <(LC_ALL=C comm -13 <(printf '%s\n' "$named_properties") <(printf '%s\n' "$properties"))
+while read -r file; do
+	[[ -n $file ]] || continue
+	grep -Eq 'for_all(_cases)?\(' "$root/$file" ||
+		drift "$file runs no property through testing::for_all"
+done <<<"$properties"
 
 if [[ $failed -ne 0 ]]; then
 	echo "Update ARCHITECTURE.md and the code together." >&2
