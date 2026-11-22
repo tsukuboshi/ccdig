@@ -1,6 +1,8 @@
 //! Tests for collecting records from transcripts: the order of masking and
 //! filtering, titles for sub-agents, resumed copies, and tokens.
 
+mod properties;
+
 use core::error::Error;
 use std::path::Path;
 

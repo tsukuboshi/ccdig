@@ -1,5 +1,7 @@
 //! Tests for the writers, against golden files.
 
+mod properties;
+
 use jiff::tz::TimeZone;
 use serde_json::json;
 

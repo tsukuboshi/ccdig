@@ -1,0 +1,10 @@
+id: property-test-calls-for-all
+valid:
+  - "#[test]\nfn holds() -> TestResult { for_all(&any::<u8>(), |_| Ok(())) }"
+  - "#[test]\nfn costly() -> TestResult { for_all_cases(8, &any::<u8>(), |_| Ok(())) }"
+  - "#[test]\n#[expect(clippy::panic_in_result_fn, reason = \"x\")]\nfn holds() -> TestResult { let s = 1; for_all(&s, |_| Ok(())) }"
+  - "fn helper() -> u8 { 1 }"
+invalid:
+  - "#[test]\nfn fixed() -> TestResult { check_eq(&1, &1, \"one\")?; Ok(()) }"
+  - "#[test]\n#[expect(clippy::panic_in_result_fn, reason = \"x\")]\nfn fixed() -> TestResult { Ok(()) }"
+  - "#[test]\nfn looped() -> TestResult { for value in 0..9 { check(value)?; } Ok(()) }"

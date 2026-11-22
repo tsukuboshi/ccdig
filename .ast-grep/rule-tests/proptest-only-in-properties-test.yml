@@ -1,0 +1,12 @@
+id: proptest-only-in-properties
+valid:
+  - use crate::testing::{for_all, hostile_text};
+  - let proptest = 1;
+  - fn f() { prop::run(); }
+invalid:
+  - use proptest::collection::vec;
+  - use proptest::{option, prop_oneof};
+  - use ::proptest::sample::select;
+  - use proptest as pt;
+  - fn f() { proptest::bool::weighted(0.1); }
+  - "fn f() { proptest::prop_oneof![a, b]; }"

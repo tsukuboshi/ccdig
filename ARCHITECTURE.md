@@ -43,7 +43,8 @@ These are checked, so a change that breaks one fails CI.
 `.github/scripts/check-architecture.sh` also checks that this file agrees
 with the code: the table lists the modules `src/lib.rs` declares, each
 `layer-*` rule is the one the script writes from the table with `--write`,
-and the files below that may do I/O are the ones that say so.
+the files below that may do I/O are the ones that say so, and the property
+files below are the ones there are.
 
 - **Dependencies point one way.** A module uses only modules before it in
   the table above, or the ones its row names after "uses only". The
@@ -74,3 +75,19 @@ and the files below that may do I/O are the ones that say so.
   machine decides is read there: the system zone when neither `--tz` nor
   `TZ` names one, and the host's zone database, which comes before the
   bundled copy.
+- **Properties hold for any input.** The modules that read what a
+  transcript or the command line holds say what must hold whatever it is,
+  in a properties file next to their tests:
+  `text/tests/properties.rs`, `when/tests/properties.rs`,
+  `transcript/entry/tests/properties.rs`,
+  `transcript/reader/tests/properties.rs`,
+  `classify/human/tests/properties.rs`,
+  `classify/slash/tests/properties.rs`, `redact/tests/properties.rs`,
+  `filter/tests/properties.rs`, `collect/tests/properties.rs`,
+  `render/tests/properties.rs`, and `cli/tests/properties.rs`. Each test
+  there runs through `testing::for_all` (`property-test-calls-for-all`),
+  which writes no failing input to disk, as one can look like a secret.
+  proptest is used nowhere else
+  (`proptest-only-in-properties`), and never through its own runner
+  (`properties-through-for-all`). A new properties file needs a place in
+  this list.

@@ -1,5 +1,7 @@
 //! Tests for folding slash command expansions.
 
+mod properties;
+
 use super::{Folded, fold};
 use crate::testing::{TestResult, check_eq};
 

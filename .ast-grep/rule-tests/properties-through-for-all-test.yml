@@ -1,0 +1,21 @@
+id: properties-through-for-all
+valid:
+  - use proptest::collection::vec;
+  - use proptest::{option, prop_oneof};
+  - "fn f() -> TestResult { for_all(&any::<u8>(), |_| Ok(())) }"
+  - "fn f() { prop_oneof![a, b]; }"
+  - use std::io::prelude::*;
+  - use rayon::prelude::*;
+  - use crate::testing::test_runner;
+invalid:
+  - "proptest! { #[test] fn t(x in 0..1) {} }"
+  - "proptest::proptest! { #[test] fn t(x in 0..1) {} }"
+  - use proptest::test_runner::TestRunner;
+  - use proptest::test_runner::{Config, TestRunner};
+  - use proptest::prelude::*;
+  - use proptest::proptest;
+  - use proptest::{prelude::*};
+  - use proptest::{test_runner};
+  - use proptest::{test_runner as runner};
+  - use proptest::{option, test_runner::TestRunner};
+  - fn f() { proptest::test_runner::TestRunner::default(); }

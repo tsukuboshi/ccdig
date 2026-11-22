@@ -1,5 +1,7 @@
 //! Tests for matching records against the command-line filters.
 
+mod properties;
+
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 

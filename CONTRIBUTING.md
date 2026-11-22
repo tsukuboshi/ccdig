@@ -7,9 +7,11 @@ Thanks for your interest in improving ccdig.
 You need [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml)
 pins the toolchain used for development and CI, with clippy and rustfmt;
 `cargo` installs it on first use. For the dependency check, install
-[cargo-deny](https://github.com/EmbarkStudios/cargo-deny), and for the
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny); for the
 module structure check, [ast-grep](https://ast-grep.github.io/) 0.51.0
-(`cargo install ast-grep --locked --version 0.51.0`).
+(`cargo install ast-grep --locked --version 0.51.0`); and for the
+coverage check, [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)
+0.9.1 (`cargo install cargo-llvm-cov --locked --version 0.9.1`).
 
 ## Checks
 
@@ -25,6 +27,7 @@ ast-grep test
 ast-grep scan --error=unused-suppression --error=no-suppress-all
 .github/scripts/check-architecture.sh
 .github/scripts/check-readme-sync.sh
+.github/scripts/coverage.sh
 ```
 
 Every clippy group, `restriction` included, is denied in
@@ -51,6 +54,18 @@ one line only with `// ast-grep-ignore: <rule-id>` and a reason next to it.
   since `assert_eq!` panics. Prefer table-driven tests.
 - Rendered output is checked against golden files under `testdata/`;
   regenerate them with `UPDATE_GOLDEN=1 cargo test` and review the diff.
+- A table lists the cases you thought of; a property states what holds for
+  any input, such as "no generated token is left in the output", and
+  proptest looks for the input that breaks it. Write properties in the
+  module's `tests/properties.rs`, run them with `for_all` from
+  `src/testing.rs`, and list a new file in
+  [ARCHITECTURE.md](ARCHITECTURE.md). `PROPTEST_CASES=5000 cargo test`
+  tries more inputs, and `PROPTEST_RNG_SEED` replays a run. A failing input
+  is not saved to disk, since it can look like a secret: add the smallest
+  one the failure reports to a table-driven test, building any secret in it
+  at run time.
+- `.github/scripts/coverage.sh` fails when line coverage drops below the
+  floor it sets. Raise the floor when coverage goes up.
 - Keep commits focused, with a message that makes sense on its own.
 - Add a line to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md)
   for any user-visible change.

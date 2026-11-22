@@ -1,0 +1,128 @@
+id: properties-through-for-all
+snapshots:
+  "fn f() { proptest::test_runner::TestRunner::default(); }":
+    labels:
+    - source: proptest::test_runner::TestRunner::default
+      style: primary
+      start: 9
+      end: 51
+  "proptest! { #[test] fn t(x in 0..1) {} }":
+    labels:
+    - source: "proptest! { #[test] fn t(x in 0..1) {} }"
+      style: primary
+      start: 0
+      end: 40
+    - source: proptest
+      style: secondary
+      start: 0
+      end: 8
+  "proptest::proptest! { #[test] fn t(x in 0..1) {} }":
+    labels:
+    - source: "proptest::proptest! { #[test] fn t(x in 0..1) {} }"
+      style: primary
+      start: 0
+      end: 50
+    - source: proptest::proptest
+      style: secondary
+      start: 0
+      end: 18
+  "use proptest::prelude::*;":
+    labels:
+    - source: proptest::prelude
+      style: primary
+      start: 4
+      end: 21
+  "use proptest::proptest;":
+    labels:
+    - source: proptest::proptest
+      style: primary
+      start: 4
+      end: 22
+  "use proptest::test_runner::TestRunner;":
+    labels:
+    - source: proptest::test_runner::TestRunner
+      style: primary
+      start: 4
+      end: 37
+  "use proptest::test_runner::{Config, TestRunner};":
+    labels:
+    - source: proptest::test_runner::{Config, TestRunner}
+      style: primary
+      start: 4
+      end: 47
+    - source: proptest::test_runner
+      style: secondary
+      start: 4
+      end: 25
+  "use proptest::{option, test_runner::TestRunner};":
+    labels:
+    - source: test_runner::TestRunner
+      style: primary
+      start: 23
+      end: 46
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12
+    - source: proptest::{option, test_runner::TestRunner}
+      style: secondary
+      start: 4
+      end: 47
+    - source: "{option, test_runner::TestRunner}"
+      style: secondary
+      start: 14
+      end: 47
+  "use proptest::{prelude::*};":
+    labels:
+    - source: prelude::*
+      style: primary
+      start: 15
+      end: 25
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12
+    - source: proptest::{prelude::*}
+      style: secondary
+      start: 4
+      end: 26
+    - source: "{prelude::*}"
+      style: secondary
+      start: 14
+      end: 26
+  "use proptest::{test_runner as runner};":
+    labels:
+    - source: test_runner as runner
+      style: primary
+      start: 15
+      end: 36
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12
+    - source: proptest::{test_runner as runner}
+      style: secondary
+      start: 4
+      end: 37
+    - source: "{test_runner as runner}"
+      style: secondary
+      start: 14
+      end: 37
+  "use proptest::{test_runner};":
+    labels:
+    - source: test_runner
+      style: primary
+      start: 15
+      end: 26
+    - source: proptest
+      style: secondary
+      start: 4
+      end: 12
+    - source: proptest::{test_runner}
+      style: secondary
+      start: 4
+      end: 27
+    - source: "{test_runner}"
+      style: secondary
+      start: 14
+      end: 27

@@ -53,6 +53,24 @@ jobs:
           tool: cargo-deny@0.21.0
       - run: cargo deny check
 
+  # Apart from the check job: the instrumented build is slower, and its
+  # test results should not stand in for the plain ones.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      # Only this job needs it, so rust-toolchain.toml leaves it out;
+      # cargo-llvm-cov installs it by itself when run locally.
+      - run: rustup component add llvm-tools
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f  # v2.90.6
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - run: .github/scripts/coverage.sh
+
   # The module order and where I/O may happen, as ARCHITECTURE.md describes.
   # clippy.toml checks the I/O in the check job; ast-grep checks the order,
   # and check-architecture.sh that ARCHITECTURE.md matches the rules.

@@ -1,5 +1,7 @@
 //! Tests for telling typed prompts from harness traffic.
 
+mod properties;
+
 use super::{Reason, classify};
 use crate::testing::{TestResult, check_eq};
 use crate::transcript::entry::decode_line;
