@@ -1,0 +1,14 @@
+id: io-expect-only-at-file-level
+snapshots:
+  "#[expect(clippy::disallowed_methods, reason = \"x\")] fn f() {}":
+    labels:
+    - source: "#[expect(clippy::disallowed_methods, reason = \"x\")]"
+      style: primary
+      start: 0
+      end: 51
+  "#[expect(clippy::disallowed_methods, reason = \"x\")] mod io;":
+    labels:
+    - source: "#[expect(clippy::disallowed_methods, reason = \"x\")]"
+      style: primary
+      start: 0
+      end: 51

@@ -1,0 +1,7 @@
+id: io-expect-only-at-file-level
+valid:
+  - '#![expect(clippy::disallowed_methods, reason = "the walker lists files")]'
+  - '#[expect(clippy::too_many_lines, reason = "a table")] fn f() {}'
+invalid:
+  - '#[expect(clippy::disallowed_methods, reason = "x")] fn f() {}'
+  - '#[expect(clippy::disallowed_methods, reason = "x")] mod io;'

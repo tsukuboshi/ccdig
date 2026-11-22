@@ -1,5 +1,5 @@
-# .github/scripts/check-architecture.sh checks this rule against the module
-# table in ARCHITECTURE.md.
+# Written by .github/scripts/check-architecture.sh --write from the module
+# table in ARCHITECTURE.md. Change the table and run it again.
 id: layer-text
 language: rust
 severity: error
@@ -15,7 +15,8 @@ ignores:
   - src/**/tests/**/*.rs
 rule:
   any:
-    # crate::module::item for a module after this one, in a use or a path
+    # crate::module::item for a module this one may not use, in a use or
+    # a path
     - kind: scoped_identifier
       regex: ^crate::(when|transcript|classify|redact|record|filter|collect|render|config|pipeline|cli)$
     # use crate::{module, module::item, module::{..}, module as x}
@@ -32,3 +33,13 @@ rule:
           has:
             field: path
             kind: crate
+    # crate::module in a macro call or an attribute, which ast-grep sees
+    # as tokens
+    - kind: identifier
+      regex: ^(when|transcript|classify|redact|record|filter|collect|render|config|pipeline|cli)$
+      inside:
+        kind: token_tree
+      follows:
+        regex: ^::$
+        follows:
+          kind: crate

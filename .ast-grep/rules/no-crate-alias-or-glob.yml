@@ -1,0 +1,21 @@
+id: no-crate-alias-or-glob
+language: rust
+severity: error
+message: "name a module as crate::module, not through another name for the crate or a glob"
+note: |
+  The layer rules check paths that start with crate::. A path through
+  another name for the crate, or a module taken in by `use crate::*`,
+  would pass them by.
+files:
+  - src/**/*.rs
+rule:
+  any:
+    # use crate as name
+    - kind: use_as_clause
+      has:
+        field: path
+        kind: crate
+    # use crate::*
+    - kind: use_wildcard
+      has:
+        kind: crate

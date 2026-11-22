@@ -12,11 +12,25 @@ ignores:
   - src/cli/args.rs
 rule:
   any:
-    # clap::Item, in a use or in a path
+    # clap::Item or ::clap::Item, in a use or in a path
     - kind: scoped_identifier
-      regex: ^clap::\w+$
+      regex: ^(::)?clap::\w+$
     # use clap::{..}
     - kind: scoped_use_list
       has:
         field: path
-        regex: ^clap$
+        regex: ^(::)?clap$
+    # use clap as name
+    - kind: use_as_clause
+      has:
+        field: path
+        regex: ^(::)?clap$
+    # clap::Item in a macro call or an attribute, as in #[derive(clap::Parser)]
+    - kind: identifier
+      inside:
+        kind: token_tree
+      follows:
+        regex: ^::$
+        follows:
+          kind: identifier
+          regex: ^clap$

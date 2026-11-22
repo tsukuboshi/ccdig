@@ -1,11 +1,47 @@
 id: layer-collect
 snapshots:
+  "fn f() { assert!(crate::pipeline::execute()); }":
+    labels:
+    - source: pipeline
+      style: primary
+      start: 24
+      end: 32
+    - source: (crate::pipeline::execute())
+      style: secondary
+      start: 16
+      end: 44
+    - source: crate
+      style: secondary
+      start: 17
+      end: 22
+    - source: "::"
+      style: secondary
+      start: 22
+      end: 24
   "fn f() { crate::pipeline::execute(); }":
     labels:
     - source: crate::pipeline
       style: primary
       start: 9
       end: 24
+  "fn f() { let v = vec![crate::render::json::lines(&[])]; }":
+    labels:
+    - source: render
+      style: primary
+      start: 29
+      end: 35
+    - source: "[crate::render::json::lines(&[])]"
+      style: secondary
+      start: 21
+      end: 54
+    - source: crate
+      style: secondary
+      start: 22
+      end: 27
+    - source: "::"
+      style: secondary
+      start: 27
+      end: 29
   "fn f(_: crate::config::Config) {}":
     labels:
     - source: crate::config

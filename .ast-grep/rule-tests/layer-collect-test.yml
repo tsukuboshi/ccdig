@@ -15,3 +15,5 @@ invalid:
   - use crate::{render as out};
   - fn f() { crate::pipeline::execute(); }
   - "fn f(_: crate::config::Config) {}"
+  - "fn f() { let v = vec![crate::render::json::lines(&[])]; }"
+  - "fn f() { assert!(crate::pipeline::execute()); }"

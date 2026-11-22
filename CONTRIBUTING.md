@@ -39,7 +39,9 @@ when you do.
 module may use which, and where I/O may happen.
 [ARCHITECTURE.md](ARCHITECTURE.md) explains it, and
 `.github/scripts/check-architecture.sh` fails when its module table, the
-rules, and the files that may do I/O disagree. Silence an ast-grep rule on
+rules, and the files that may do I/O disagree. The `layer-*` rules are
+written from the table: change the table, then run the script with
+`--write`. Silence an ast-grep rule on
 one line only with `// ast-grep-ignore: <rule-id>` and a reason next to it.
 
 ## How we work

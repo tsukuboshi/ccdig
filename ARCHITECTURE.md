@@ -35,34 +35,42 @@ those before it.
 | `render` | Consumer: JSON Lines, JSON, Markdown, and the digest. It uses only `record`, `text`, `when`, and `failure`. |
 | `config` | `Config`, what a run does, as plain data. |
 | `pipeline` | Runs a `Config`: collect, render, and add up what masking counted. |
-| `cli` | The shell: `args` (clap), `environment` (everything read from outside), `resolve` (flags and environment into a `Config`), and writing the output and the exit status. |
+| `cli` | The shell: `args` (clap), `environment` (everything read from outside, time zones included), `resolve` (flags and environment into a `Config`), and writing the output and the exit status. |
 
 ## Invariants
 
 These are checked, so a change that breaks one fails CI.
 `.github/scripts/check-architecture.sh` also checks that this file agrees
-with the code: the table lists the modules `src/lib.rs` declares, the
-`layer-*` rules follow its order, and the files below that may do I/O are
-the ones that say so.
+with the code: the table lists the modules `src/lib.rs` declares, each
+`layer-*` rule is the one the script writes from the table with `--write`,
+and the files below that may do I/O are the ones that say so.
 
 - **Dependencies point one way.** A module uses only modules before it in
   the table above, or the ones its row names after "uses only". The
-  `layer-*` rules under `.ast-grep/rules` check every `crate::` path;
-  `no-super-super` and `no-super-in-top-level` close the ways around them.
-  A new module needs a row in the table and a `layer-<module>.yml` rule
-  with the modules it may not use.
+  `layer-*` rules under `.ast-grep/rules` check every `crate::` path,
+  in macro calls and attributes too; `no-super-super`,
+  `no-super-in-top-level`, and `no-crate-alias-or-glob` close the ways
+  around them. A new module needs a row in the table; then run
+  `.github/scripts/check-architecture.sh --write` to write its rule.
 - **clap stays in `cli/args.rs`.** The rest of the crate sees plain values,
   and `config` has its own enums for the formats (`clap-only-in-args`).
 - **I/O happens only at the ends.** Reading the environment, the file
-  system, other programs, the clock, and the system time zone is limited
-  to `main.rs`, `cli/environment.rs`, `transcript/walk.rs`,
-  `transcript/reader.rs`, and the tests. [clippy.toml](clippy.toml) lists
-  the calls, and each of those files says it may make them with
-  `#![expect(clippy::disallowed_methods, reason = "...")]`, which fails once
-  the file stops needing it.
+  system, other programs, the clock, the system time zone, and the host's
+  zone database is limited to `main.rs`, `cli/environment.rs`,
+  `transcript/walk.rs`, `transcript/reader.rs`, and the tests.
+  [clippy.toml](clippy.toml) lists the calls, and each of those files says
+  it may make them with
+  `#![expect(clippy::disallowed_methods, reason = "...")]` at its top, which
+  fails once the file stops needing it. An `#[expect]` on a single item
+  would hide I/O from this list, so `io-expect-only-at-file-level` denies
+  it. The tests look zones up in the database bundled into the binary.
 - **Text is masked before the filters, metadata after.** `--grep` searches
-  masked text, and `--project` matches the real paths. A picked record is a
-  `Draft`, and only `Mask::seal`, which masks the metadata, gives it out,
-  so skipping that step does not compile.
-- **Output does not depend on the machine.** Times come from the
-  transcripts, the zone from `--tz` or `TZ`, and nothing reads the clock.
+  masked text, and `--project` matches the real paths. A picker returns
+  each record as a `Draft`, with its text masked, and only `Mask::seal`,
+  which masks the metadata, gives the record out, so code that skips that
+  step does not compile.
+- **The machine reaches the output only through `cli/environment.rs`.**
+  Nothing reads the clock; times come from the transcripts. What the
+  machine decides is read there: the system zone when neither `--tz` nor
+  `TZ` names one, and the host's zone database, which comes before the
+  bundled copy.

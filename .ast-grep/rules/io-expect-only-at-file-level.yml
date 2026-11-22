@@ -1,0 +1,14 @@
+id: io-expect-only-at-file-level
+language: rust
+severity: error
+message: "allow I/O for a whole file with #![expect(clippy::disallowed_methods, ...)] at its top"
+note: |
+  check-architecture.sh compares the files whose top says they may do I/O
+  with the list in ARCHITECTURE.md. An #[expect] on one item would let I/O
+  in without either of them showing it.
+files:
+  - src/**/*.rs
+  - tests/**/*.rs
+rule:
+  kind: attribute_item
+  regex: \bdisallowed_methods\b

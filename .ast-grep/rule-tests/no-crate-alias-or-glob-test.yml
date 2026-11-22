@@ -1,0 +1,9 @@
+id: no-crate-alias-or-glob
+valid:
+  - use crate::record::Head;
+  - use std::io as stdio;
+  - use super::*;
+  - use crate::record::*;
+invalid:
+  - use crate as root;
+  - use crate::*;
