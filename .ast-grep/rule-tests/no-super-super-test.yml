@@ -4,5 +4,5 @@ valid:
   - use super::{Extra, Pick};
 invalid:
   - use super::super::collect::Corpus;
-  - use super::super::{render, select};
+  - use super::super::{render, filter};
   - fn f() { super::super::run(); }

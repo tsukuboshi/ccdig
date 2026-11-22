@@ -17,9 +17,9 @@ use tempfile::TempDir;
 use super::collect;
 use super::kinds::{Prompts, Records, Types};
 use super::mask::Mask;
+use crate::filter::{Filter, Query, patterns};
 use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
-use crate::select::{Filter, Query, patterns};
 use crate::testing::{TestResult, check_eq};
 use crate::transcript::entry::Usage;
 

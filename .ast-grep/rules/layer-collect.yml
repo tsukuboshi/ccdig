@@ -3,7 +3,7 @@
 id: layer-collect
 language: rust
 severity: error
-message: "collect may use only failure, text, when, transcript, classify, redact, record, select"
+message: "collect may use only failure, text, when, transcript, classify, redact, record, filter"
 note: |
   A module uses only those before it in the module table of
   ARCHITECTURE.md, or the ones its row names after "uses only".

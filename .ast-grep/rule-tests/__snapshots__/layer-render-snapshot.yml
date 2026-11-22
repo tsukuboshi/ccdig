@@ -6,15 +6,15 @@ snapshots:
       style: primary
       start: 4
       end: 18
-  "use crate::redact::Counts;":
+  "use crate::filter::Query;":
     labels:
-    - source: crate::redact
+    - source: crate::filter
       style: primary
       start: 4
       end: 17
-  "use crate::select::Query;":
+  "use crate::redact::Counts;":
     labels:
-    - source: crate::select
+    - source: crate::redact
       style: primary
       start: 4
       end: 17

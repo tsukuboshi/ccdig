@@ -1,15 +1,15 @@
 # .github/scripts/check-architecture.sh checks this rule against the module
 # table in ARCHITECTURE.md.
-id: layer-select
+id: layer-filter
 language: rust
 severity: error
-message: "select may use only failure, text, when, transcript, classify, redact, record"
+message: "filter may use only failure, text, when, transcript, classify, redact, record"
 note: |
   A module uses only those before it in the module table of
   ARCHITECTURE.md, or the ones its row names after "uses only".
 files:
-  - src/select.rs
-  - src/select/**/*.rs
+  - src/filter.rs
+  - src/filter/**/*.rs
 ignores:
   - src/**/tests.rs
   - src/**/tests/**/*.rs

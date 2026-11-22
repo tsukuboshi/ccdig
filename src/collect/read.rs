@@ -7,8 +7,8 @@ use std::collections::HashSet;
 
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Select, Spot};
+use crate::filter::{Facts, Query};
 use crate::redact::Counts;
-use crate::select::{Facts, Query};
 use crate::transcript::entry::{Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;

@@ -8,11 +8,11 @@ mod cli;
 mod collect;
 mod config;
 mod failure;
+mod filter;
 mod pipeline;
 mod record;
 mod redact;
 mod render;
-mod select;
 #[cfg(test)]
 mod testing;
 mod text;

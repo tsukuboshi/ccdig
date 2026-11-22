@@ -7,9 +7,9 @@ use jiff::tz::TimeZone;
 
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
+use crate::filter::Query;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
-use crate::select::Query;
 
 /// A subcommand with everything it needs.
 pub enum Config {

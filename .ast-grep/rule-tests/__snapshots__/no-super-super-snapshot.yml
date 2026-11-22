@@ -12,7 +12,7 @@ snapshots:
       style: primary
       start: 4
       end: 16
-  "use super::super::{render, select};":
+  "use super::super::{render, filter};":
     labels:
     - source: super::super
       style: primary

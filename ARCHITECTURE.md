@@ -28,9 +28,9 @@ those before it.
 | `when` | Timestamps, day ranges, and named time zones. |
 | `transcript` | Producer: `walk` lists the files, `reader` streams their lines, `entry` decodes one line. |
 | `classify` | Whether a user line is something a person typed, and folding slash commands back. |
-| `redact` | The masking rules and what they counted. |
+| `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
-| `select` | Tester: the filters, as `Query`. |
+| `filter` | Tester: the filters, as `Query`. |
 | `collect` | The stages joined: `read` picks one file's records as `Draft`s and filters them, `mask::Mask::seal` masks their metadata, and `gather` joins the files. `kinds` holds one picker per kind of record. |
 | `render` | Consumer: JSON Lines, JSON, Markdown, and the digest. It uses only `record`, `text`, `when`, and `failure`. |
 | `config` | `Config`, what a run does, as plain data. |

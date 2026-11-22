@@ -17,14 +17,14 @@ rule:
   any:
     # crate::module::item for a module after this one, in a use or a path
     - kind: scoped_identifier
-      regex: ^crate::(transcript|classify|redact|select|collect|config|pipeline|cli)$
+      regex: ^crate::(transcript|classify|redact|filter|collect|config|pipeline|cli)$
     # use crate::{module, module::item, module::{..}, module as x}
     - any:
         - kind: identifier
         - kind: scoped_identifier
         - kind: scoped_use_list
         - kind: use_as_clause
-      regex: ^(transcript|classify|redact|select|collect|config|pipeline|cli)\b
+      regex: ^(transcript|classify|redact|filter|collect|config|pipeline|cli)\b
       inside:
         kind: use_list
         inside:

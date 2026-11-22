@@ -11,10 +11,10 @@ use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::config::{Config, Format, Shared};
 use crate::failure::Failure;
+use crate::filter::{Filter, Query, patterns};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
-use crate::select::{Filter, Query, patterns};
 use crate::when::{DayRange, load_zone};
 
 /// The shared flags with the environment's defaults filled in, and what
