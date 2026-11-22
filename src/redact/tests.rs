@@ -2,6 +2,8 @@
 
 #![expect(clippy::disallowed_methods, reason = "the test times the masking")]
 
+mod properties;
+
 use std::time::Instant;
 
 use serde_json::{Value, json};

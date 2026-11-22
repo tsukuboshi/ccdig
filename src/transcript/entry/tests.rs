@@ -1,6 +1,8 @@
 //! Tests for decoding one transcript line, including assistant lines and
 //! tool blocks.
 
+mod properties;
+
 use serde_json::json;
 
 use super::{Block, Entry, Flags, Role, ToolResult, ToolUse, decode_line};

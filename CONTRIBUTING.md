@@ -51,6 +51,16 @@ one line only with `// ast-grep-ignore: <rule-id>` and a reason next to it.
   since `assert_eq!` panics. Prefer table-driven tests.
 - Rendered output is checked against golden files under `testdata/`;
   regenerate them with `UPDATE_GOLDEN=1 cargo test` and review the diff.
+- A table lists the cases you thought of; a property states what holds for
+  any input, such as "no generated token is left in the output", and
+  proptest looks for the input that breaks it. Write properties in the
+  module's `tests/properties.rs`, run them with `for_all` from
+  `src/testing.rs`, and list a new file in
+  [ARCHITECTURE.md](ARCHITECTURE.md). `PROPTEST_CASES=5000 cargo test`
+  tries more inputs, and `PROPTEST_RNG_SEED` replays a run. A failing input
+  is not saved to disk, since it can look like a secret: add the smallest
+  one the failure reports to a table-driven test, building any secret in it
+  at run time.
 - Keep commits focused, with a message that makes sense on its own.
 - Add a line to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md)
   for any user-visible change.

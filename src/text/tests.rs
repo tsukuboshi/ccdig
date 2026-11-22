@@ -1,5 +1,7 @@
 //! Tests for the text sanitizers, with hostile inputs.
 
+mod properties;
+
 use super::{clean_text, code_span, escape_inline, escape_pipes, heading_text, one_line};
 use crate::testing::{TestResult, check_eq};
 

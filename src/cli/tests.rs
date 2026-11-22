@@ -6,6 +6,7 @@
 )]
 
 mod kinds;
+mod properties;
 
 use core::error::Error;
 use std::fs::{self, File};

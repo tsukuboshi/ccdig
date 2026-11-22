@@ -1,5 +1,7 @@
 //! Tests for day ranges, transcript timestamps, and time zones.
 
+mod properties;
+
 use core::time::Duration;
 use std::time::SystemTime;
 

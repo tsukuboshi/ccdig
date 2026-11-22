@@ -1,6 +1,8 @@
 //! Tests for streaming a transcript, including assistant lines and small
 //! read buffers.
 
+mod properties;
+
 use std::io::{BufReader, ErrorKind};
 
 use super::{Lines, MAX_LINE_BYTES, ReadStats, Roles, open};
