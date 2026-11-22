@@ -4,8 +4,8 @@
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use super::record::{Record, Session, ToolCall, ToolResult, Turn};
 use crate::failure::Failure;
+use crate::record::{Record, Session, ToolCall, ToolResult, Turn};
 use crate::text::{clean_text, code_span, escape_pipes, fenced, heading_text};
 
 /// Records of any kind, each under a heading that names its kind, with

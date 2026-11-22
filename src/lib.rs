@@ -7,6 +7,7 @@ mod classify;
 mod cli;
 mod collect;
 mod failure;
+mod record;
 mod redact;
 mod render;
 mod select;

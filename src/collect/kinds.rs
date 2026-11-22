@@ -8,10 +8,8 @@ use serde_json::Value;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
+use crate::record::{Head, Kind, Prompt, Reply, Source, Summary, ToolCall, ToolResult, Turn};
 use crate::redact::Counts;
-use crate::render::record::{
-    Head, Kind, Prompt, Reply, Source, Summary, ToolCall, ToolResult, Turn,
-};
 use crate::transcript::entry::{Block, Entry, Role, Usage};
 use crate::transcript::reader::Roles;
 

@@ -6,10 +6,10 @@ use serde_json::json;
 use super::digest::{Limits, digest};
 use super::json::{Run, document, lines};
 use super::markdown;
-use super::record::{
+use crate::failure::Failure;
+use crate::record::{
     AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult, Turn,
 };
-use crate::failure::Failure;
 use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, golden};
 use crate::transcript::entry::Usage;

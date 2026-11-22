@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::failure::Failure;
+use crate::record::{AGENT, Head, Record, Session};
 use crate::redact::{Counts, ExtraMasks, Redactor};
-use crate::render::record::{AGENT, Head, Record, Session};
 use crate::select::{Facts, Query};
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Role, Usage};

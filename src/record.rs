@@ -1,5 +1,6 @@
-//! The records the subcommands print. Every key is always written, in
-//! declaration order, so consumers can rely on the keys.
+//! The records that flow between the stages: `collect` builds them, and
+//! `render` writes them. Every key is always written, in declaration order,
+//! so consumers can rely on the keys.
 
 use serde::Serialize;
 use serde_json::Value;
