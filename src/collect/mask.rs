@@ -32,6 +32,17 @@ impl<T> Draft<T>
 where
     T: Select,
 {
+    /// The draft of what `wrap` makes of the record, as when a picker puts
+    /// a kind's record in a `Turn`. `wrap` only wraps it; it must not keep
+    /// the record.
+    pub fn map<U, F>(self, wrap: F) -> Draft<U>
+    where
+        U: Select,
+        F: FnOnce(T) -> U,
+    {
+        Draft(wrap(self.0))
+    }
+
     /// `record`, whose text a picker masked.
     pub const fn new(record: T) -> Self {
         Self(record)

@@ -147,7 +147,6 @@ where
             picker
                 .pick(&spot, &entry)
                 .into_iter()
-                .map(|(block, record)| (block, Draft::new(record)))
                 .filter(|pair| passes(query, &pair.1)),
         );
         // A response's lines repeat its tokens, so only the first record

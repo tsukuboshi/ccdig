@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
@@ -93,8 +94,8 @@ impl Records {
 impl Pick for Records {
     type Record = Turn;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Turn)> {
-        let mut turns: Vec<(usize, Turn)> = Vec::new();
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Turn>)> {
+        let mut turns: Vec<(usize, Draft<Turn>)> = Vec::new();
         match entry.role {
             Role::User => {
                 // With results picked too, `wants` may have accepted the line
@@ -105,25 +106,27 @@ impl Pick for Records {
                 let reason = classify(entry);
                 if self.types.prompts && reason == Reason::Human {
                     let prompts = Prompts.pick(spot, entry).into_iter();
-                    turns.extend(prompts.map(|(index, prompt)| (index, Turn::Prompt(prompt))));
+                    turns.extend(prompts.map(|(index, prompt)| (index, prompt.map(Turn::Prompt))));
                 }
                 if self.types.summaries && reason == Reason::CompactSummary {
                     let summaries = Summaries.pick(spot, entry).into_iter();
-                    turns.extend(summaries.map(|(index, summary)| (index, Turn::Summary(summary))));
+                    turns.extend(
+                        summaries.map(|(index, summary)| (index, summary.map(Turn::Summary))),
+                    );
                 }
                 if self.types.results {
                     let results = self.results.pick(spot, entry).into_iter();
-                    turns.extend(results.map(|(index, result)| (index, Turn::Result(result))));
+                    turns.extend(results.map(|(index, result)| (index, result.map(Turn::Result))));
                 }
             }
             Role::Assistant => {
                 if self.types.replies {
                     let replies = Replies.pick(spot, entry).into_iter();
-                    turns.extend(replies.map(|(index, reply)| (index, Turn::Reply(reply))));
+                    turns.extend(replies.map(|(index, reply)| (index, reply.map(Turn::Reply))));
                 }
                 if self.types.calls {
                     let calls = Tools.pick(spot, entry).into_iter();
-                    turns.extend(calls.map(|(index, call)| (index, Turn::Call(call))));
+                    turns.extend(calls.map(|(index, call)| (index, call.map(Turn::Call))));
                 }
             }
             Role::AiTitle | Role::Other => {}
@@ -157,7 +160,7 @@ impl Pick for Records {
 impl Pick for Prompts {
     type Record = Prompt;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Prompt)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Prompt>)> {
         let (typed, kind, command) = match fold(&entry.content.text) {
             Some(folded) => (folded.text, Kind::Slash, folded.command),
             None => (entry.content.text.clone(), Kind::Text, String::new()),
@@ -167,7 +170,7 @@ impl Pick for Prompts {
         let source = source(spot, entry, &mut masked);
         vec![(
             0,
-            Prompt {
+            Draft::new(Prompt {
                 head: spot.head(entry),
                 text,
                 kind,
@@ -176,7 +179,7 @@ impl Pick for Prompts {
                 redacted,
                 source,
                 masked,
-            },
+            }),
         )]
     }
 
@@ -192,19 +195,19 @@ impl Pick for Prompts {
 impl Pick for Summaries {
     type Record = Summary;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Summary)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Summary>)> {
         let mut masked = Counts::default();
         let (text, redacted) = spot.mask.text(entry.content.text.trim(), &mut masked);
         let source = source(spot, entry, &mut masked);
         vec![(
             0,
-            Summary {
+            Draft::new(Summary {
                 head: spot.head(entry),
                 text,
                 redacted,
                 source,
                 masked,
-            },
+            }),
         )]
     }
 
@@ -220,7 +223,7 @@ impl Pick for Summaries {
 impl Pick for Replies {
     type Record = Reply;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Reply)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Reply>)> {
         blocks(entry, |block| match *block {
             Block::Text(ref written) if !written.trim().is_empty() => {
                 let mut masked = Counts::default();
@@ -254,7 +257,7 @@ impl Pick for Replies {
 impl Pick for Results {
     type Record = ToolResult;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolResult)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<ToolResult>)> {
         blocks(entry, |block| match *block {
             Block::ToolResult(ref result) => {
                 let call = self.calls.get(&result.tool_use_id);
@@ -317,7 +320,7 @@ impl Pick for Results {
 impl Pick for Tools {
     type Record = ToolCall;
 
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, ToolCall)> {
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<ToolCall>)> {
         blocks(entry, |block| match *block {
             Block::ToolUse(ref call) => {
                 let mut masked = Counts::default();
@@ -517,13 +520,16 @@ impl Select for ToolResult {
 
 /// The records `make` builds from the blocks of `entry`, each with its
 /// block's index.
-fn blocks<T>(entry: &Entry, make: impl Fn(&Block) -> Option<T>) -> Vec<(usize, T)> {
+fn blocks<T>(entry: &Entry, make: impl Fn(&Block) -> Option<T>) -> Vec<(usize, Draft<T>)>
+where
+    T: Select,
+{
     entry
         .content
         .blocks
         .iter()
         .enumerate()
-        .filter_map(|(index, block)| make(block).map(|record| (index, record)))
+        .filter_map(|(index, block)| make(block).map(|record| (index, Draft::new(record))))
         .collect()
 }
 

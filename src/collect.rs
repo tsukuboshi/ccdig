@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use self::gather::{FileRecords, gather, inherit_title};
-use self::mask::Mask;
+use self::mask::{Draft, Mask};
 use self::read::{Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
@@ -43,8 +43,9 @@ pub trait Pick {
     type Record: Select;
 
     /// Makes the records of an entry that `wants` accepted, each with its
-    /// block's index in the line.
-    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Self::Record)>;
+    /// block's index in the line. A record comes with its text masked and
+    /// its metadata not, as a `Draft` that only `Mask::seal` opens.
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Self::Record>)>;
 
     /// The entries the reader should deliver.
     fn roles(&self) -> Roles;
