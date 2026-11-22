@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use jiff::tz::TimeZone;
 
-use crate::collect::Mask;
 use crate::collect::kinds::Types;
+use crate::collect::mask::Mask;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
 use crate::select::Query;
