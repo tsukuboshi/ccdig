@@ -66,14 +66,15 @@ jobs:
       - run: .github/scripts/check-architecture.sh
       # ast-grep/action runs only `ast-grep scan`, so install the CLI to run
       # the rule tests too. ast-grep publishes no binaries cargo-binstall
-      # finds, so build it once per version and keep the binaries.
+      # finds, so build it once per version and keep the binaries. They do
+      # not use the toolchain once built, so a toolchain bump keeps them.
       - id: ast-grep
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/bin/ast-grep
             ~/.cargo/bin/sg
-          key: ast-grep-0.51.0-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml') }}
+          key: ast-grep-0.51.0-${{ runner.os }}-${{ runner.arch }}
       - if: steps.ast-grep.outputs.cache-hit != 'true'
         run: rustup toolchain install
       - if: steps.ast-grep.outputs.cache-hit != 'true'
