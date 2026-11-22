@@ -180,19 +180,6 @@ impl Serialize for Stamp {
     }
 }
 
-/// Resolves a `--tz` other than `Local`, which names the system zone and
-/// is resolved where the environment is read: empty and `UTC` are UTC, and
-/// anything else is an IANA name.
-pub fn load_zone(name: &str) -> Result<TimeZone, Failure> {
-    match name {
-        "" | "UTC" => Ok(TimeZone::UTC),
-        _ => TimeZone::get(name).map_err(|source| Failure::UnknownZone {
-            name: name.to_owned(),
-            source,
-        }),
-    }
-}
-
 /// Reads up to nine digits of a fraction as nanoseconds, dropping the rest
 /// as Go did.
 fn nanoseconds(fraction: &[u8]) -> Option<i32> {

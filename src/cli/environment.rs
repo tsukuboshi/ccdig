@@ -12,6 +12,8 @@ use std::{env, fs, io, process};
 
 use jiff::tz::TimeZone;
 
+use crate::failure::Failure;
+
 /// The environment a run sees. `CCDIG_*` and `CLAUDE_CONFIG_DIR` are
 /// defaults for the flags they name, used when neither level of the command
 /// line gives the flag; an empty one counts as unset.
@@ -75,9 +77,26 @@ impl Environment {
     /// # Errors
     ///
     /// When the file cannot be read or is not UTF-8.
-    pub fn read_file(&self, path: &str) -> io::Result<String> {
-        _ = self;
+    pub fn read_file(path: &str) -> io::Result<String> {
         fs::read_to_string(path)
+    }
+
+    /// Resolves `--tz`: empty and `UTC` are UTC, `Local` is the system zone,
+    /// and anything else is an IANA name, looked up in the host's zoneinfo
+    /// and then in the copy bundled into the binary.
+    ///
+    /// # Errors
+    ///
+    /// When no zone has the name.
+    pub fn zone(&self, name: &str) -> Result<TimeZone, Failure> {
+        match name {
+            "" | "UTC" => Ok(TimeZone::UTC),
+            "Local" => Ok(self.local_zone()),
+            _ => TimeZone::get(name).map_err(|source| Failure::UnknownZone {
+                name: name.to_owned(),
+                source,
+            }),
+        }
     }
 }
 

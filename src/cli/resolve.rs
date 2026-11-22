@@ -15,7 +15,7 @@ use crate::filter::{Filter, Query, patterns};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
-use crate::when::{DayRange, load_zone};
+use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
 /// they ask to be looked up.
@@ -45,33 +45,6 @@ struct Narrowing {
 }
 
 impl Flags {
-    /// The masks `--mask` and `--mask-values` ask for.
-    fn extra_masks(&self, environment: &Environment) -> Result<ExtraMasks, Failure> {
-        let common = &self.common;
-        if common.no_mask && !(common.masks.is_empty() && common.mask_values.is_empty()) {
-            return Err(Failure::MaskWithNoMask);
-        }
-        let user = if common.masks.contains(&MaskKind::User) {
-            let home = environment
-                .home
-                .as_deref()
-                .and_then(|home| home.to_str())
-                .unwrap_or_default();
-            Some(user_name(home).ok_or(Failure::MaskUser)?)
-        } else {
-            None
-        };
-        Ok(ExtraMasks {
-            aws_accounts: common.masks.contains(&MaskKind::AwsAccount),
-            aws_profiles: common.masks.contains(&MaskKind::AwsProfile),
-            emails: common.masks.contains(&MaskKind::Email),
-            git_users: self.git_users.clone(),
-            ips: common.masks.contains(&MaskKind::Ip),
-            user,
-            values: self.values.pairs.clone(),
-        })
-    }
-
     /// `--root`, or `~/.claude/projects`; `with_env` has already filled in
     /// `CCDIG_ROOT` and `CLAUDE_CONFIG_DIR`.
     fn history_root(&self, environment: &Environment) -> Result<PathBuf, Failure> {
@@ -82,59 +55,88 @@ impl Flags {
         Ok(PathBuf::from(home).join(".claude").join("projects"))
     }
 
-    /// The flags that decide what the records hold, for the JSON envelope.
-    fn run(&self) -> Run {
-        let mut mask = Vec::new();
-        for name in self.common.masks.iter().filter_map(|kind| kind.name()) {
-            if !mask.contains(&name) {
-                mask.push(name);
+    /// What to read and how to report it, with the filters in `narrowing`.
+    /// The checks run in the order the errors are reported.
+    fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
+        let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
+        let grep = patterns(&self.common.grep, &self.common.igrep)?;
+        let range = DayRange::parse(
+            self.common.since.as_deref().unwrap_or_default(),
+            self.common.until.as_deref().unwrap_or_default(),
+            &zone,
+        )?;
+        let root = self.history_root(environment)?;
+        let user = self.user(environment)?;
+        let Self {
+            common,
+            git_users,
+            values,
+        } = self;
+        let has = |kind| common.masks.contains(&kind);
+        let mask = Mask::new(
+            common.no_mask,
+            ExtraMasks {
+                aws_accounts: has(MaskKind::AwsAccount),
+                aws_profiles: has(MaskKind::AwsProfile),
+                emails: has(MaskKind::Email),
+                git_users,
+                ips: has(MaskKind::Ip),
+                user,
+                values: values.pairs,
+            },
+        )?;
+        let mut names = Vec::new();
+        for name in common.masks.iter().filter_map(|kind| kind.name()) {
+            if !names.contains(&name) {
+                names.push(name);
             }
         }
-        Run {
-            since: self.common.since.clone(),
-            until: self.common.until.clone(),
-            tz: self.common.tz.clone(),
-            mask,
-            mask_values: self.values.labels.clone(),
-            no_mask: self.common.no_mask,
-        }
-    }
-
-    /// What to read and how to report it, with the filters in `narrowing`.
-    fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
-        let common = &self.common;
-        let zone = match common.tz.as_deref().unwrap_or("Local") {
-            "Local" => environment.local_zone(),
-            name => load_zone(name)?,
-        };
-        let query = Query {
-            branches: Filter::names(common.branches.clone()),
-            is_error: narrowing.is_error,
-            grep: patterns(&common.grep, &common.igrep)?,
-            projects: Filter::names(common.projects.clone()),
-            range: DayRange::parse(
-                common.since.as_deref().unwrap_or_default(),
-                common.until.as_deref().unwrap_or_default(),
-                &zone,
-            )?,
-            sessions: Filter::names(common.sessions.clone()),
-            skills: Filter::names(narrowing.skills),
-            tools: Filter::names(narrowing.tools),
-        };
-        let root = self.history_root(environment)?;
-        let mask = Mask::new(common.no_mask, self.extra_masks(environment)?)?;
         Ok(Shared {
             limit: common.limit,
             mask,
             mask_report: common.mask_report.map(Into::into),
             on_skip: common.on_skip.map(Into::into).unwrap_or_default(),
-            query,
+            query: Query {
+                branches: Filter::names(common.branches),
+                grep,
+                is_error: narrowing.is_error,
+                projects: Filter::names(common.projects),
+                range,
+                sessions: Filter::names(common.sessions),
+                skills: Filter::names(narrowing.skills),
+                tools: Filter::names(narrowing.tools),
+            },
             root,
-            run: self.run(),
+            run: Run {
+                since: common.since,
+                until: common.until,
+                tz: common.tz,
+                mask: names,
+                mask_values: values.labels,
+                no_mask: common.no_mask,
+            },
             subagents: narrowing.subagents,
             usage: narrowing.usage,
             zone,
         })
+    }
+
+    /// The user name `--mask user` asks to mask, after checking that
+    /// `--no-mask` is not given with `--mask` or `--mask-values`.
+    fn user(&self, environment: &Environment) -> Result<Option<String>, Failure> {
+        let common = &self.common;
+        if common.no_mask && !(common.masks.is_empty() && common.mask_values.is_empty()) {
+            return Err(Failure::MaskWithNoMask);
+        }
+        if !common.masks.contains(&MaskKind::User) {
+            return Ok(None);
+        }
+        let home = environment
+            .home
+            .as_deref()
+            .and_then(|home| home.to_str())
+            .unwrap_or_default();
+        user_name(home).map(Some).ok_or(Failure::MaskUser)
     }
 
     /// `common` with the defaults in `environment` filled in. Masks from
@@ -171,9 +173,7 @@ impl Flags {
         {
             flags.common.mask_values = vec![value.to_string_lossy().into_owned()];
         }
-        flags.values = values::parse(&flags.common.mask_values, |path| {
-            environment.read_file(path)
-        })?;
+        flags.values = values::parse(&flags.common.mask_values, Environment::read_file)?;
         if flags.common.masks.contains(&MaskKind::GitUser) {
             for key in ["user.name", "user.email"] {
                 flags.git_users.push(

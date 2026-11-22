@@ -13,13 +13,12 @@ use std::os::unix::fs::{PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use jiff::Timestamp;
 use tempfile::TempDir;
 
 use super::environment::Environment;
 use super::resolve::user_name;
 use crate::pipeline::VERSION;
-use crate::testing::{TestResult, check_eq, golden};
+use crate::testing::{TestResult, check_eq, golden, time, write_transcript};
 
 /// The home directory the runs see, whatever the test process has.
 const HOME: &str = "/home/tester";
@@ -117,16 +116,7 @@ impl History {
         lines: &[&str],
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = self.root.join(relative);
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let mut text = lines.join("\n");
-        text.push('\n');
-        fs::write(&path, text)?;
-        File::options()
-            .write(true)
-            .open(&path)?
-            .set_modified(mtime)?;
+        write_transcript(&path, mtime, lines)?;
         Ok(path)
     }
 }
@@ -165,12 +155,6 @@ fn lock(path: &Path) -> Result<Option<()>, Box<dyn Error>> {
 /// The number of lines in `text`.
 fn line_count(text: &str) -> usize {
     text.lines().count()
-}
-
-/// A time from an RFC 3339 string.
-fn time(text: &str) -> Result<SystemTime, jiff::Error> {
-    let instant: Timestamp = text.parse()?;
-    SystemTime::try_from(instant)
 }
 
 #[test]

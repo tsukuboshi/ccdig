@@ -6,14 +6,13 @@ use serde_json::json;
 use super::digest::{Limits, digest};
 use super::json::{Run, document, lines};
 use super::markdown;
-use crate::failure::Failure;
 use crate::record::{
     AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
-use crate::testing::{TestResult, check_eq, golden};
+use crate::testing::{TestResult, check_eq, golden, zone};
 use crate::transcript::entry::Usage;
-use crate::when::{Stamp, load_zone};
+use crate::when::Stamp;
 
 /// The blog session's transcript file.
 const BLOG_FILE: &str = "/home/alice/.claude/projects/-Users-alice-blog/1111.jsonl";
@@ -114,8 +113,8 @@ fn prompt_turns(prompts: Vec<Prompt>) -> Vec<Turn> {
 }
 
 /// Asia/Tokyo, where the Markdown samples show their times.
-fn tokyo() -> Result<TimeZone, Failure> {
-    load_zone("Asia/Tokyo")
+fn tokyo() -> Result<TimeZone, jiff::Error> {
+    zone("Asia/Tokyo")
 }
 
 #[test]

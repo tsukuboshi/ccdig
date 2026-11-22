@@ -1,17 +1,9 @@
 //! Tests for collecting records from transcripts: the order of masking and
 //! filtering, titles for sub-agents, resumed copies, and tokens.
 
-#![expect(
-    clippy::disallowed_methods,
-    reason = "the tests build transcript trees on disk"
-)]
-
 use core::error::Error;
-use std::fs::{self, File};
 use std::path::Path;
-use std::time::SystemTime;
 
-use jiff::Timestamp;
 use tempfile::TempDir;
 
 use super::collect;
@@ -20,7 +12,7 @@ use super::mask::Mask;
 use crate::filter::{Filter, Query, patterns};
 use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
-use crate::testing::{TestResult, check_eq};
+use crate::testing::{TestResult, check_eq, time, write_transcript};
 use crate::transcript::entry::Usage;
 
 /// Every kind of record `records` can pick.
@@ -54,18 +46,7 @@ impl Root {
     /// Adds a transcript at `relative` with `lines`, last written at
     /// `mtime`.
     fn write(&self, relative: &str, mtime: &str, lines: &[&str]) -> TestResult {
-        let path = self.path().join(relative);
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let mut text = lines.join("\n");
-        text.push('\n');
-        fs::write(&path, text)?;
-        File::options()
-            .write(true)
-            .open(&path)?
-            .set_modified(SystemTime::try_from(mtime.parse::<Timestamp>()?)?)?;
-        Ok(())
+        write_transcript(&self.path().join(relative), time(mtime)?, lines)
     }
 }
 

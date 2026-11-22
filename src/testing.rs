@@ -10,8 +10,15 @@
 
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
+use std::fs::File;
 use std::path::Path;
+use std::time::SystemTime;
 use std::{env, fs};
+
+use jiff::Timestamp;
+use jiff::tz::{TimeZone, TimeZoneDatabase};
+
+use crate::when::Stamp;
 
 /// The error a test returns, so `?` works on any error type.
 pub type TestResult = Result<(), Box<dyn Error>>;
@@ -76,3 +83,53 @@ pub fn golden(name: &str, got: &str) -> TestResult {
 
 #[cfg(test)]
 mod tests;
+
+/// Formats a fixed instant in `zone`, to tell zones apart.
+///
+/// # Errors
+///
+/// When the instant cannot be shown in `zone`.
+pub fn label_in(zone: &TimeZone) -> Result<String, Box<dyn Error>> {
+    let stamp = Stamp::parse_rfc3339("2026-10-13T01:00:00Z").ok_or("bad fixture")?;
+    Ok(stamp.minute_label(zone)?)
+}
+
+/// The zone `name` from the database bundled into the binary, so the tests
+/// do not depend on the host's.
+///
+/// # Errors
+///
+/// When the bundled database has no such zone.
+pub fn zone(name: &str) -> Result<TimeZone, jiff::Error> {
+    TimeZoneDatabase::bundled().get(name)
+}
+
+/// The RFC 3339 instant `text`, as a file time.
+///
+/// # Errors
+///
+/// When `text` is not an instant a file time can hold.
+pub fn time(text: &str) -> Result<SystemTime, jiff::Error> {
+    let instant: Timestamp = text.parse()?;
+    SystemTime::try_from(instant)
+}
+
+/// Writes a transcript of `lines` at `path`, with its directory, and sets
+/// its modification time to `mtime`, since the code reads it.
+///
+/// # Errors
+///
+/// When the file cannot be written.
+pub fn write_transcript(path: &Path, mtime: SystemTime, lines: &[&str]) -> TestResult {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut text = lines.join("\n");
+    text.push('\n');
+    fs::write(path, text)?;
+    File::options()
+        .write(true)
+        .open(path)?
+        .set_modified(mtime)?;
+    Ok(())
+}
