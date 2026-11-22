@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use jiff::Timestamp;
 use jiff::tz::{TimeZone, TimeZoneDatabase};
 
-use super::{DayRange, Stamp, load_zone, local_zone};
+use super::{DayRange, Stamp, load_zone};
 use crate::testing::{TestResult, check_eq};
 
 /// The zone the tests use, so day boundaries fall mid-UTC-day.
@@ -266,22 +266,6 @@ fn load_zone_names_an_unknown_zone() -> TestResult {
         "load time zone: unknown time zone Mars/Olympus",
         "message",
     )?;
-    Ok(())
-}
-
-#[test]
-fn local_zone_follows_go_for_the_tz_variable() -> TestResult {
-    for (tz, want) in [
-        ("", "2026-10-13 01:00 UTC"),
-        (":", "2026-10-13 01:00 UTC"),
-        ("UTC", "2026-10-13 01:00 UTC"),
-        ("Asia/Tokyo", "2026-10-13 10:00 JST"),
-        (":Asia/Tokyo", "2026-10-13 10:00 JST"),
-        ("Mars/Olympus", "2026-10-13 01:00 UTC"),
-        ("/nonexistent/zoneinfo", "2026-10-13 01:00 UTC"),
-    ] {
-        check_eq(label_in(&local_zone(Some(tz)))?.as_str(), want, tz)?;
-    }
     Ok(())
 }
 

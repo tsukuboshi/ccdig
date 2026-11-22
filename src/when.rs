@@ -1,7 +1,6 @@
 //! Times in transcripts, day ranges for --since and --until, and time zones.
 
 use std::time::SystemTime;
-use std::{env, fs};
 
 use jiff::civil::{Date, DateTime};
 use jiff::fmt::strtime;
@@ -181,41 +180,17 @@ impl Serialize for Stamp {
     }
 }
 
-/// Resolves `--tz`: empty and `UTC` are UTC,
-/// `Local` is the system zone, and anything else is an IANA name.
+/// Resolves a `--tz` other than `Local`, which names the system zone and
+/// is resolved where the environment is read: empty and `UTC` are UTC, and
+/// anything else is an IANA name.
 pub fn load_zone(name: &str) -> Result<TimeZone, Failure> {
     match name {
         "" | "UTC" => Ok(TimeZone::UTC),
-        "Local" => Ok(local_zone(env::var_os("TZ").as_deref().map(|tz| {
-            // A TZ that is not UTF-8 names no zone, which falls back to UTC.
-            tz.to_str().unwrap_or("Mars/Olympus")
-        }))),
         _ => TimeZone::get(name).map_err(|source| Failure::UnknownZone {
             name: name.to_owned(),
             source,
         }),
     }
-}
-
-/// The system zone, chosen from the value of `TZ` the way Go did: unset
-/// reads `/etc/localtime`; otherwise one leading `:` is dropped, an absolute
-/// path is read as a zoneinfo file, and anything else is an IANA name. Any
-/// failure, and an empty value, gives UTC.
-pub fn local_zone(tz: Option<&str>) -> TimeZone {
-    let Some(value) = tz else {
-        return TimeZone::try_system().unwrap_or(TimeZone::UTC);
-    };
-    let name = value.strip_prefix(':').unwrap_or(value);
-    if name.is_empty() || name == "UTC" {
-        return TimeZone::UTC;
-    }
-    if name.starts_with('/') {
-        return fs::read(name)
-            .ok()
-            .and_then(|data| TimeZone::tzif(name, &data).ok())
-            .unwrap_or(TimeZone::UTC);
-    }
-    TimeZone::get(name).unwrap_or(TimeZone::UTC)
 }
 
 /// Reads up to nine digits of a fraction as nanoseconds, dropping the rest

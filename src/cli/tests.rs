@@ -3,17 +3,21 @@
 mod kinds;
 
 use core::error::Error;
-use std::env;
 use std::fs::{self, File};
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use jiff::Timestamp;
 use tempfile::TempDir;
 
-use super::{Environment, VERSION};
+use super::environment::Environment;
+use super::resolve::user_name;
+use crate::pipeline::VERSION;
 use crate::testing::{TestResult, check_eq, golden};
+
+/// The home directory the runs see, whatever the test process has.
+const HOME: &str = "/home/tester";
 
 /// The flags that pin the sample week, in JST so the goldens do not
 /// depend on the host's zone.
@@ -63,7 +67,7 @@ impl History {
     /// Runs ccdig with `args` and `--root` pointing at the copy, and no
     /// `CCDIG_*` variables, whatever the test process has.
     fn run(&self, args: &[&str]) -> Ran {
-        self.run_in(&Environment::default(), args)
+        self.run_in(&environment(), args)
     }
 
     /// Runs ccdig with `args` alone, without `--root`, and the variables in
@@ -206,15 +210,12 @@ fn no_mask_leaves_the_secret_as_typed() -> TestResult {
     Ok(())
 }
 
-/// The user name from `$HOME` when it is one the tests can use: made of
-/// the characters a project directory name keeps or turns into `-`.
-fn usable_user() -> Option<(String, String)> {
-    let home = env::var("HOME").ok()?;
-    let user = super::user_name(&home)?;
-    let parent = home.trim_end_matches('/').strip_suffix(&user)?.to_owned();
-    user.chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
-        .then_some((parent, user))
+/// An environment with only `HOME` set, to `HOME`.
+fn environment() -> Environment {
+    Environment {
+        home: Some(HOME.into()),
+        ..Environment::default()
+    }
 }
 
 /// A history with one prompt that holds an email address, the home
@@ -223,11 +224,11 @@ fn usable_user() -> Option<(String, String)> {
 /// path.
 fn history_with_personal_data() -> Result<(History, String), Box<dyn Error>> {
     let history = History::new("root")?;
-    let home = env::var("HOME")?;
+    let home = HOME;
     // The JSON string of the home directory, without its quotes.
     let escaped = serde_json::to_string(&home)?;
     let quoted = escaped.trim_matches('"');
-    let project = encoded(&home);
+    let project = encoded(home);
     let prompt = format!(
         r#"{{"type":"user","uuid":"m-1","sessionId":"mmmm","cwd":"{quoted}/blog","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"mail bob@example.com about {quoted}/blog on 10.1.2.3 for corp-hidden"}}}}"#
     );
@@ -250,9 +251,7 @@ fn encoded(path: &str) -> String {
 
 #[test]
 fn mask_hides_emails_the_user_name_and_ips_and_mask_values_hides_its_values() -> TestResult {
-    let Some((parent, _)) = usable_user() else {
-        return Ok(());
-    };
+    let parent = "/home/";
     let (history, values) = history_with_personal_data()?;
     let ran = history.run_week(&[
         "records",
@@ -281,7 +280,7 @@ fn mask_hides_emails_the_user_name_and_ips_and_mask_values_hides_its_values() ->
         &true,
         "cwd",
     )?;
-    let project = format!("{}***REDACTED***-blog", encoded(&parent));
+    let project = format!("{}***REDACTED***-blog", encoded(parent));
     check_eq(
         &ran.out.contains(&format!(r#""project":"{project}""#)),
         &true,
@@ -307,17 +306,17 @@ fn mask_hides_emails_the_user_name_and_ips_and_mask_values_hides_its_values() ->
 #[test]
 fn the_user_name_is_the_last_part_of_the_home_directory() -> TestResult {
     check_eq(
-        &super::user_name("/Users/alice.b"),
+        &user_name("/Users/alice.b"),
         &Some("alice.b".to_owned()),
         "plain",
     )?;
     check_eq(
-        &super::user_name("/home/alice/"),
+        &user_name("/home/alice/"),
         &Some("alice".to_owned()),
         "trailing slash",
     )?;
-    check_eq(&super::user_name("/"), &None, "root")?;
-    check_eq(&super::user_name(""), &None, "empty")?;
+    check_eq(&user_name("/"), &None, "root")?;
+    check_eq(&user_name(""), &None, "empty")?;
     Ok(())
 }
 
@@ -1030,19 +1029,16 @@ fn limit_prints_the_first_records() -> TestResult {
 
 #[test]
 fn ccdig_variables_give_the_masks_and_the_command_line_replaces_them() -> TestResult {
-    let Some(_) = usable_user() else {
-        return Ok(());
-    };
     let (history, _) = history_with_personal_data()?;
     let both = r#"{"": ["corp-hidden", "bob@example.com"]}"#;
     let emails = r#"{"": ["bob@example.com"]}"#;
     let mask = |value: &str| Environment {
         mask: Some(value.into()),
-        ..Environment::default()
+        ..environment()
     };
     let mask_values = |value: &str| Environment {
         mask_values: Some(value.into()),
-        ..Environment::default()
+        ..environment()
     };
     // (environment, extra flags, what must be hidden, what must be shown)
     for (name, environment, extra, hidden, shown) in [
@@ -1125,7 +1121,7 @@ fn claude_config_dir_gives_the_default_root_after_ccdig_root() -> TestResult {
     let from_config = history.run_bare(
         &Environment {
             claude_config_dir: Some(config.clone()),
-            ..Environment::default()
+            ..environment()
         },
         &args,
     );
@@ -1135,7 +1131,7 @@ fn claude_config_dir_gives_the_default_root_after_ccdig_root() -> TestResult {
         &Environment {
             claude_config_dir: Some(config),
             root: Some("/nonexistent/ccdig-root".into()),
-            ..Environment::default()
+            ..environment()
         },
         &args,
     );
@@ -1159,30 +1155,23 @@ fn on_skip_fail_ends_with_status_1_after_writing_the_output() -> TestResult {
     )?;
     let on_skip = |value: &str| Environment {
         on_skip: Some(value.into()),
-        ..Environment::default()
+        ..environment()
     };
     // (name, history, environment, extra flags, status, warned)
     for (name, history, environment, extra, code, warned) in [
         (
             "broken, fail",
             &broken,
-            Environment::default(),
+            environment(),
             &["--on-skip", "fail"][..],
             1_u8,
             true,
         ),
-        (
-            "broken, default",
-            &broken,
-            Environment::default(),
-            &[][..],
-            0,
-            true,
-        ),
+        ("broken, default", &broken, environment(), &[][..], 0, true),
         (
             "broken, warn",
             &broken,
-            Environment::default(),
+            environment(),
             &["--on-skip", "warn"][..],
             0,
             true,
@@ -1206,7 +1195,7 @@ fn on_skip_fail_ends_with_status_1_after_writing_the_output() -> TestResult {
         (
             "clean, fail",
             &clean,
-            Environment::default(),
+            environment(),
             &["--on-skip", "fail"][..],
             0,
             false,
@@ -1373,7 +1362,7 @@ fn mask_git_user_hides_the_configured_name_and_email() -> TestResult {
     )?;
     let git = |lookup: fn(&str) -> Option<String>| Environment {
         git_config: Some(lookup),
-        ..Environment::default()
+        ..environment()
     };
     let mut args = vec![
         "records",
@@ -1741,5 +1730,61 @@ fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> Tes
         &true,
         &sessions.out,
     )?;
+    Ok(())
+}
+
+#[test]
+fn the_default_root_is_under_home_in_the_environment() -> TestResult {
+    let history = History::new("root")?;
+    let home = tempfile::tempdir()?;
+    fs::create_dir_all(home.path().join(".claude"))?;
+    symlink(&history.root, home.path().join(".claude").join("projects"))?;
+    let with_home = Environment {
+        home: Some(home.path().into()),
+        ..Environment::default()
+    };
+    let ran = history.run_bare(&with_home, &["records", "--session", "aaaa"]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out.contains(r#""text":"/weekly-report last week""#),
+        &true,
+        &ran.out,
+    )?;
+    let without_home = history.run_bare(&Environment::default(), &["records"]);
+    check_eq(&without_home.code, &1, "no HOME")?;
+    check_eq(
+        without_home.err.as_str(),
+        "ccdig: find the default --root: HOME is not set\n",
+        "no HOME",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_local_zone_comes_from_tz_in_the_environment() -> TestResult {
+    let history = History::new("root")?;
+    let tz = |value: &str| Environment {
+        tz: Some(value.into()),
+        ..environment()
+    };
+    let args = [
+        "records",
+        "--session",
+        "aaaa",
+        "--format",
+        "md",
+        "--since",
+        "2026-10-13",
+        "--until",
+        "2026-10-19",
+    ];
+    for (value, want) in [
+        ("Asia/Tokyo", "### 2026-10-13 10:00 JST - Prompt"),
+        ("", "### 2026-10-13 01:00 UTC - Prompt"),
+    ] {
+        let ran = history.run_in(&tz(value), &args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&ran.out.contains(want), &true, &ran.out)?;
+    }
     Ok(())
 }
