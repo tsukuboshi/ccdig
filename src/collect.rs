@@ -3,6 +3,7 @@
 //! records with their text masked, filter them, mask their metadata, and
 //! join the files, dropping resumed copies.
 
+mod excerpt;
 mod gather;
 pub mod kinds;
 pub mod mask;
@@ -17,7 +18,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Record, Session};
+use crate::record::{AGENT, Head, MatchLine, Record, Session};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -38,6 +39,9 @@ pub struct Corpus<T> {
 /// How to read the transcripts, besides which records to pick and keep.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Reading {
+    /// With `--context`, how many lines around each line `--grep` matched
+    /// to list in a record's `matches`.
+    pub excerpt: Option<usize>,
     /// Whether to read sub-agent transcripts too.
     pub subagents: bool,
     /// Whether to add up the tokens of each session's responses in the
@@ -70,6 +74,12 @@ pub trait Select: Record {
     /// The kind's own facts for the filters.
     fn extra(&self) -> Extra<'_>;
 
+    /// The texts `--context` lists lines of, each named for `field`:
+    /// `text` by default.
+    fn grep_fields(&self) -> Vec<(String, Cow<'_, str>)> {
+        vec![("text".to_owned(), self.grep_text())]
+    }
+
     /// What `--grep` searches, built only when `--grep` is given.
     fn grep_text(&self) -> Cow<'_, str>;
 
@@ -82,6 +92,9 @@ pub trait Select: Record {
 
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
+
+    /// Where `--context` lists the lines `--grep` matched.
+    fn matches_mut(&mut self) -> &mut Vec<MatchLine>;
 
     /// Where the kind carries the tokens of its response, `None` for a kind
     /// that does not.
@@ -191,7 +204,7 @@ where
             // Last written before the first day: nothing to find.
             continue;
         }
-        match read_file(file, query, mask, new_picker(), reading.usage) {
+        match read_file(file, query, mask, new_picker(), reading) {
             Ok(read) => {
                 if file.parent.is_some() {
                     own_titles.insert(file.path.clone(), read.title_masked);

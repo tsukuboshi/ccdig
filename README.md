@@ -122,10 +122,11 @@ Four options apply to some kinds only:
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are.
 
-Two options shape the output:
+Three options shape the output:
 
 | Flag | Does |
 | --- | --- |
+| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
 | `--max-input-chars N` | With `--format md`, cuts each string in a tool call's input to N characters, followed by `… (M more characters)`, so a `Write` of a whole file does not fill the page. JSON and JSON Lines are never cut |
 
@@ -151,7 +152,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.1","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":3,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -239,12 +240,13 @@ command; see Commands.
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
-           "line":3,"uuid":"<entry uuid>"}}
+           "line":3,"uuid":"<entry uuid>"},
+ "matches":[]}
 ```
 
 Every record starts with `type`, the kind `--type` names. The other kinds
-have the same keys from `type` to `timestamp`, and end with `redacted` and
-`source`:
+have the same keys from `type` to `timestamp`, and end with `redacted`,
+`source`, and `matches`:
 
 | Type | Keys in between |
 | --- | --- |
@@ -256,6 +258,14 @@ have the same keys from `type` to `timestamp`, and end with `redacted` and
 Every key is always present. The `kind` of a prompt is how it was typed,
 `slash` or `text`; the record type is `type`, which `--type` picks.
 
+- `matches` lists, with `--context`, the lines `--grep` or `--igrep`
+  matched and those around them, in order: `field` is the text the line is
+  in, `text` for every kind but a call, and for a call where the string is
+  in its input, such as `input.command`; `line` is the line's 1-based
+  number in that text, `text` the line, masked, and `hit` whether a
+  pattern matched it. Each pattern is tried on each line alone, so a match
+  that spans lines or is in a call's key names lists no line, and the
+  record is printed whole. Without `--context`, `matches` is empty.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
@@ -293,7 +303,7 @@ Every key is always present. The `kind` of a prompt is how it was typed,
 run:
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -318,6 +328,20 @@ heading with the project and session, and each record under a heading
 with its time and kind. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``, so it stands apart from the session's own records.
+
+With `--context`, a record shows its matched lines in place of its text:
+each run of adjacent lines is a list item that says which lines it holds,
+and which of them matched, followed by the lines in a text block. The
+numbers stay out of the block, apart from any numbers in the text, such
+as those of a file a tool read:
+
+````markdown
+- Lines 41-43, matched 42
+
+```text
+...
+```
+````
 
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened

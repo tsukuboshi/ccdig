@@ -31,7 +31,7 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
                   \x20 ccdig sessions --igrep deploy --format md\n\
                   \n\
-                  ccdig records --help lists --type, --tool, --status, --skill, and --subagents.",
+                  ccdig records --help lists --type, --tool, --status, --skill, --subagents, and --context.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
@@ -117,6 +117,11 @@ pub enum Command {
         /// The shared flags.
         #[command(flatten)]
         common: Common,
+        /// List the lines --grep or --igrep matched in each record, with
+        /// this many lines before and after each, in `matches`; Markdown
+        /// prints those lines in place of the whole text.
+        #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
+        context: Option<usize>,
         /// In Markdown, cut each string in a tool call's input to this many
         /// characters [default: no limit].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]

@@ -5,8 +5,9 @@
 use alloc::borrow::Cow;
 use std::collections::HashSet;
 
+use super::excerpt::excerpt;
 use super::mask::{Draft, Mask, Title};
-use super::{Pick, Select, Spot};
+use super::{Pick, Reading, Select, Spot};
 use crate::filter::{Facts, Query};
 use crate::redact::Counts;
 use crate::transcript::entry::{Role, Usage};
@@ -81,7 +82,8 @@ where
 }
 
 /// Reads one transcript and returns its selected records in file order,
-/// and with `usage`, the tokens of each response in the range, once.
+/// with the lines `--grep` matched when `reading` asks for an excerpt, and
+/// when it asks for usage, the tokens of each response in the range, once.
 ///
 /// # Errors
 ///
@@ -91,11 +93,12 @@ pub fn read_file<P>(
     query: &Query,
     mask: &Mask,
     mut picker: P,
-    usage: bool,
+    reading: Reading,
 ) -> Result<Read<P::Record>, String>
 where
     P: Pick,
 {
+    let usage = reading.usage;
     let wanted = picker.roles();
     let roles = Roles {
         assistant: wanted.assistant || usage,
@@ -147,7 +150,14 @@ where
             picker
                 .pick(&spot, &entry)
                 .into_iter()
-                .filter(|pair| passes(query, &pair.1)),
+                .filter(|pair| passes(query, &pair.1))
+                .map(|(block, mut draft)| {
+                    if let Some(context) = reading.excerpt {
+                        let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
+                        *draft.matches_mut() = found;
+                    }
+                    (block, draft)
+                }),
         );
         // A response's lines repeat its tokens, so only the first record
         // printed from it carries them; a line without an ID is a response

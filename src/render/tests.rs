@@ -52,6 +52,7 @@ fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
         command: String::new(),
         redacted: false,
         source: source(file, 0, ""),
+        matches: Vec::new(),
     }
 }
 
@@ -76,6 +77,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             command: "/weekly-report".to_owned(),
             redacted: false,
             source: source(BLOG_FILE, 4, "u-1"),
+            matches: Vec::new(),
         },
         Prompt {
             permission_mode: String::new(),
@@ -86,6 +88,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             command: String::new(),
             redacted: true,
             source: source(BLOG_FILE, 9, "u-2"),
+            matches: Vec::new(),
         },
     ])
 }
@@ -274,6 +277,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         subagent: String::new(),
         redacted: false,
         source: source(BLOG_FILE, 5, "a-1"),
+        matches: Vec::new(),
     };
     let call = ToolCall {
         usage: None,
@@ -290,6 +294,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
             2,
             "a-2",
         ),
+        matches: Vec::new(),
     };
     let result = ToolResult {
         masked: Counts::default(),
@@ -306,6 +311,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
             3,
             "u-3",
         ),
+        matches: Vec::new(),
         skill: "weekly-report".to_owned(),
     };
     let orphan = ToolResult {
@@ -317,6 +323,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         text: "ok".to_owned(),
         subagent: String::new(),
         source: source(BLOG_FILE, 7, "u-4"),
+        matches: Vec::new(),
         ..result.clone()
     };
     let zone = tokyo()?;

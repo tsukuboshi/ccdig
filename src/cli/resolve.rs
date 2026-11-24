@@ -32,6 +32,8 @@ struct Flags {
 /// The kind-specific filters, empty for `sessions` and `digest`.
 #[derive(Default)]
 struct Narrowing {
+    /// `--context`: how many lines around each matched line to list.
+    context: Option<usize>,
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
@@ -61,6 +63,9 @@ impl Flags {
     fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
         let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
         let grep = patterns(&self.common.grep, &self.common.igrep)?;
+        if narrowing.context.is_some() && grep.include.is_empty() {
+            return Err(Failure::ContextNeedsGrep);
+        }
         let range = DayRange::parse(
             self.common.since.as_deref().unwrap_or_default(),
             self.common.until.as_deref().unwrap_or_default(),
@@ -109,6 +114,7 @@ impl Flags {
                 tools: Filter::names(narrowing.tools),
             },
             reading: Reading {
+                excerpt: narrowing.context,
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
             },
@@ -358,6 +364,7 @@ pub fn resolve(
         Command::Records {
             activity,
             common: later,
+            context,
             max_input_chars,
             output,
             statuses,
@@ -374,6 +381,7 @@ pub fn resolve(
             let format = output.format.into();
             let input_chars = input_limit(max_input_chars, format)?;
             let narrowing = Narrowing {
+                context,
                 is_error: status_filter(&statuses),
                 tools,
                 ..activity.into()

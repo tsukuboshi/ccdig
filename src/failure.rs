@@ -5,6 +5,9 @@ use std::io;
 /// An error that stops a command. The message is printed after `ccdig: `.
 #[derive(Debug, thiserror::Error)]
 pub enum Failure {
+    /// `--context` is given without a pattern for it to find.
+    #[error("--context needs --grep or --igrep with a pattern that does not start with !")]
+    ContextNeedsGrep,
     /// The digest limits are not both positive.
     #[error("--max-prompt-chars and --max-session-chars must be positive")]
     DigestLimitNotPositive,

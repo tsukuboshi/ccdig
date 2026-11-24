@@ -123,10 +123,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
   されません。出力されるのは、その返答・呼び出し・結果です。
 
-次の 2 つのオプションは出力の形を決めます。
+次の 3 つのオプションは出力の形を決めます。
 
 | フラグ | 働き |
 | --- | --- |
+| `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
 | `--max-input-chars N` | `--format md` のとき、ツールの呼び出しの入力にある文字列をそれぞれ N 文字で切って `… (M more characters)` を付ける。ファイル全体を書く `Write` でページが埋まらずに済む。JSON と JSON Lines は切らない |
 
@@ -152,7 +153,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.1","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":3,"filter":"strict-v2"}
 ```
 
 ## 共通オプション
@@ -241,12 +242,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
-           "line":3,"uuid":"<entry uuid>"}}
+           "line":3,"uuid":"<entry uuid>"},
+ "matches":[]}
 ```
 
 どのレコードも、`--type` の名前で種類を表す `type` で始まります。ほかの
-種類も、`type` から `timestamp` までの同じキーで始まり、`redacted` と
-`source` で終わります。
+種類も、`type` から `timestamp` までの同じキーで始まり、`redacted`・
+`source`・`matches` で終わります。
 
 | 種類 | 間に入るキー |
 | --- | --- |
@@ -258,6 +260,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
 レコードの種類は `--type` で選ぶ `type` です。
 
+- `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
+  行とその前後の行を順に並べます。`field` はその行がある文字列で、呼び出し
+  以外は `text`、呼び出しでは入力の中の場所（`input.command` など）です。
+  `line` はその文字列での 1 始まりの行番号、`text` はマスク後の行、`hit` は
+  パターンに一致した行かどうかです。パターンは 1 行ずつ試すので、行を
+  またぐ一致や、呼び出しのキー名への一致では行が並ばず、レコードを全文で
+  出します。`--context` が無ければ `matches` は空です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。
@@ -294,7 +303,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -319,6 +328,19 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 見出しの下に置きます。サブエージェントのレコードは、自分の見出しの末尾にも
 サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``）。セッション本体のレコードと見分けられます。
+
+`--context` を付けると、レコードは全文の代わりに一致した行を出します。
+隣り合う行のかたまりごとに、どの行か、そのうちどれが一致したかを箇条書きで
+示し、その後に行をテキストブロックで置きます。行番号はブロックの外に置くので、
+ツールが読んだファイルの行番号など、本文の中の数字とは混ざりません。
+
+````markdown
+- Lines 41-43, matched 42
+
+```text
+...
+```
+````
 
 Markdown とダイジェストの出力は、履歴のフィールドを信頼できない入力として
 扱います。端末の制御文字と双方向テキストの上書き文字は U+FFFD に置き換え、

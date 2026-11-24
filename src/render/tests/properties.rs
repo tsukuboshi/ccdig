@@ -1,11 +1,12 @@
 //! Properties of the writers that hold for any records.
 
+use proptest::bool::ANY;
 use proptest::collection::vec;
 use proptest::strategy::Strategy;
 use serde_json::Value;
 
 use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
-use crate::record::{AGENT, Head, Prompt, Reply, Session, Turn};
+use crate::record::{AGENT, Head, MatchLine, Prompt, Reply, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Run, document, lines};
@@ -214,6 +215,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                         subagent: name.clone(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
+                        matches: Vec::new(),
                     })
                 })
             })
@@ -229,6 +231,47 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
             .filter(|line| line.starts_with("### ") && line.contains(" - Reply"))
             .count();
         check_eq(&named, &names.len(), &out)?;
+        Ok(())
+    })
+}
+
+#[test]
+fn matched_lines_add_no_heading() -> TestResult {
+    let matched = (hostile_text(), hostile_text(), 1_usize..4, ANY);
+    for_all(&vec(vec(matched, 1..6), 1..4), |records| {
+        let turns: Vec<Turn> = records
+            .iter()
+            .map(|lines| {
+                blog_head("2026-10-13T01:24:00Z").map(|head| {
+                    Turn::Reply(Reply {
+                        usage: None,
+                        masked: Counts::default(),
+                        head,
+                        text: String::new(),
+                        model: String::new(),
+                        skill: String::new(),
+                        subagent: String::new(),
+                        redacted: false,
+                        source: source(BLOG_FILE, 1, "a-1"),
+                        matches: lines
+                            .iter()
+                            .map(|&(ref field, ref text, number, hit)| MatchLine {
+                                field: field.clone(),
+                                line: number,
+                                text: text.clone(),
+                                hit,
+                            })
+                            .collect(),
+                    })
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        let out = markdown::records(&turns, &tokyo()?, None)?;
+        let headings = outside_fences(&out)
+            .into_iter()
+            .filter(|line| line.trim_start().starts_with('#'))
+            .count();
+        check_eq(&headings, &records.len().saturating_add(2), &out)?;
         Ok(())
     })
 }

@@ -52,6 +52,7 @@ fn option() -> impl Strategy<Value = Vec<String>> {
         pair("--type", &["prompt", "reply,call", "result,summary"]),
         pair("--grep", &["report", "(?i)WEEK", "!draft"]),
         pair("--igrep", &["REPORT"]),
+        pair("--context", &["0", "2", "-1"]),
         pair("--session", &["1", "!2", "current", "!current"]),
         pair("--project", &["blog", "!corp"]),
         pair("--on-skip", &["warn", "fail", "ignore"]),

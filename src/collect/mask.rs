@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use super::Select;
 use crate::failure::Failure;
+use crate::record::MatchLine;
 use crate::redact::{Counts, ExtraMasks, Redactor};
 use crate::transcript::entry::Usage;
 
@@ -41,6 +42,12 @@ where
         F: FnOnce(T) -> U,
     {
         Draft(wrap(self.0))
+    }
+
+    /// Where the record lists the lines `--grep` matched. They come from
+    /// the text, which is already masked.
+    pub fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
+        self.0.matches_mut()
     }
 
     /// `record`, whose text a picker masked.

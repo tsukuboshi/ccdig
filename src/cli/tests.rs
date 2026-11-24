@@ -5,6 +5,7 @@
     reason = "the tests build transcript trees on disk"
 )]
 
+mod context;
 mod kinds;
 mod properties;
 
@@ -653,7 +654,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":2,\"filter\":\"strict-v2\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":3,\"filter\":\"strict-v2\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -674,7 +675,7 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
         "  ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n",
         "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
         "  ccdig sessions --igrep deploy --format md\n",
-        "ccdig records --help lists --type, --tool, --status, --skill, and --subagents.",
+        "ccdig records --help lists --type, --tool, --status, --skill, --subagents, and --context.",
     ];
     for args in [&[][..], &["--help"][..], &["-h"][..]] {
         let out = history.run(args).out;
@@ -1675,7 +1676,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(2_i32)),
+        &Some(&serde_json::json!(3_i32)),
         "schema",
     )?;
     check_eq(

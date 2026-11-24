@@ -48,6 +48,26 @@ pub enum Kind {
     Text,
 }
 
+/// A line of a record that `--grep` matched, or one around it, for
+/// `--context`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct MatchLine {
+    /// The text the line is in: `text`, or for a tool call, where the
+    /// string is in the input, such as `input.command`.
+    pub field: String,
+    /// The 1-based number of the line in that text.
+    pub line: usize,
+    /// The line, masked, without its line break.
+    pub text: String,
+    /// Whether `--grep` matched the line, rather than it being one around
+    /// a matched line.
+    pub hit: bool,
+}
+
 /// A prompt a person typed: a `prompt` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
@@ -71,6 +91,9 @@ pub struct Prompt {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -120,6 +143,9 @@ pub struct Reply {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -183,6 +209,9 @@ pub struct Summary {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -226,6 +255,9 @@ pub struct ToolCall {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -259,6 +291,9 @@ pub struct ToolResult {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
     /// The skill running when the call was made, for `--skill`; not
     /// written.
     #[serde(skip)]

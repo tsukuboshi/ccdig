@@ -1,5 +1,6 @@
 //! Tests for collecting records from transcripts: the order of masking and
-//! filtering, titles for sub-agents, resumed copies, and tokens.
+//! filtering, titles for sub-agents, resumed copies, tokens, and the lines
+//! `--context` lists.
 
 mod properties;
 
@@ -8,6 +9,7 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
+use super::excerpt::excerpt;
 use super::kinds::{Prompts, Records, Types};
 use super::mask::Mask;
 use super::{Reading, collect};
@@ -148,6 +150,7 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
     let corpus = collect(
         root.path(),
         Reading {
+            excerpt: None,
             subagents: true,
             usage: false,
         },
@@ -221,6 +224,7 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
     let corpus = collect(
         root.path(),
         Reading {
+            excerpt: None,
             subagents: false,
             usage: true,
         },
@@ -256,6 +260,85 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
             cache_creation: 24,
         },
         "per session",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn context_joins_the_windows_around_matches_and_stops_at_the_ends() -> TestResult {
+    let text = "a\nhit 2\nc\nd\ne\nhit 6\ng";
+    let grep = patterns(&["hit"], &[])?;
+    for (context, want) in [
+        (0, vec![(2, true), (6, true)]),
+        (
+            1,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+        (
+            2,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (4, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+        (
+            usize::MAX,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (4, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+    ] {
+        let got: Vec<(usize, bool)> = excerpt(&[("text".to_owned(), text.into())], &grep, context)
+            .iter()
+            .map(|line| (line.line, line.hit))
+            .collect();
+        check_eq(&got, &want, &context.to_string())?;
+    }
+    Ok(())
+}
+
+#[test]
+fn context_keeps_each_field_apart_and_lists_nothing_without_a_pattern_to_find() -> TestResult {
+    let fields = [
+        ("input.old".to_owned(), "x\nhit".into()),
+        ("input.new".to_owned(), "hit\r\ny".into()),
+    ];
+    let got: Vec<(String, usize, String)> = excerpt(&fields, &patterns(&["hit"], &[])?, 1)
+        .into_iter()
+        .map(|line| (line.field, line.line, line.text))
+        .collect();
+    check_eq(
+        &got,
+        &vec![
+            ("input.old".to_owned(), 1, "x".to_owned()),
+            ("input.old".to_owned(), 2, "hit".to_owned()),
+            ("input.new".to_owned(), 1, "hit".to_owned()),
+            ("input.new".to_owned(), 2, "y".to_owned()),
+        ],
+        "fields",
+    )?;
+    check_eq(
+        &excerpt(&fields, &patterns(&["!hit"], &[])?, 1).len(),
+        &0,
+        "only an excluding pattern",
     )?;
     Ok(())
 }

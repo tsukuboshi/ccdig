@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::{ALL, Root, masking};
 use crate::collect::kinds::Records;
 use crate::collect::{Reading, collect};
-use crate::filter::Query;
+use crate::filter::{Query, patterns};
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
 
 /// Transcripts tried; each writes files and compiles the masking rules.
@@ -83,28 +83,47 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                 .map(|value| (value.as_str(), "\u{FF3B}v\u{FF3D}", "repo"))
                 .collect();
             let mask = masking(&given)?;
-            let corpus = collect(
-                root.path(),
-                Reading {
-                    subagents: false,
-                    usage: true,
-                },
-                &Query::default(),
-                &mask,
-                || Records::new(ALL),
-            )?;
-            let printed = format!(
-                "{}\n{}",
-                serde_json::to_string(&corpus.records)?,
-                serde_json::to_string(&corpus.sessions)?
-            );
-            for value in &values {
-                check_eq(
-                    &printed.contains(value.as_str()),
-                    &false,
-                    &format!("{value} in {printed}"),
+            // The excerpt lists lines of the masked text, found by the
+            // marker that replaced the values.
+            let excerpting = Query {
+                grep: patterns(&["\u{FF3B}v\u{FF3D}"], &[])?,
+                ..Query::default()
+            };
+            let mut last = None;
+            for (excerpt, query) in [(None, Query::default()), (Some(1), excerpting)] {
+                let found = collect(
+                    root.path(),
+                    Reading {
+                        excerpt,
+                        subagents: false,
+                        usage: true,
+                    },
+                    &query,
+                    &mask,
+                    || Records::new(ALL),
                 )?;
+                let printed = format!(
+                    "{}\n{}",
+                    serde_json::to_string(&found.records)?,
+                    serde_json::to_string(&found.sessions)?
+                );
+                for value in &values {
+                    check_eq(
+                        &printed.contains(value.as_str()),
+                        &false,
+                        &format!("{value} in {printed}"),
+                    )?;
+                }
+                if excerpt.is_some() {
+                    check_eq(
+                        &printed.contains(r#""matches":[]"#),
+                        &false,
+                        &format!("every record lists the marker's line: {printed}"),
+                    )?;
+                }
+                last = Some(found);
             }
+            let corpus = last.ok_or("no run")?;
             check_eq(
                 &corpus.records.len(),
                 &4,

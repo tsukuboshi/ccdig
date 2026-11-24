@@ -5,11 +5,12 @@ use jiff::tz::TimeZone;
 use serde_json::Value;
 
 use crate::failure::Failure;
-use crate::record::{Record, Session, ToolCall, ToolResult, Turn};
+use crate::record::{MatchLine, Record, Session, ToolCall, ToolResult, Turn};
 use crate::text::{clean_text, code_span, escape_pipes, fenced, heading_text};
 
 /// Records of any kind, each under a heading that names its kind, with
-/// each string in a tool call's input cut to `input_chars` when given.
+/// each string in a tool call's input cut to `input_chars` when given. A
+/// record with `matches` shows those lines in place of its text.
 ///
 /// # Errors
 ///
@@ -31,11 +32,11 @@ pub fn records(
             Turn::Summary(_) => "Summary",
         },
         |turn| match *turn {
-            Turn::Prompt(ref prompt) => Ok(fenced("text", &clean_text(&prompt.text))),
-            Turn::Reply(ref reply) => Ok(fenced("text", &clean_text(&reply.text))),
+            Turn::Prompt(ref prompt) => Ok(text_or_lines(&prompt.text, &prompt.matches)),
+            Turn::Reply(ref reply) => Ok(text_or_lines(&reply.text, &reply.matches)),
             Turn::Call(ref call) => tool_call(call, input_chars),
             Turn::Result(ref result) => Ok(tool_result(result)),
-            Turn::Summary(ref summary) => Ok(fenced("text", &clean_text(&summary.text))),
+            Turn::Summary(ref summary) => Ok(text_or_lines(&summary.text, &summary.matches)),
         },
     )
 }
@@ -116,14 +117,66 @@ pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure>
 }
 
 /// A tool result's body: the calling tool's name, whether it failed, and
-/// the output in a text block.
+/// the output in a text block, or its matched lines.
 fn tool_result(result: &ToolResult) -> String {
-    format!(
-        "- Tool: {}\n- Error: {}\n\n{}",
+    let head = format!(
+        "- Tool: {}\n- Error: {}\n",
         tool_name(&result.tool),
         if result.is_error { "yes" } else { "no" },
-        fenced("text", &clean_text(&result.text))
-    )
+    );
+    if result.matches.is_empty() {
+        return format!("{head}\n{}", fenced("text", &clean_text(&result.text)));
+    }
+    format!("{head}{}", lines(&result.matches))
+}
+
+/// `text` in a text block, or when `matches` lists lines of it, those.
+fn text_or_lines(text: &str, matches: &[MatchLine]) -> String {
+    if matches.is_empty() {
+        return fenced("text", &clean_text(text));
+    }
+    lines(matches)
+}
+
+/// `matches` in runs of adjacent lines of one field, each a list item that
+/// says which lines it holds, and which of them matched when it holds
+/// others too, followed by the lines in a text block. The line numbers stay
+/// out of the block, so they do not mix with numbers in the text.
+fn lines(matches: &[MatchLine]) -> String {
+    let runs = matches.chunk_by(|left, right| {
+        left.field == right.field && left.line.checked_add(1) == Some(right.line)
+    });
+    let mut out = Vec::new();
+    for run in runs {
+        let (Some(first), Some(last)) = (run.first(), run.last()) else {
+            continue;
+        };
+        let (single, plural) = if first.field == "text" {
+            ("Line".to_owned(), "Lines".to_owned())
+        } else {
+            let name = code_span(&first.field);
+            (format!("{name} line"), format!("{name} lines"))
+        };
+        let mut item = if first.line == last.line {
+            format!("- {single} {}", first.line)
+        } else {
+            format!("- {plural} {}-{}", first.line, last.line)
+        };
+        if run.iter().any(|line| !line.hit) {
+            let hits: Vec<String> = run
+                .iter()
+                .filter(|line| line.hit)
+                .map(|line| line.line.to_string())
+                .collect();
+            item.extend([", matched ", &hits.join(", ")]);
+        }
+        let text: Vec<&str> = run.iter().map(|line| line.text.as_str()).collect();
+        out.push(format!(
+            "{item}\n\n{}",
+            fenced("text", &clean_text(&text.join("\n")))
+        ));
+    }
+    out.join("\n")
 }
 
 /// A tool call's body: the tool's name and its input as indented JSON,
@@ -139,6 +192,13 @@ fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Fail
             },
         )
         .map_err(Failure::Json)?;
+    if !call.matches.is_empty() {
+        return Ok(format!(
+            "- Tool: {}\n{}",
+            tool_name(&call.tool),
+            lines(&call.matches)
+        ));
+    }
     Ok(format!(
         "- Tool: {}\n\n{}",
         tool_name(&call.tool),
