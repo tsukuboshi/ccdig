@@ -40,6 +40,9 @@ pub enum Failure {
         /// The variable.
         variable: &'static str,
     },
+    /// `--fields` is given for Markdown.
+    #[error("--fields needs --format json or jsonl")]
+    FieldsNeedJson,
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),
@@ -106,6 +109,14 @@ pub enum Failure {
         flag: &'static str,
         /// The kinds it applies to.
         kinds: &'static str,
+    },
+    /// `--fields` names a key the command does not write.
+    #[error("--fields: unknown key {name:?}: use {known}")]
+    UnknownField {
+        /// The keys the command writes, listed.
+        known: String,
+        /// The unknown key.
+        name: String,
     },
     /// `--tz` names no known time zone.
     #[error("load time zone: unknown time zone {name}")]

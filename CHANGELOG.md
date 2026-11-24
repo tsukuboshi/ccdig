@@ -12,6 +12,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `records --max-message-chars N` cuts the text of each prompt, reply, and
   summary to N characters, in every format.
+- `records --fields` and `sessions --fields` write only the keys they
+  name in JSON and JSON Lines, or with a leading `!`, leave them out, so
+  `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the
+  keys every record of a session repeats and `sessions --fields '!usage'`
+  drops the tokens.
 
 ### Changed
 

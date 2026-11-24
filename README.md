@@ -76,8 +76,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | One record per session with a selected prompt | `--format` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `sessions` | One record per session with a selected prompt | `--format`, `--fields` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
 
@@ -117,7 +117,8 @@ Four options apply to some kinds only:
 - Each of the four needs a `--type` it applies to, or the command fails.
 - A search without `--type` reads the tool calls too, and a call's input
   can be long: give `--type prompt,reply` and `--limit` to keep the output
-  small.
+  small, or cut the texts with `--max-message-chars` and `--max-tool-chars`
+  and leave keys out with `--fields`.
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are.
@@ -231,6 +232,15 @@ masked; the Masking section lists the rules.
 records that matched and keeps the context after the last of them.
 `--format` belongs to each command; see Commands.
 
+`records` and `sessions` take `--fields` too: in JSON and JSON Lines it
+writes only the keys it names, comma-separated or repeated, in the order
+the records write them. A key with a leading `!` is left out instead, as
+with the filters, so
+`--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the keys
+every record of a session repeats, and `sessions --fields '!usage'` drops
+the tokens. A key the command does not write is an error, and so is
+`--fields` with `--format md`.
+
 ### Environment variables
 
 | Variable | Sets the default of | Value |
@@ -275,7 +285,7 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-Every key is always present. The `kind` of a prompt is how it was typed,
+Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
 `slash` or `text`; the record type is `type`, which `--type` picks.
 
 - `matched` is `false` for a record `--around` lists next to a match, and

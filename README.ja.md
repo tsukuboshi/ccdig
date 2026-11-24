@@ -77,8 +77,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
 
@@ -118,7 +118,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - この 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
 - `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
   入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
-  出力を小さく保てます。
+  出力を小さく保てます。`--max-message-chars` と `--max-tool-chars` で
+  本文を切り、`--fields` でキーを省くこともできます。
 - サブエージェントの履歴は、`--subagents` を付けない限り読みません。
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
   されません。出力されるのは、その返答・呼び出し・結果です。
@@ -232,6 +233,14 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 一致したレコードを N 件数え、最後に一致したレコードの後ろの文脈も残します。
 `--format` はコマンドごとに違います。「コマンド」の節を参照してください。
 
+`records` と `sessions` は `--fields` も受け付けます。JSON と JSON Lines
+で、指定したキーだけを、レコードが書く順に出します（カンマ区切りか
+繰り返しで指定）。絞り込みと同じく先頭に `!` を付けたキーは逆に除くので、
+`--fields '!agent,!session_title,!project,!cwd,!git_branch'` は同じ
+セッションのどのレコードにも繰り返し入るキーを省き、
+`sessions --fields '!usage'` はトークン数を省きます。コマンドが書かない
+キーを指定するとエラーで、`--fields` と `--format md` の併用もエラーです。
+
 ### 環境変数
 
 | 変数 | 既定値を与えるフラグ | 値 |
@@ -276,7 +285,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
+`--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
 レコードの種類は `--type` で選ぶ `type` です。
 
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、

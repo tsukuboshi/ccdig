@@ -4,7 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::args::{Activity, Command, Common, MaskKind, RecordType, Status, mask_kinds, on_skip};
+use super::args::{
+    Activity, Command, Common, MaskKind, RecordType, Status, listed, mask_kinds, on_skip,
+};
 use super::environment::Environment;
 use super::values::{self, Values};
 use crate::collect::Reading;
@@ -13,10 +15,10 @@ use crate::collect::mask::Mask;
 use crate::config::{Config, Format, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, patterns};
-use crate::record::Cuts;
+use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
-use crate::render::json::Run;
+use crate::render::json::{Fields, Run};
 use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
@@ -315,6 +317,36 @@ fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failur
     })
 }
 
+/// Checks the keys `--fields` names against those the command writes,
+/// `known`, and that the output is JSON, and converts them.
+fn fields(names: Vec<String>, known: &[&str], format: Format) -> Result<Fields, Failure> {
+    if names.is_empty() {
+        return Ok(Fields::default());
+    }
+    if format == Format::Markdown {
+        return Err(Failure::FieldsNeedJson);
+    }
+    let mut picked = Filter::names(names);
+    // A trailing comma, as in `text,`, names no key.
+    picked.include.retain(|name| !name.is_empty());
+    picked.exclude.retain(|name| !name.is_empty());
+    if let Some(unknown) = picked
+        .include
+        .iter()
+        .chain(&picked.exclude)
+        .find(|name| !known.contains(&name.as_str()))
+    {
+        return Err(Failure::UnknownField {
+            known: listed(known),
+            name: unknown.clone(),
+        });
+    }
+    Ok(Fields {
+        exclude: picked.exclude,
+        include: picked.include,
+    })
+}
+
 /// Checks a limit of characters that `flag` gave, which must be positive,
 /// and converts it.
 fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, Failure> {
@@ -405,6 +437,7 @@ pub fn resolve(
             );
             check_kinds(kinds, &activity, !tools.is_empty(), !statuses.is_empty())?;
             let format = output.format.into();
+            let fields = fields(output.fields, &RECORD_KEYS, format)?;
             let cuts = Cuts {
                 message: char_limit(max_message_chars, "--max-message-chars")?,
                 tool: char_limit(max_tool_chars, "--max-tool-chars")?,
@@ -420,6 +453,7 @@ pub fn resolve(
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             Ok(Config::Records {
                 cuts,
+                fields,
                 format,
                 kinds,
                 shared: Box::new(flags.shared(narrowing, environment)?),
@@ -435,8 +469,10 @@ pub fn resolve(
                 usage: true,
                 ..Narrowing::default()
             };
+            let format = output.format.into();
             Ok(Config::Sessions {
-                format: output.format.into(),
+                fields: fields(output.fields, &SESSION_KEYS, format)?,
+                format,
                 shared: Box::new(flags.shared(narrowing, environment)?),
             })
         }

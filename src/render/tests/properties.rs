@@ -9,7 +9,7 @@ use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo
 use crate::record::{AGENT, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
-use crate::render::json::{Run, document, lines};
+use crate::render::json::{Fields, Run, document, lines};
 use crate::render::markdown;
 use crate::testing::{TestResult, check_eq, for_all, hostile_text, json_value};
 use crate::text::one_line;
@@ -97,7 +97,7 @@ fn span_text(span: &str) -> Option<&str> {
 #[test]
 fn json_lines_hold_one_record_per_line_without_raw_separators() -> TestResult {
     for_all(&vec(json_value(), 0..5), |items| {
-        let out = lines(&items)?;
+        let out = lines(&items, &Fields::default())?;
         check_eq(
             &out.contains(['\u{2028}', '\u{2029}']),
             &false,
@@ -117,7 +117,13 @@ fn a_json_document_reads_back_its_records() -> TestResult {
     for_all(
         &(vec(json_value(), 0..5), hostile_text()),
         |(items, filter)| {
-            let out = document(&filter, "0.0.1", &Run::default(), &items)?;
+            let out = document(
+                &filter,
+                "0.0.1",
+                &Run::default(),
+                &items,
+                &Fields::default(),
+            )?;
             check_eq(
                 &out.contains(['\u{2028}', '\u{2029}']),
                 &false,

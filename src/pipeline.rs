@@ -12,7 +12,7 @@ use crate::failure::Failure;
 use crate::record::Record;
 use crate::redact::Counts;
 use crate::render::digest::digest;
-use crate::render::json::{Run, document, lines, version};
+use crate::render::json::{Fields, Run, document, lines, version};
 use crate::render::markdown;
 
 /// The version of this build.
@@ -48,6 +48,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
         }
         Config::Records {
             cuts,
+            fields,
             format,
             kinds,
             shared,
@@ -56,7 +57,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             for record in &mut corpus.records {
                 record.cut(cuts);
             }
-            let out = write(format, &corpus.records, &shared.run, |records| {
+            let out = write(format, &fields, &corpus.records, &shared.run, |records| {
                 markdown::records(records, &shared.zone)
             })?;
             printed(
@@ -66,9 +67,13 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                 corpus.records.iter().map(Record::masked),
             )
         }
-        Config::Sessions { format, shared } => {
+        Config::Sessions {
+            fields,
+            format,
+            shared,
+        } => {
             let corpus = gather(&shared, || Prompts)?;
-            let out = write(format, &corpus.sessions, &shared.run, |sessions| {
+            let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
                 markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
             })?;
             printed(
@@ -212,10 +217,11 @@ fn printed(
     })
 }
 
-/// Writes `records` in `format`, using `markdown` for Markdown and `run` in
-/// the JSON envelope.
+/// Writes `records` in `format`, with the keys `fields` keeps in JSON,
+/// using `markdown` for Markdown and `run` in the JSON envelope.
 fn write<T>(
     format: Format,
+    fields: &Fields,
     records: &[T],
     run: &Run,
     markdown: impl FnOnce(&[T]) -> Result<String, Failure>,
@@ -224,8 +230,8 @@ where
     T: Serialize,
 {
     match format {
-        Format::Json => document(FILTER_VERSION, VERSION, run, records),
-        Format::Jsonl => lines(records),
+        Format::Json => document(FILTER_VERSION, VERSION, run, records, fields),
+        Format::Jsonl => lines(records, fields),
         Format::Markdown => markdown(records),
     }
 }

@@ -11,7 +11,7 @@ use crate::collect::mask::Mask;
 use crate::filter::Query;
 use crate::record::Cuts;
 use crate::render::digest::Limits;
-use crate::render::json::Run;
+use crate::render::json::{Fields, Run};
 
 /// A subcommand with everything it needs.
 pub enum Config {
@@ -26,6 +26,8 @@ pub enum Config {
     Records {
         /// How many characters to keep of each text.
         cuts: Cuts,
+        /// The keys to write in JSON and JSON Lines.
+        fields: Fields,
         /// The output format.
         format: Format,
         /// The kinds of record to pick.
@@ -35,6 +37,8 @@ pub enum Config {
     },
     /// `sessions`.
     Sessions {
+        /// The keys to write in JSON and JSON Lines.
+        fields: Fields,
         /// The output format.
         format: Format,
         /// What to read and how to report it.

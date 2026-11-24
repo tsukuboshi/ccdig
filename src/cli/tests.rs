@@ -7,6 +7,7 @@
 
 mod around;
 mod context;
+mod fields;
 mod kinds;
 mod mentions;
 mod properties;
@@ -747,10 +748,25 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--limit <N>",
                 "--max-message-chars <N>",
                 "--max-tool-chars <N>",
+                "--fields <KEY>",
             ],
         ),
         &true,
         &records,
+    )?;
+    let sessions = history.run(&["sessions", "-h"]).out;
+    check_eq(
+        &in_order(
+            &sessions,
+            &[
+                "Output:\n",
+                "--format <FORMAT>",
+                "--limit <N>",
+                "--fields <KEY>",
+            ],
+        ),
+        &true,
+        &sessions,
     )?;
     check_eq(
         &records.contains("[possible values: json, jsonl, md]"),

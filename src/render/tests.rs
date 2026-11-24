@@ -2,14 +2,18 @@
 
 mod properties;
 
+use core::error::Error;
+
 use jiff::tz::TimeZone;
+use serde::Serialize;
 use serde_json::json;
 
 use super::digest::{Limits, digest};
-use super::json::{Run, document, lines};
+use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
-    AGENT, Head, Kind, Prompt, Reply, Search, Session, Source, ToolCall, ToolResult, Turn,
+    AGENT, Head, Kind, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, Search, Session, Source, Summary,
+    ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, golden, zone};
@@ -127,7 +131,7 @@ fn tokyo() -> Result<TimeZone, jiff::Error> {
 fn prompts_as_json_lines() -> TestResult {
     golden(
         "render/prompts.jsonl.golden",
-        &lines(&prompt_turns(sample_prompts()?))?,
+        &lines(&prompt_turns(sample_prompts()?), &Fields::default())?,
     )
 }
 
@@ -141,6 +145,7 @@ fn prompts_as_a_json_document() -> TestResult {
             "0.1.0",
             &Run::default(),
             prompts.get(..1).ok_or("no prompts")?,
+            &Fields::default(),
         )?,
     )
 }
@@ -149,7 +154,13 @@ fn prompts_as_a_json_document() -> TestResult {
 fn an_empty_json_document_has_an_empty_list() -> TestResult {
     golden(
         "render/empty.json.golden",
-        &document::<Prompt>("strict-v2", "0.1.0", &Run::default(), &[])?,
+        &document::<Prompt>(
+            "strict-v2",
+            "0.1.0",
+            &Run::default(),
+            &[],
+            &Fields::default(),
+        )?,
     )
 }
 
@@ -181,7 +192,7 @@ fn prompts_as_markdown() -> TestResult {
 fn sessions_as_json_lines() -> TestResult {
     golden(
         "render/sessions.jsonl.golden",
-        &lines(&[sample_session()?])?,
+        &lines(&[sample_session()?], &Fields::default())?,
     )
 }
 
@@ -214,7 +225,7 @@ fn line_separators_are_escaped_in_json() -> TestResult {
         "/a.jsonl",
         "a\u{2028}b\u{2029}c",
     );
-    let out = lines(&[prompt])?;
+    let out = lines(&[prompt], &Fields::default())?;
     check_eq(
         &out.contains("\"text\":\"a\\u2028b\\u2029c\""),
         &true,
@@ -328,18 +339,125 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     };
     let zone = tokyo()?;
     let replies = [Turn::Reply(reply)];
-    golden("kinds/replies.jsonl.golden", &lines(&replies)?)?;
+    golden(
+        "kinds/replies.jsonl.golden",
+        &lines(&replies, &Fields::default())?,
+    )?;
     golden(
         "kinds/replies.md.golden",
         &markdown::records(&replies, &zone)?,
     )?;
     let calls = [Turn::Call(call)];
-    golden("kinds/tools.jsonl.golden", &lines(&calls)?)?;
+    golden(
+        "kinds/tools.jsonl.golden",
+        &lines(&calls, &Fields::default())?,
+    )?;
     golden("kinds/tools.md.golden", &markdown::records(&calls, &zone)?)?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
-    golden("kinds/results.jsonl.golden", &lines(&results)?)?;
+    golden(
+        "kinds/results.jsonl.golden",
+        &lines(&results, &Fields::default())?,
+    )?;
     golden(
         "kinds/results.md.golden",
         &markdown::records(&results, &zone)?,
     )
+}
+
+/// The keys of `item` as JSON, in the order it writes them.
+fn json_keys<T>(item: &T) -> Result<Vec<String>, Box<dyn Error>>
+where
+    T: Serialize,
+{
+    Ok(serde_json::to_value(item)?
+        .as_object()
+        .ok_or("not an object")?
+        .keys()
+        .cloned()
+        .collect())
+}
+
+#[test]
+fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult {
+    let head = blog_head("2026-10-13T01:00:00Z")?;
+    let prompt = bare_prompt(head.clone(), BLOG_FILE, "hi");
+    let reply = Reply {
+        head: head.clone(),
+        text: "hello".to_owned(),
+        model: String::new(),
+        skill: String::new(),
+        subagent: String::new(),
+        usage: None,
+        redacted: false,
+        source: source(BLOG_FILE, 2, "a-1"),
+        search: Search::default(),
+        masked: Counts::default(),
+    };
+    let call = ToolCall {
+        head: head.clone(),
+        tool: "Bash".to_owned(),
+        input: json!({}),
+        tool_use_id: String::new(),
+        skill: String::new(),
+        subagent: String::new(),
+        usage: None,
+        redacted: false,
+        source: source(BLOG_FILE, 3, "a-2"),
+        search: Search::default(),
+        masked: Counts::default(),
+    };
+    let result = ToolResult {
+        head: head.clone(),
+        tool: "Bash".to_owned(),
+        input: json!({}),
+        tool_use_id: String::new(),
+        is_error: false,
+        text: String::new(),
+        subagent: String::new(),
+        redacted: false,
+        source: source(BLOG_FILE, 4, "u-1"),
+        search: Search::default(),
+        skill: String::new(),
+        masked: Counts::default(),
+    };
+    let summary = Summary {
+        head,
+        text: String::new(),
+        redacted: false,
+        source: source(BLOG_FILE, 5, "u-2"),
+        search: Search::default(),
+        masked: Counts::default(),
+    };
+    let mut seen: Vec<String> = Vec::new();
+    for turn in [
+        Turn::Prompt(prompt),
+        Turn::Reply(reply),
+        Turn::Call(call),
+        Turn::Result(result),
+        Turn::Summary(summary),
+    ] {
+        let keys = json_keys(&turn)?;
+        let positions: Vec<Option<usize>> = keys
+            .iter()
+            .map(|key| RECORD_KEYS.iter().position(|known| known == key))
+            .collect();
+        check_eq(&positions.contains(&None), &false, &format!("{keys:?}"))?;
+        check_eq(
+            &positions.is_sorted(),
+            &true,
+            &format!("{keys:?} in the order of RECORD_KEYS"),
+        )?;
+        for key in keys {
+            if !seen.contains(&key) {
+                seen.push(key);
+            }
+        }
+    }
+    check_eq(&seen.len(), &RECORD_KEYS.len(), "every key is written")?;
+    check_eq(
+        &json_keys(&sample_session()?)?,
+        &SESSION_KEYS.map(str::to_owned).to_vec(),
+        "session keys",
+    )?;
+    Ok(())
 }

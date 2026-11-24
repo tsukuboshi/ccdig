@@ -97,7 +97,11 @@ pub enum Command {
         display_order = 1,
         after_help = "Without --type, a search reads prompts, replies, and tool calls, and a\n\
                       tool call's input can be long: narrow it with --type and --limit, as in\n\
-                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20"
+                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20\n\
+                      or cut the texts and leave out the keys every record of a session\n\
+                      repeats, as in\n\
+                      \x20 ccdig records --igrep deploy --max-message-chars 500 --max-tool-chars 100 \\\n\
+                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
     )]
     Records {
         /// The record types to list (comma-separated, repeatable)
@@ -391,9 +395,19 @@ pub enum VersionFormat {
     Text,
 }
 
-/// The `--format` flag.
+/// The `--format` and `--fields` flags.
 #[derive(Args)]
 pub struct Output {
+    /// In JSON and JSON Lines, write only these keys, or with a leading !,
+    /// leave them out (comma-separated, repeatable) [default: every key].
+    #[arg(
+        long = "fields",
+        value_name = "KEY",
+        value_delimiter = ',',
+        help_heading = "Output",
+        display_order = 64
+    )]
+    pub fields: Vec<String>,
     /// Output format.
     #[arg(
         long,
@@ -584,10 +598,19 @@ where
         .filter_map(ValueEnum::to_possible_value)
         .map(|value| value.get_name().to_owned())
         .collect();
-    match names.split_last() {
+    listed(&names)
+}
+
+/// `names` as a list for a message: `a, b, or c`.
+pub fn listed<S>(names: &[S]) -> String
+where
+    S: AsRef<str>,
+{
+    let all: Vec<&str> = names.iter().map(AsRef::as_ref).collect();
+    match all.split_last() {
         Some((last, rest)) if rest.len() == 1 => format!("{} or {last}", rest.join(", ")),
         Some((last, rest)) if !rest.is_empty() => format!("{}, or {last}", rest.join(", ")),
-        Some((last, _)) => last.clone(),
+        Some((last, _)) => (*last).to_owned(),
         None => String::new(),
     }
 }

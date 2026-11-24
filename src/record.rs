@@ -1,6 +1,6 @@
 //! The records that flow between the stages: `collect` builds them, and
-//! `render` writes them. Every key is always written, in declaration order,
-//! so consumers can rely on the keys.
+//! `render` writes them. Every key is written, in declaration order, unless
+//! `--fields` leaves it out, so consumers can rely on the keys.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -12,6 +12,52 @@ use crate::when::Stamp;
 
 /// The `agent` of every record.
 pub const AGENT: &str = "claude-code";
+
+/// The keys a line of `records` can have, in the order the kinds write
+/// them, for `--fields`.
+pub const RECORD_KEYS: [&str; 24] = [
+    "type",
+    "agent",
+    "session_id",
+    "session_title",
+    "project",
+    "cwd",
+    "git_branch",
+    "timestamp",
+    "tool",
+    "input",
+    "tool_use_id",
+    "is_error",
+    "text",
+    "kind",
+    "command",
+    "permission_mode",
+    "model",
+    "skill",
+    "subagent",
+    "usage",
+    "redacted",
+    "source",
+    "matched",
+    "matches",
+];
+
+/// The keys of a line of `sessions`, in order, for `--fields`.
+pub const SESSION_KEYS: [&str; 13] = [
+    "agent",
+    "session_id",
+    "title",
+    "project",
+    "cwd",
+    "git_branch",
+    "file",
+    "mtime",
+    "started_at",
+    "ended_at",
+    "prompt_count",
+    "match_count",
+    "usage",
+];
 
 /// How many characters `--max-message-chars` and `--max-tool-chars` keep of
 /// each string, `None` for all of them.
