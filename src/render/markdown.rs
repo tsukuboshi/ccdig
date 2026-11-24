@@ -5,7 +5,9 @@ use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
 use crate::record::{MatchLine, Record, Session, ToolCall, ToolResult, Turn};
-use crate::text::{clean_text, code_span, escape_pipes, fenced, heading_text};
+use crate::text::{
+    clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
+};
 
 /// Records of any kind, each under a heading that names its kind. A record
 /// with `matches` shows those lines in place of its text.
@@ -89,14 +91,14 @@ where
 }
 
 /// Sessions as a table, with how many prompts and replies a search
-/// matched in each when `matches` is set.
+/// matched in each, and the first of them, when `matches` is set.
 ///
 /// # Errors
 ///
 /// When a time cannot be shown in `zone`.
 pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<String, Failure> {
     let mut out = String::from(if matches {
-        "# Sessions\n\n| Started | Project | Prompts | Matches | Title |\n| --- | --- | ---: | ---: | --- |\n"
+        "# Sessions\n\n| Started | Project | Prompts | Matches | First match | Title |\n| --- | --- | ---: | ---: | --- | --- |\n"
     } else {
         "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n"
     });
@@ -111,7 +113,16 @@ pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<S
             " | ",
         ]);
         if matches {
-            out.extend([&session.match_count.unwrap_or_default().to_string(), " | "]);
+            let first = session
+                .first_match
+                .as_ref()
+                .map_or_else(String::new, |found| escape_inline(&one_line(&found.text)));
+            out.extend([
+                &session.match_count.unwrap_or_default().to_string(),
+                " | ",
+                &first,
+                " | ",
+            ]);
         }
         out.extend([&heading_text(&session.title), " |\n"]);
     }

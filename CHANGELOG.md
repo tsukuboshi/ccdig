@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the
   keys every record of a session repeats and `sessions --fields '!usage'`
   drops the tokens.
+- `sessions --grep` gives each session a new `first_match` key, with a
+  `First match` column in Markdown: the first prompt or reply it matched,
+  as its type, time, line number, and the line cut to 200 characters, so
+  a session can be judged without reading its records.
 
 ### Changed
 

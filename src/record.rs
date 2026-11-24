@@ -13,6 +13,9 @@ use crate::when::Stamp;
 /// The `agent` of every record.
 pub const AGENT: &str = "claude-code";
 
+/// How many characters `first_match` keeps of the line.
+pub const FIRST_MATCH_CHARS: usize = 200;
+
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
 pub const RECORD_KEYS: [&str; 24] = [
@@ -43,7 +46,7 @@ pub const RECORD_KEYS: [&str; 24] = [
 ];
 
 /// The keys of a line of `sessions`, in order, for `--fields`.
-pub const SESSION_KEYS: [&str; 13] = [
+pub const SESSION_KEYS: [&str; 14] = [
     "agent",
     "session_id",
     "title",
@@ -56,6 +59,7 @@ pub const SESSION_KEYS: [&str; 13] = [
     "ended_at",
     "prompt_count",
     "match_count",
+    "first_match",
     "usage",
 ];
 
@@ -265,12 +269,36 @@ pub struct Session {
     /// With `--grep` or `--igrep`, how many of the session's prompts and
     /// replies they matched; `null` otherwise.
     pub match_count: Option<usize>,
+    /// With `--grep` or `--igrep`, the first prompt or reply they matched
+    /// in the session; `null` otherwise.
+    pub first_match: Option<FirstMatch>,
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
     /// What masking these keys counted, for `--mask-report`; not written.
     #[serde(skip)]
     pub masked: Counts,
+}
+
+/// The first prompt or reply a search matched in a session, so a session
+/// can be judged without reading its records.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct FirstMatch {
+    /// `prompt` or `reply`.
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    /// When it was written.
+    pub timestamp: Stamp,
+    /// The 1-based number of the line a pattern matched in its text, or
+    /// `null` when the match spans lines.
+    pub line: Option<usize>,
+    /// That line, or the whole text when no single line matched, masked,
+    /// on one line and cut to `FIRST_MATCH_CHARS` characters.
+    pub text: String,
 }
 
 /// The summary Claude Code writes when it compacts the context: a

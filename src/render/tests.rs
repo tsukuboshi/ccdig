@@ -114,6 +114,7 @@ fn sample_session() -> Result<Session, String> {
         ended_at: at("2026-10-13T01:30:00Z")?,
         prompt_count: 2,
         match_count: None,
+        first_match: None,
     })
 }
 

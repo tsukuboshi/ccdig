@@ -6,7 +6,7 @@ use proptest::strategy::Strategy;
 use serde_json::Value;
 
 use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
-use crate::record::{AGENT, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
+use crate::record::{AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Fields, Run, document, lines};
@@ -286,9 +286,12 @@ fn matched_lines_add_no_heading() -> TestResult {
 }
 
 #[test]
-fn every_session_row_has_four_cells_or_five_with_matches() -> TestResult {
+fn every_session_row_has_four_cells_or_six_with_matches() -> TestResult {
     for_all(
-        &(vec((hostile_text(), hostile_text()), 0..4), ANY),
+        &(
+            vec((hostile_text(), hostile_text(), hostile_text()), 0..4),
+            ANY,
+        ),
         |(rows, matches)| {
             let sessions: Vec<Session> = rows
                 .iter()
@@ -296,6 +299,12 @@ fn every_session_row_has_four_cells_or_five_with_matches() -> TestResult {
                     sample_session().map(|session| Session {
                         title: row.0.clone(),
                         project: row.1.clone(),
+                        first_match: Some(FirstMatch {
+                            kind: "reply",
+                            timestamp: session.started_at,
+                            line: Some(1),
+                            text: row.2.clone(),
+                        }),
                         ..session
                     })
                 })
@@ -305,7 +314,7 @@ fn every_session_row_has_four_cells_or_five_with_matches() -> TestResult {
             check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
             for row in table {
                 let cells = row.replace("\\|", "").matches('|').count();
-                check_eq(&cells, &(if matches { 6 } else { 5 }), row)?;
+                check_eq(&cells, &(if matches { 7 } else { 5 }), row)?;
             }
             Ok(())
         },

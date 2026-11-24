@@ -5,7 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use super::mask::Mask;
+use regex::Regex;
+
+use super::read::Mention;
 use super::{Corpus, Select};
+use crate::filter::Filter;
 use crate::record::{AGENT, Record, Session};
 use crate::redact::Counts;
 use crate::transcript::entry::Usage;
@@ -19,8 +23,8 @@ pub struct FileRecords<'file, T> {
     /// The time of the last record read in the range.
     pub last: Option<Stamp>,
     /// With `Reading::mentions`, the prompts and replies the including
-    /// patterns matched, by line ID and block.
-    pub mentions: Option<Vec<(String, usize)>>,
+    /// patterns matched, in file order.
+    pub mentions: Option<Vec<Mention>>,
     /// When the file was last written to.
     pub modified: Stamp,
     /// The records, each with its block's index in the line.
@@ -39,6 +43,7 @@ pub fn gather<T>(
     warnings: Vec<String>,
     mask: &Mask,
     around: usize,
+    grep: &Filter<Regex>,
 ) -> Corpus<T>
 where
     T: Select,
@@ -85,13 +90,16 @@ where
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
         };
-        let match_count = match session.mentions {
+        let (match_count, first_match) = match session.mentions {
             Some(found) => {
-                let count = found
+                let counted: Vec<Mention> = found
                     .into_iter()
-                    .filter(|key| key.0.is_empty() || mentioned.insert(key.clone()))
-                    .count();
-                if count == 0 {
+                    .filter(|mention| {
+                        mention.key().0.is_empty() || mentioned.insert(mention.key().clone())
+                    })
+                    .collect();
+                let count = counted.len();
+                let Some(earliest) = counted.into_iter().next() else {
                     // A resumed copy repeats these responses, and must not
                     // count them as its own.
                     for response in &session.usage {
@@ -100,10 +108,10 @@ where
                         }
                     }
                     continue;
-                }
-                Some(count)
+                };
+                (Some(count), Some(earliest))
             }
-            None => None,
+            None => (None, None),
         };
         let mut usage = Usage::default();
         for (id, tokens) in session.usage {
@@ -114,6 +122,10 @@ where
         let head = first.head();
         let last_kept = last.head().timestamp;
         let mut masked = head.masked.clone();
+        // The first match prints the text of a prompt or reply.
+        if let Some(ref earliest) = first_match {
+            masked.merge(earliest.masked());
+        }
         let shown_file = mask.meta(&session.file.path.to_string_lossy(), &mut masked);
         corpus.sessions.push(Session {
             agent: AGENT,
@@ -134,6 +146,7 @@ where
             }),
             prompt_count: kept.len(),
             match_count,
+            first_match: first_match.map(|earliest| earliest.first_match(grep)),
             usage,
             masked,
         });

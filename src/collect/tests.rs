@@ -273,6 +273,67 @@ fn each_copy_of_a_resumed_session_ends_at_its_own_last_record() -> TestResult {
 }
 
 #[test]
+fn a_resumed_copy_s_first_match_is_one_of_its_own() -> TestResult {
+    let root = Root::new()?;
+    let shared = r#"{"type":"user","uuid":"f-1","sessionId":"ffff","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"move to the cloud"}}"#;
+    root.write(
+        "-Users-alice-f/zz-original.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[shared],
+    )?;
+    root.write(
+        "-Users-alice-f/aa-resumed.jsonl",
+        "2026-10-16T01:00:00Z",
+        &[
+            shared,
+            r#"{"type":"user","uuid":"f-2","sessionId":"fffg","timestamp":"2026-10-16T00:00:00Z","message":{"role":"user","content":"the cloud bill"}}"#,
+        ],
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading {
+            mentions: true,
+            usage: true,
+            ..Reading::default()
+        },
+        &Query {
+            grep: patterns(&["cloud"], &[])?,
+            ..Query::default()
+        },
+        &masking(&[])?,
+        || Prompts,
+    )?;
+    let firsts: Vec<(String, Option<usize>, Option<String>)> = corpus
+        .sessions
+        .iter()
+        .map(|session| {
+            (
+                session.id.clone(),
+                session.match_count,
+                session.first_match.as_ref().map(|found| found.text.clone()),
+            )
+        })
+        .collect();
+    check_eq(
+        &firsts,
+        &vec![
+            (
+                "ffff".to_owned(),
+                Some(1),
+                Some("move to the cloud".to_owned()),
+            ),
+            (
+                "fffg".to_owned(),
+                Some(1),
+                Some("the cloud bill".to_owned()),
+            ),
+        ],
+        "first matches",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> TestResult {
     let root = Root::new()?;
     root.write(

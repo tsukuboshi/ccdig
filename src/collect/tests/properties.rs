@@ -308,6 +308,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
             check_eq(
                 &Session {
                     match_count: None,
+                    first_match: None,
                     ..session.clone()
                 },
                 same,

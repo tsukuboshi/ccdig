@@ -1873,7 +1873,7 @@ fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> Tes
     let sessions = history.run_week(&["sessions", "--session", "uuuu"]);
     check_eq(
         &sessions.out.contains(
-            r#""prompt_count":1,"match_count":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
+            r#""prompt_count":1,"match_count":null,"first_match":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
         ),
         &true,
         &sessions.out,

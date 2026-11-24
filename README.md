@@ -154,6 +154,27 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   first one's time. `ended_at` is the time of the session's last prompt,
   reply, tool call, or tool result in the range, so it shows when the
   work ended even when a session has one prompt.
+- `first_match` holds the first prompt or reply a search matched in the
+  session, so it can be judged without reading its records: its `type`,
+  `timestamp`, the `line` a pattern matched in its text, and that line,
+  masked, on one line and cut to 200 characters, as `text`. When the
+  match spans lines, `line` is `null` and `text` starts the whole text.
+  Without a pattern that does not start with `!`, `first_match` is
+  `null`. Markdown adds a `First match` column next to `Matches`.
+
+A record has these keys, in this order:
+
+| Key | Holds |
+| --- | --- |
+| `agent` | `claude-code` |
+| `session_id` | The session ID |
+| `title` | The session's last title, or empty |
+| `project` | The project directory's name |
+| `cwd`, `git_branch` | Those of the first selected prompt |
+| `file` | The transcript file |
+| `mtime` | When the file was last written to |
+| `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | As above |
+| `usage` | The tokens; see Tokens |
 
 ### digest
 

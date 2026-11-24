@@ -127,6 +127,9 @@ where
         session.mtime = session.mtime.shown_in(&shared.zone);
         session.started_at = session.started_at.shown_in(&shared.zone);
         session.ended_at = session.ended_at.shown_in(&shared.zone);
+        if let Some(ref mut first) = session.first_match {
+            first.timestamp = first.timestamp.shown_in(&shared.zone);
+        }
     }
     Ok(corpus)
 }

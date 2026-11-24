@@ -179,7 +179,7 @@ fn sessions_in_markdown_have_a_matches_column_only_with_grep() -> TestResult {
     grep.extend(["--igrep", "cloud"]);
     let with = history.run_week(&grep).out;
     check_eq(
-        &with.contains("| Started | Project | Prompts | Matches | Title |"),
+        &with.contains("| Started | Project | Prompts | Matches | First match | Title |"),
         &true,
         &with,
     )?;
@@ -233,6 +233,136 @@ fn a_session_ends_at_its_last_record_in_the_range() -> TestResult {
     Ok(())
 }
 
+/// The `first_match` of each session `args` list as JSON lines, in the
+/// week of the history, with its session ID.
+fn first_matches(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
+    let ran = history.run_week(args);
+    if ran.code != 0 {
+        return Err(ran.err.into());
+    }
+    ran.out
+        .lines()
+        .map(|line| {
+            let session: Value = serde_json::from_str(line)?;
+            Ok(json!([
+                session.get("session_id"),
+                session.get("first_match").ok_or("no first_match key")?,
+            ]))
+        })
+        .collect()
+}
+
+#[test]
+fn a_search_gives_each_session_the_first_line_it_matched() -> TestResult {
+    let history = history_with_mentions()?;
+    let mut args = SESSIONS.to_vec();
+    args.extend(["--igrep", "cloud"]);
+    check_eq(
+        &first_matches(&history, &args)?,
+        &vec![
+            json!([
+                "kkkk",
+                {
+                    "type": "prompt",
+                    "timestamp": "2026-10-15T09:00:00+09:00",
+                    "line": 1_u64,
+                    "text": "move the blog to the cloud"
+                }
+            ]),
+            json!([
+                "llll",
+                {
+                    "type": "reply",
+                    "timestamp": "2026-10-16T09:00:10+09:00",
+                    "line": 1_u64,
+                    "text": "The cloud says yes."
+                }
+            ]),
+        ],
+        "first matches",
+    )?;
+    check_eq(
+        &first_matches(&history, &SESSIONS)?,
+        &vec![
+            json!(["kkkk", null]),
+            json!(["llll", null]),
+            json!(["mmmm", null]),
+        ],
+        "without a search",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_first_match_is_the_matched_line_on_one_line_and_cut() -> TestResult {
+    let history = History::new("root")?;
+    let long = "cloud ".repeat(50);
+    history.write(
+        "-Users-alice-blog/pppp.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"p-1","sessionId":"pppp","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"first line\nthe cloud\tbucket"}}"#,
+        ],
+    )?;
+    history.write(
+        "-Users-alice-blog/qqqq.jsonl",
+        fixture_time()?,
+        &[&format!(
+            r#"{{"type":"user","uuid":"q-1","sessionId":"qqqq","timestamp":"2026-10-15T00:00:00Z","message":{{"role":"user","content":"{long}"}}}}"#
+        )],
+    )?;
+    let got = first_matches(
+        &history,
+        &[
+            "sessions",
+            "--session",
+            "pppp",
+            "--session",
+            "qqqq",
+            "--igrep",
+            "cloud",
+        ],
+    )?;
+    check_eq(
+        &got.first().and_then(|row| row.pointer("/1/line")),
+        &Some(&json!(2_u64)),
+        "the line in the text",
+    )?;
+    check_eq(
+        &got.first().and_then(|row| row.pointer("/1/text")),
+        &Some(&json!("the cloud bucket")),
+        "one line",
+    )?;
+    let cut = got
+        .get(1)
+        .and_then(|row| row.pointer("/1/text"))
+        .and_then(Value::as_str)
+        .ok_or("no second session")?;
+    check_eq(&cut.ends_with("\u{2026} (99 more characters)"), &true, cut)?;
+    Ok(())
+}
+
+#[test]
+fn sessions_in_markdown_show_the_first_match_with_a_search() -> TestResult {
+    let history = history_with_mentions()?;
+    let mut args = SESSIONS.to_vec();
+    args.extend(["--igrep", "cloud", "--format", "md"]);
+    let ran = history.run_week(&args);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out
+            .contains("| Started | Project | Prompts | Matches | First match | Title |"),
+        &true,
+        &ran.out,
+    )?;
+    check_eq(
+        &ran.out.contains(" | 2 | 2 | move the blog to the cloud | "),
+        &true,
+        &ran.out,
+    )?;
+    Ok(())
+}
+
 #[test]
 fn a_line_the_harness_wrote_does_not_move_the_end_of_a_session() -> TestResult {
     let history = History::new("root")?;
@@ -251,6 +381,55 @@ fn a_line_the_harness_wrote_does_not_move_the_end_of_a_session() -> TestResult {
         &got.first().and_then(|row| row.get(4)),
         &Some(&json!("2026-10-17T09:10:00+09:00")),
         "the reply ends it",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_mask_report_counts_what_was_masked_in_the_first_match() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/tttt.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"t-1","sessionId":"tttt","timestamp":"2026-10-17T00:00:00Z","message":{"role":"user","content":"who owns the cloud account?"}}"#,
+            r#"{"type":"assistant","uuid":"t-2","sessionId":"tttt","timestamp":"2026-10-17T00:00:10Z","message":{"content":[{"type":"text","text":"bob@example.com owns it."}]}}"#,
+        ],
+    )?;
+    let ran = history.run_week(&[
+        "sessions",
+        "--session",
+        "tttt",
+        "--mask",
+        "email",
+        "--igrep",
+        "owns",
+        "--mask-report",
+        "text",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        ran.err.as_str(),
+        "ccdig: masked nothing\n",
+        "the prompt has nothing to mask",
+    )?;
+    let reply = history.run_week(&[
+        "sessions",
+        "--session",
+        "tttt",
+        "--mask",
+        "email",
+        "--igrep",
+        "owns it",
+        "--mask-report",
+        "text",
+    ]);
+    check_eq(&reply.code, &0, &reply.err)?;
+    check_eq(&reply.out.contains("bob@example.com"), &false, &reply.out)?;
+    check_eq(
+        reply.err.as_str(),
+        "ccdig: masked 1 by email\n",
+        "the reply's email",
     )?;
     Ok(())
 }

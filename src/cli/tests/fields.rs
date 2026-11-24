@@ -150,11 +150,11 @@ fn fields_names_an_unknown_key_and_needs_json() -> TestResult {
     for (args, want) in [
         (
             &["sessions", "--fields", "txt"][..],
-            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, or usage\n",
+            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, first_match, or usage\n",
         ),
         (
             &["sessions", "--fields", "!title,!txt"][..],
-            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, or usage\n",
+            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, first_match, or usage\n",
         ),
         (
             &["records", "--fields", "text", "--format", "md"][..],

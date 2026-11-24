@@ -154,6 +154,27 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - `prompt_count` と `started_at` は、選ばれた依頼文の件数と最初の時刻です。
   `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
+- `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
+  レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
+  本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
+  200 文字で切ったもの）の `text` です。一致が行をまたぐときは、`line` が
+  `null` で、`text` は本文全体の先頭です。
+  `!` で始まらないパターンが無ければ、`first_match` は
+  `null` です。Markdown には `Matches` の隣に `First match` 列が加わります。
+
+レコードは次のキーをこの順に持ちます。
+
+| キー | 中身 |
+| --- | --- |
+| `agent` | `claude-code` |
+| `session_id` | セッション ID |
+| `title` | セッションの最後のタイトル。無ければ空 |
+| `project` | プロジェクトのディレクトリ名 |
+| `cwd`, `git_branch` | 選ばれた最初の依頼文のもの |
+| `file` | transcript のファイル |
+| `mtime` | ファイルの最終書き込み時刻 |
+| `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | 上のとおり |
+| `usage` | トークン数。「トークン数」の節を参照 |
 
 ### digest
 
