@@ -135,7 +135,7 @@ fn tool_result(result: &ToolResult) -> String {
     if result.matches.is_empty() {
         return format!("{head}\n{}", fenced("text", &clean_text(&result.text)));
     }
-    format!("{head}{}", lines(&result.matches))
+    format!("{head}{}", lines(&result.matches, None))
 }
 
 /// `text` in a text block, or when `matches` lists lines of it, those.
@@ -143,22 +143,20 @@ fn text_or_lines(text: &str, matches: &[MatchLine]) -> String {
     if matches.is_empty() {
         return fenced("text", &clean_text(text));
     }
-    lines(matches)
+    lines(matches, None)
 }
 
 /// `matches` in runs of adjacent lines of one field, each a list item that
 /// says which lines it holds, and which of them matched when it holds
 /// others too, followed by the lines in a text block. The line numbers stay
 /// out of the block, so they do not mix with numbers in the text.
-fn lines(matches: &[MatchLine]) -> String {
+fn lines(matches: &[MatchLine], input_chars: Option<usize>) -> String {
     let runs = matches.chunk_by(|left, right| {
         left.field == right.field && left.line.checked_add(1) == Some(right.line)
     });
     let mut out = Vec::new();
-    for run in runs {
-        let (Some(first), Some(last)) = (run.first(), run.last()) else {
-            continue;
-        };
+    // `chunk_by` gives no empty run.
+    for (first, last, run) in runs.filter_map(|run| Some((run.first()?, run.last()?, run))) {
         let (single, plural) = if first.field == "text" {
             ("Line".to_owned(), "Lines".to_owned())
         } else {
@@ -178,7 +176,12 @@ fn lines(matches: &[MatchLine]) -> String {
                 .collect();
             item.extend([", matched ", &hits.join(", ")]);
         }
-        let text: Vec<&str> = run.iter().map(|line| line.text.as_str()).collect();
+        let text: Vec<String> = run
+            .iter()
+            .map(|line| {
+                input_chars.map_or_else(|| line.text.clone(), |limit| cut_text(&line.text, limit))
+            })
+            .collect();
         out.push(format!(
             "{item}\n\n{}",
             fenced("text", &clean_text(&text.join("\n")))
@@ -190,6 +193,13 @@ fn lines(matches: &[MatchLine]) -> String {
 /// A tool call's body: the tool's name and its input as indented JSON,
 /// with each string cut to `input_chars` when given.
 fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Failure> {
+    if !call.matches.is_empty() {
+        return Ok(format!(
+            "- Tool: {}\n{}",
+            tool_name(&call.tool),
+            lines(&call.matches, input_chars)
+        ));
+    }
     let input = input_chars
         .map_or_else(
             || serde_json::to_string_pretty(&call.input),
@@ -200,13 +210,6 @@ fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Fail
             },
         )
         .map_err(Failure::Json)?;
-    if !call.matches.is_empty() {
-        return Ok(format!(
-            "- Tool: {}\n{}",
-            tool_name(&call.tool),
-            lines(&call.matches)
-        ));
-    }
     Ok(format!(
         "- Tool: {}\n\n{}",
         tool_name(&call.tool),
@@ -214,20 +217,25 @@ fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Fail
     ))
 }
 
+/// `text`, cut to `limit` characters and followed by an ellipsis and how
+/// many characters were cut when it is longer.
+fn cut_text(text: &str, limit: usize) -> String {
+    let length = text.chars().count();
+    if length <= limit {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(limit).collect();
+    format!(
+        "{kept}\u{2026} ({} more characters)",
+        length.saturating_sub(limit)
+    )
+}
+
 /// Cuts each string in `value` longer than `limit` characters to `limit`,
 /// followed by an ellipsis and how many characters were cut.
 fn cut_strings(value: &mut Value, limit: usize) {
     match *value {
-        Value::String(ref mut text) => {
-            let length = text.chars().count();
-            if length > limit {
-                let kept: String = text.chars().take(limit).collect();
-                *text = format!(
-                    "{kept}\u{2026} ({} more characters)",
-                    length.saturating_sub(limit)
-                );
-            }
-        }
+        Value::String(ref mut text) => *text = cut_text(text, limit),
         Value::Array(ref mut items) => {
             for item in items {
                 cut_strings(item, limit);

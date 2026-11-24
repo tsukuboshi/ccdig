@@ -207,3 +207,30 @@ fn a_match_no_single_line_holds_lists_no_lines_and_prints_the_whole_text() -> Te
     check_eq(&ran.out.contains("line one\nline two\n"), &true, &ran.out)?;
     Ok(())
 }
+
+#[test]
+fn max_input_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
+    let history = history_with_long_records()?;
+    let ran = history.run_week(&[
+        "records",
+        "--session",
+        "eeee",
+        "--type",
+        "call",
+        "--grep",
+        "cloud edition",
+        "--context",
+        "0",
+        "--max-input-chars",
+        "9",
+        "--format",
+        "md",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out.contains("The cloud\u{2026} (8 more characters)\n"),
+        &true,
+        &ran.out,
+    )?;
+    Ok(())
+}
