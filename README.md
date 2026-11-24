@@ -155,7 +155,7 @@ of a repeatable flag on both sides add up.
 | `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD` |
 | `--tz` | Day boundaries and Markdown times in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
 | `--project` | Projects whose directory name or cwd contains the value |
-| `--session` | Sessions whose ID starts with the value |
+| `--session` | Sessions whose ID starts with the value, or with `current`, the session ccdig runs in |
 | `--branch` | Records on this git branch |
 | `--grep` | Records whose text matches the regular expression |
 | `--igrep` | The same, ignoring case |
@@ -167,6 +167,10 @@ of a repeatable flag on both sides add up.
   drops the records that mention `WIP`. Write `\!` for a value that starts
   with `!`, and quote such a value, as `!` starts a history expansion in
   most shells.
+- `--session current` is the session Claude Code runs ccdig in, read from
+  `CLAUDE_CODE_SESSION_ID`, so `--session '!current'` leaves out the
+  session that is doing the search. Outside Claude Code, `current` is an
+  error.
 - `--grep` searches the text as it will be printed: after masking, so a
   secret cannot be found by its value. It reads the prompt or reply text,
   a call's input as compact JSON, or a result's text.
@@ -201,6 +205,7 @@ command; see Commands.
 | --- | --- | --- |
 | `CCDIG_ROOT` | `--root` | A directory. It comes before `CLAUDE_CONFIG_DIR` |
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code's own variable; its `projects` directory is the root |
+| `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code's own variable; the ID of the session it runs ccdig in |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` or `fail` |
 | `CCDIG_MASK` | `--mask` | A comma-separated list |
 | `CCDIG_MASK_VALUES` | `--mask-values` | One JSON object, or `@` and a file |

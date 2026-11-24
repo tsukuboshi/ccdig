@@ -190,7 +190,8 @@ pub struct Common {
     )]
     pub projects: Vec<String>,
     /// Keep sessions whose ID starts with this, or with a leading !, leave
-    /// them out (repeatable).
+    /// them out (repeatable); `current` is the session Claude Code runs
+    /// ccdig in [env: `CLAUDE_CODE_SESSION_ID`].
     #[arg(
         long = "session",
         value_name = "PREFIX",

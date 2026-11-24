@@ -36,6 +36,9 @@ pub struct Environment {
     pub on_skip: Option<OsString>,
     /// `CCDIG_ROOT`, for `--root`.
     pub root: Option<OsString>,
+    /// `CLAUDE_CODE_SESSION_ID`, the session Claude Code runs ccdig in,
+    /// which `--session current` names.
+    pub session_id: Option<OsString>,
     /// `TZ`, for the `Local` zone. Unlike the others, an empty one is kept:
     /// it means UTC, while an unset one means the system zone.
     pub tz: Option<OsString>,
@@ -68,6 +71,7 @@ impl Environment {
             mask_values: var("CCDIG_MASK_VALUES"),
             on_skip: var("CCDIG_ON_SKIP"),
             root: var("CCDIG_ROOT"),
+            session_id: var("CLAUDE_CODE_SESSION_ID"),
             tz: env::var_os("TZ"),
         }
     }

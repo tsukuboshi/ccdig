@@ -78,6 +78,12 @@ pub enum Failure {
     /// `--no-mask` is given with `--mask` or `--mask-values`.
     #[error("--no-mask cannot be used with --mask or --mask-values")]
     MaskWithNoMask,
+    /// `--session current` is given outside Claude Code, where no variable
+    /// names the session ccdig runs in.
+    #[error(
+        "--session current: CLAUDE_CODE_SESSION_ID is not set; run ccdig inside Claude Code or give a session ID"
+    )]
+    NoCurrentSession,
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]
     Rules(#[source] regex::Error),

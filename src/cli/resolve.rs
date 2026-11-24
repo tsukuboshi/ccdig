@@ -67,6 +67,7 @@ impl Flags {
         )?;
         let root = self.history_root(environment)?;
         let user = self.user(environment)?;
+        let sessions = current_session(&self.common.sessions, environment)?;
         let Self {
             common,
             git_users,
@@ -102,7 +103,7 @@ impl Flags {
                 is_error: narrowing.is_error,
                 projects: Filter::names(common.projects),
                 range,
-                sessions: Filter::names(common.sessions),
+                sessions: Filter::names(sessions),
                 skills: Filter::names(narrowing.skills),
                 tools: Filter::names(narrowing.tools),
             },
@@ -231,6 +232,31 @@ fn check_kinds(kinds: Types, activity: &Activity, tool: bool, status: bool) -> R
         }
     }
     Ok(())
+}
+
+/// The `--session` values with `current`, alone or after `!`, replaced by
+/// the ID of the session ccdig runs in.
+///
+/// # Errors
+///
+/// When `current` is given and the environment names no session.
+fn current_session(sessions: &[String], environment: &Environment) -> Result<Vec<String>, Failure> {
+    sessions
+        .iter()
+        .map(|value| {
+            let (bang, name) = value
+                .strip_prefix('!')
+                .map_or(("", value.as_str()), |name| ("!", name));
+            if name != "current" {
+                return Ok(value.clone());
+            }
+            let id = environment
+                .session_id
+                .as_deref()
+                .ok_or(Failure::NoCurrentSession)?;
+            Ok(format!("{bang}{}", id.to_string_lossy()))
+        })
+        .collect()
 }
 
 /// Checks the digest limits and converts them.

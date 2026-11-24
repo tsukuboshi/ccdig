@@ -1750,6 +1750,56 @@ fn the_default_root_is_under_home_in_the_environment() -> TestResult {
     Ok(())
 }
 
+/// The session IDs of the sessions `out` lists as JSON lines, in order.
+fn session_ids(out: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    out.lines()
+        .map(|line| {
+            let session: serde_json::Value = serde_json::from_str(line)?;
+            Ok(session
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn session_current_is_the_session_ccdig_runs_in() -> TestResult {
+    let history = History::new("root")?;
+    let inside = Environment {
+        session_id: Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into()),
+        ..environment()
+    };
+    for (session, listed) in [
+        ("current", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        ("!current", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+    ] {
+        let mut args = vec!["sessions", "--session", session];
+        args.extend(WEEK);
+        let ran = history.run_in(&inside, &args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&session_ids(&ran.out)?, &vec![listed.to_owned()], session)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn session_current_outside_claude_code_is_an_error() -> TestResult {
+    let history = History::new("root")?;
+    for session in ["current", "!current"] {
+        let ran = history.run(&["sessions", "--session", session]);
+        check_eq(&ran.code, &1, session)?;
+        check_eq(ran.out.as_str(), "", session)?;
+        check_eq(
+            ran.err.as_str(),
+            "ccdig: --session current: CLAUDE_CODE_SESSION_ID is not set; run ccdig inside Claude Code or give a session ID\n",
+            session,
+        )?;
+    }
+    Ok(())
+}
+
 #[test]
 fn the_local_zone_comes_from_tz_in_the_environment() -> TestResult {
     let history = History::new("root")?;

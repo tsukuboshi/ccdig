@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `--session current` keeps the session Claude Code runs ccdig in, read
+  from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
+  so a search no longer lists the session doing it.
+
 ### Fixed
 
 - A Japanese name for a credential, such as the word for password, now has

@@ -156,7 +156,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `--since`, `--until` | 開始日から終了日までのレコード。`YYYY-MM-DD` |
 | `--tz` | 日の境界と Markdown の時刻をこの IANA タイムゾーンで扱う。既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`） |
 | `--project` | ディレクトリ名か cwd にこの値を含むプロジェクト |
-| `--session` | ID がこの値で始まるセッション |
+| `--session` | ID がこの値で始まるセッション。`current` なら ccdig を実行しているセッション |
 | `--branch` | この git ブランチ上のレコード |
 | `--grep` | テキストが正規表現に一致するレコード |
 | `--igrep` | 同じく、大文字小文字を区別せずに一致するレコード |
@@ -168,6 +168,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `WIP` に触れたレコードを除いた残りを出します。`!` で始まる値そのものに
   一致させるときは `\!` と書きます。たいていのシェルでは `!` が履歴展開に
   なるので、引用符で囲んでください。
+- `--session current` は、Claude Code が ccdig を実行しているセッションを
+  指し、`CLAUDE_CODE_SESSION_ID` から読みます。`--session '!current'` で、
+  検索している当のセッションを除けます。Claude Code の外では `current` は
+  エラーになります。
 - `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを
   検索します。そのため、秘密情報をその値で探し当てることはできません。
   対象は、依頼文や返答のテキスト、呼び出しの入力を詰めた JSON、結果の
@@ -203,6 +207,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- | --- |
 | `CCDIG_ROOT` | `--root` | ディレクトリ。`CLAUDE_CONFIG_DIR` より優先する |
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code 自身の変数。その下の `projects` ディレクトリをルートにする |
+| `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code 自身の変数。ccdig を実行しているセッションの ID |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` か `fail` |
 | `CCDIG_MASK` | `--mask` | カンマ区切りの一覧 |
 | `CCDIG_MASK_VALUES` | `--mask-values` | JSON オブジェクト 1 つ、または `@` とファイル |
