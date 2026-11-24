@@ -589,6 +589,40 @@ fn bad_flags_fail_with_one_line() -> TestResult {
 }
 
 #[test]
+fn a_flag_named_after_the_kind_key_points_at_type() -> TestResult {
+    let history = History::new("root")?;
+    for args in [
+        &["records", "--kind", "prompt"][..],
+        &["records", "--kind=prompt"][..],
+        &["records", "--kinds", "prompt"][..],
+        &["--kind", "prompt", "records"][..],
+    ] {
+        let ran = history.run(args);
+        let name = args.join(" ");
+        check_eq(&ran.code, &1, &name)?;
+        check_eq(
+            ran.err.as_str(),
+            &format!(
+                "ccdig: unexpected argument '{}' found; pick the record types with --type: call, prompt, reply, result, or summary\n",
+                if name.contains("--kinds") {
+                    "--kinds"
+                } else {
+                    "--kind"
+                },
+            ),
+            &name,
+        )?;
+    }
+    let other = history.run(&["records", "--kindly"]);
+    check_eq(
+        other.err.as_str(),
+        "ccdig: unexpected argument '--kindly' found\n",
+        "a flag that only starts with --kind",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_digest_rejects_a_prompt_limit_not_below_the_session_limit() -> TestResult {
     let history = History::new("root")?;
     for (prompt, session) in [("300", "100"), ("100", "100")] {
@@ -629,6 +663,34 @@ fn version_and_help() -> TestResult {
         check_eq(&ran.out.contains("Usage: ccdig"), &true, &name)?;
         check_eq(ran.err.as_str(), "", &name)?;
     }
+    Ok(())
+}
+
+#[test]
+fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
+    let history = History::new("root")?;
+    let examples = [
+        "Examples:\n",
+        "  ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n",
+        "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
+        "  ccdig sessions --igrep deploy --format md\n",
+        "ccdig records --help lists --type, --tool, --status, --skill, and --subagents.",
+    ];
+    for args in [&[][..], &["--help"][..], &["-h"][..]] {
+        let out = history.run(args).out;
+        check_eq(&in_order(&out, &examples), &true, &out)?;
+    }
+    let records = history.run(&["records", "--help"]).out;
+    for part in [
+        "Without --type, a search reads prompts, replies, and tool calls",
+        "narrow it with --type and --limit",
+        "Also read sub-agent transcripts, which are left out by default",
+    ] {
+        check_eq(&records.contains(part), &true, &records)?;
+    }
+    let top = history.run(&["--help"]).out;
+    check_eq(&top.contains("kind of record"), &false, &top)?;
+    check_eq(&top.contains("record type"), &true, &top)?;
     Ok(())
 }
 

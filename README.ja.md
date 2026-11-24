@@ -56,6 +56,11 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 # blog プロジェクトで "deploy" に触れた返答を、大文字小文字を区別せずに出す
 ccdig records --type reply --project blog --igrep deploy
 
+# Claude Code の中から、検索している当のセッションを除いて、ほかの
+# セッションの依頼文と返答を 20 件まで検索する
+ccdig records --session '!current' --type prompt,reply --igrep deploy \
+  --format md --limit 20
+
 # 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
@@ -111,6 +116,12 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
 - この 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
+- `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
+  入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
+  出力を小さく保てます。
+- サブエージェントの履歴は、`--subagents` を付けない限り読みません。
+  サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
+  されません。出力されるのは、その返答・呼び出し・結果です。
 
 次の 2 つのオプションは出力の形を決めます。
 
@@ -244,7 +255,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-どのキーも常に出力されます。
+どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
+レコードの種類は `--type` で選ぶ `type` です。
 
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、

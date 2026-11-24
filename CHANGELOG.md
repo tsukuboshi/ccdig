@@ -13,12 +13,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--session current` keeps the session Claude Code runs ccdig in, read
   from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
   so a search no longer lists the session doing it.
+- The help of `ccdig` shows examples of a search and says which flags
+  `ccdig records --help` lists, and the help of `records` says to narrow
+  a search with `--type` and `--limit`.
+- `--kind`, the name of a prompt's key for how it was typed, fails with a
+  pointer to `--type`, which picks the record types.
 
 ### Changed
 
 - In Markdown, a sub-agent's record names the sub-agent at the end of its
   own heading, not only once under the heading of its file, so a reader
   can tell it from the session's own records.
+- The help of `--subagents` and the README say that sub-agent transcripts
+  are left out by default and that the instruction a sub-agent was given
+  is not listed.
 
 ### Fixed
 

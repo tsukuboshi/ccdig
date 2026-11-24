@@ -4,7 +4,7 @@
 
 Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
-session, branch, text, kind of record, tool, outcome, and skill to narrow
+session, branch, text, record type, tool, outcome, and skill to narrow
 the history down to the part that matters, and write it as Markdown to
 read or JSON Lines to process. Common secrets are masked by default, and
 email addresses, IP addresses, your user name, and values you list can be
@@ -54,6 +54,11 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 
 # Replies in the blog project that mention "deploy", ignoring case
 ccdig records --type reply --project blog --igrep deploy
+
+# From Claude Code, search the other sessions' prompts and replies, 20 at
+# most, leaving out the session doing the search
+ccdig records --session '!current' --type prompt,reply --igrep deploy \
+  --format md --limit 20
 
 # Failed Bash calls, with sub-agents, as Markdown
 ccdig records --type result --tool Bash --status error --subagents --format md
@@ -110,6 +115,12 @@ Four options apply to some kinds only:
   `--tool`, `--status`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
 - Each of the four needs a `--type` it applies to, or the command fails.
+- A search without `--type` reads the tool calls too, and a call's input
+  can be long: give `--type prompt,reply` and `--limit` to keep the output
+  small.
+- Sub-agent transcripts are left out unless `--subagents` is given. The
+  instruction a sub-agent was given is not a prompt a person typed, so it
+  is never listed; its replies, calls, and results are.
 
 Two options shape the output:
 
@@ -242,7 +253,8 @@ have the same keys from `type` to `timestamp`, and end with `redacted` and
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-Every key is always present.
+Every key is always present. The `kind` of a prompt is how it was typed,
+`slash` or `text`; the record type is `type`, which `--type` picks.
 
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not

@@ -5,10 +5,15 @@
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
+use clap::error::{ContextKind, ErrorKind};
 use clap::{Args, CommandFactory as _, Parser, Subcommand, ValueEnum};
 
 use crate::config;
 use crate::failure::Failure;
+
+/// The flags people type for `--type`, after the `kind` key of a prompt,
+/// which is how it was typed, not its record type.
+const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
 
 /// Pull the logs you want to share out of Claude Code session transcripts,
 /// formatted and masked.
@@ -17,10 +22,16 @@ use crate::failure::Failure;
     name = "ccdig",
     long_about = "ccdig pulls the logs you want to share out of Claude Code session\n\
                   transcripts, formatted and masked. Filters for time, project, session,\n\
-                  branch, text, kind of record, tool, outcome, and skill narrow the history\n\
+                  branch, text, record type, tool, outcome, and skill narrow the history\n\
                   down, and the result is Markdown to read or JSON Lines to process. Harness\n\
                   noise is dropped, slash commands are folded back, and common secrets are\n\
                   masked by default.",
+    after_help = "Examples:\n\
+                  \x20 ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n\
+                  \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
+                  \x20 ccdig sessions --igrep deploy --format md\n\
+                  \n\
+                  ccdig records --help lists --type, --tool, --status, --skill, and --subagents.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
@@ -46,7 +57,8 @@ pub struct Activity {
         display_order = 30
     )]
     pub skills: Vec<String>,
-    /// Also read sub-agent transcripts.
+    /// Also read sub-agent transcripts, which are left out by default; the
+    /// instruction a sub-agent was given is not listed.
     #[arg(long, help_heading = "Input", display_order = 41)]
     pub subagents: bool,
 }
@@ -81,9 +93,14 @@ pub enum Command {
     },
     /// List prompts, replies, tool calls, and tool results in the order
     /// they were written.
-    #[command(display_order = 1)]
+    #[command(
+        display_order = 1,
+        after_help = "Without --type, a search reads prompts, replies, and tool calls, and a\n\
+                      tool call's input can be long: narrow it with --type and --limit, as in\n\
+                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20"
+    )]
     Records {
-        /// The kinds of record to list (comma-separated, repeatable)
+        /// The record types to list (comma-separated, repeatable)
         /// [default: prompt,reply,call, or with --tool, --status, or
         /// --skill, the kinds they all apply to].
         #[arg(
@@ -494,6 +511,21 @@ pub fn on_skip(value: &OsStr) -> Result<OnSkip, Failure> {
     })
 }
 
+/// What to say after an error about an unknown flag that names a flag
+/// ccdig has under another name, kept on the error's one line.
+fn hint(error: &clap::Error) -> Option<String> {
+    if error.kind() != ErrorKind::UnknownArgument {
+        return None;
+    }
+    let arg = error.get(ContextKind::InvalidArg)?.to_string();
+    KIND_FLAGS.contains(&arg.as_str()).then(|| {
+        format!(
+            "pick the record types with --type: {}",
+            value_names::<RecordType>()
+        )
+    })
+}
+
 /// Parses `args`, the program name first.
 pub fn parse<I, T>(args: I) -> Parsed
 where
@@ -504,8 +536,11 @@ where
         Ok(cli) => cli,
         Err(error) if error.use_stderr() => {
             let rendered = error.render().to_string();
-            let line = rendered.lines().next().unwrap_or_default();
-            return Parsed::Usage(line.strip_prefix("error: ").unwrap_or(line).to_owned());
+            let first = rendered.lines().next().unwrap_or_default();
+            let line = first.strip_prefix("error: ").unwrap_or(first);
+            return Parsed::Usage(
+                hint(&error).map_or_else(|| line.to_owned(), |hint| format!("{line}; {hint}")),
+            );
         }
         Err(error) => return Parsed::Print(error.render().to_string()),
     };
