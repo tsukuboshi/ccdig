@@ -183,7 +183,7 @@ pub fn rfc3339_text() -> impl Strategy<Value = String> {
     ];
     (dates, times, fractions, offsets).prop_map(
         |((year, month, day), (hour, minute, second), digits, offset)| {
-            let fraction = digits.map(|text| format!(".{text}")).unwrap_or_default();
+            let fraction = digits.map_or_default(|text| format!(".{text}"));
             format!(
                 "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}{fraction}{offset}"
             )

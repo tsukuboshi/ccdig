@@ -31,7 +31,7 @@ install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
 ~/.local/bin/ccdig version
 ```
 
-On other platforms, build it with Rust 1.99.1 or later:
+On other platforms, build it with Rust 1.100.0 or later:
 
 ```sh
 cargo install --locked --git https://github.com/tsukuboshi/ccdig

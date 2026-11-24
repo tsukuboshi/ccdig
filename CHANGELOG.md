@@ -46,6 +46,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The help of `--subagents` and the README say that sub-agent transcripts
   are left out by default and that the instruction a sub-agent was given
   is not listed.
+- Building from source needs Rust 1.100.0 or later.
 
 ### Fixed
 

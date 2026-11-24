@@ -32,7 +32,7 @@ install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
 ~/.local/bin/ccdig version
 ```
 
-ほかのプラットフォームでは、Rust 1.99.1 以降でビルドします。
+ほかのプラットフォームでは、Rust 1.100.0 以降でビルドします。
 
 ```sh
 cargo install --locked --git https://github.com/tsukuboshi/ccdig
