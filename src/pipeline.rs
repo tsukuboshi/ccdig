@@ -47,14 +47,17 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             )
         }
         Config::Records {
+            cuts,
             format,
-            input_chars,
             kinds,
             shared,
         } => {
-            let corpus = gather(&shared, || Records::new(kinds))?;
+            let mut corpus = gather(&shared, || Records::new(kinds))?;
+            for record in &mut corpus.records {
+                record.cut(cuts);
+            }
             let out = write(format, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone, input_chars)
+                markdown::records(records, &shared.zone)
             })?;
             printed(
                 &shared,

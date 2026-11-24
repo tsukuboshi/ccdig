@@ -8,8 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `records --max-message-chars N` cuts the text of each prompt, reply, and
+  summary to N characters, in every format.
+
 ### Changed
 
+- `records --max-input-chars` is now `--max-tool-chars`. It cuts each
+  tool result's output as well as each string in a tool's input, and works
+  in JSON and JSON Lines too. The old name fails with a pointer to the new
+  one.
 - With `--grep` or `--igrep`, `records` in JSON and JSON Lines lists the
   lines that matched in `matches` without `--context`, so a record with
   `matched` true says where it matched. Markdown still prints each record

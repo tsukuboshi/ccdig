@@ -13,6 +13,7 @@ use crate::collect::mask::Mask;
 use crate::config::{Config, Format, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, patterns};
+use crate::record::Cuts;
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
@@ -314,18 +315,15 @@ fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failur
     })
 }
 
-/// Checks `--max-input-chars`, which applies to Markdown only, and converts
-/// it.
-fn input_limit(chars: Option<i64>, format: Format) -> Result<Option<usize>, Failure> {
+/// Checks a limit of characters that `flag` gave, which must be positive,
+/// and converts it.
+fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, Failure> {
     let Some(given) = chars else {
         return Ok(None);
     };
-    if format != Format::Markdown {
-        return Err(Failure::InputLimitNeedsMarkdown);
-    }
     match usize::try_from(given) {
         Ok(limit) if limit > 0 => Ok(Some(limit)),
-        Ok(_) | Err(_) => Err(Failure::InputLimitNotPositive),
+        Ok(_) | Err(_) => Err(Failure::CharLimitNotPositive(flag)),
     }
 }
 
@@ -392,7 +390,8 @@ pub fn resolve(
             around,
             common: later,
             context,
-            max_input_chars,
+            max_message_chars,
+            max_tool_chars,
             output,
             statuses,
             tools,
@@ -406,7 +405,10 @@ pub fn resolve(
             );
             check_kinds(kinds, &activity, !tools.is_empty(), !statuses.is_empty())?;
             let format = output.format.into();
-            let input_chars = input_limit(max_input_chars, format)?;
+            let cuts = Cuts {
+                message: char_limit(max_message_chars, "--max-message-chars")?,
+                tool: char_limit(max_tool_chars, "--max-tool-chars")?,
+            };
             let narrowing = Narrowing {
                 around,
                 context,
@@ -417,8 +419,8 @@ pub fn resolve(
             };
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             Ok(Config::Records {
+                cuts,
                 format,
-                input_chars,
                 kinds,
                 shared: Box::new(flags.shared(narrowing, environment)?),
             })

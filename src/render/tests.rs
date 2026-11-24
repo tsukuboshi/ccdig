@@ -173,7 +173,7 @@ fn prompts_as_markdown() -> TestResult {
     });
     golden(
         "render/prompts.md.golden",
-        &markdown::records(&prompt_turns(prompts), &tokyo()?, None)?,
+        &markdown::records(&prompt_turns(prompts), &tokyo()?)?,
     )
 }
 
@@ -202,7 +202,6 @@ fn markdown_groups_by_file_not_by_session_id() -> TestResult {
             bare_prompt(head, "/b.jsonl", "two"),
         ]),
         &TimeZone::UTC,
-        None,
     )?;
     check_eq(&out.matches("\n## ").count(), &2, "session headings")?;
     Ok(())
@@ -332,18 +331,15 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     golden("kinds/replies.jsonl.golden", &lines(&replies)?)?;
     golden(
         "kinds/replies.md.golden",
-        &markdown::records(&replies, &zone, None)?,
+        &markdown::records(&replies, &zone)?,
     )?;
     let calls = [Turn::Call(call)];
     golden("kinds/tools.jsonl.golden", &lines(&calls)?)?;
-    golden(
-        "kinds/tools.md.golden",
-        &markdown::records(&calls, &zone, None)?,
-    )?;
+    golden("kinds/tools.md.golden", &markdown::records(&calls, &zone)?)?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
     golden("kinds/results.jsonl.golden", &lines(&results)?)?;
     golden(
         "kinds/results.md.golden",
-        &markdown::records(&results, &zone, None)?,
+        &markdown::records(&results, &zone)?,
     )
 }

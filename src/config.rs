@@ -9,6 +9,7 @@ use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::filter::Query;
+use crate::record::Cuts;
 use crate::render::digest::Limits;
 use crate::render::json::Run;
 
@@ -23,11 +24,10 @@ pub enum Config {
     },
     /// `records`.
     Records {
+        /// How many characters to keep of each text.
+        cuts: Cuts,
         /// The output format.
         format: Format,
-        /// In Markdown, how many characters to keep of each string in a
-        /// tool call's input, or `None` for all of them.
-        input_chars: Option<usize>,
         /// The kinds of record to pick.
         kinds: Types,
         /// What to read and how to report it.

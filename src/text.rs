@@ -27,6 +27,20 @@ pub fn clean_text(text: &str) -> String {
         .collect()
 }
 
+/// `text`, cut to `limit` characters and followed by an ellipsis and how
+/// many characters were cut when it is longer.
+pub fn cut_text(text: &str, limit: usize) -> String {
+    let length = text.chars().count();
+    if length <= limit {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(limit).collect();
+    format!(
+        "{kept}\u{2026} ({} more characters)",
+        length.saturating_sub(limit)
+    )
+}
+
 /// Cleans `text` and collapses all whitespace, newlines included, to single
 /// spaces, so a field cannot start a new Markdown block.
 pub fn one_line(text: &str) -> String {

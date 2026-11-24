@@ -8,6 +8,9 @@ pub enum Failure {
     /// `--around` is given without a pattern for it to find.
     #[error("--around needs --grep or --igrep with a pattern that does not start with !")]
     AroundNeedsGrep,
+    /// `--max-message-chars` or `--max-tool-chars` is not positive.
+    #[error("{0} must be positive")]
+    CharLimitNotPositive(&'static str),
     /// `--context` is given without a pattern for it to find.
     #[error("--context needs --grep or --igrep with a pattern that does not start with !")]
     ContextNeedsGrep,
@@ -43,12 +46,6 @@ pub enum Failure {
     /// `--root` is not given and there is no home directory to default to.
     #[error("find the default --root: HOME is not set")]
     Home,
-    /// `--max-input-chars` is given for a format other than Markdown.
-    #[error("--max-input-chars needs --format md")]
-    InputLimitNeedsMarkdown,
-    /// `--max-input-chars` is not positive.
-    #[error("--max-input-chars must be positive")]
-    InputLimitNotPositive,
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),

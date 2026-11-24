@@ -77,7 +77,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-input-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
@@ -129,13 +129,14 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `(context)` が付きます。`!` 付きのパターンで除いたレコードは、前後の
   レコードとしても出ません。`!` で始まらないパターンが必要です。
 
-次の 3 つのオプションは出力の形を決めます。
+次の 4 つのオプションは出力の形を決めます。
 
 | フラグ | 働き |
 | --- | --- |
 | `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す。付けなければ、JSON と JSON Lines は一致した行だけを並べる |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
-| `--max-input-chars N` | `--format md` のとき、ツールの呼び出しの入力にある文字列をそれぞれ N 文字で切って `… (M more characters)` を付ける。ファイル全体を書く `Write` でページが埋まらずに済む。JSON と JSON Lines は切らない |
+| `--max-message-chars N` | 依頼文・返答・要約の本文を N 文字で切って `… (M more characters)` を付ける |
+| `--max-tool-chars N` | ツールの入力にある文字列とツールの結果の出力を、それぞれ N 文字で切る。ファイル全体を書く `Write` で出力が埋まらずに済む |
 
 ### sessions
 

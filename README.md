@@ -76,7 +76,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-input-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--format` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
@@ -128,13 +128,14 @@ Four options apply to some kinds only:
   `(context)` after their kind. A record a `!` pattern leaves out is not
   listed as context either. It needs a pattern without a leading `!`.
 
-Three options shape the output:
+Four options shape the output:
 
 | Flag | Does |
 | --- | --- |
 | `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
-| `--max-input-chars N` | With `--format md`, cuts each string in a tool call's input to N characters, followed by `… (M more characters)`, so a `Write` of a whole file does not fill the page. JSON and JSON Lines are never cut |
+| `--max-message-chars N` | Cuts the text of each prompt, reply, and summary to N characters, followed by `… (M more characters)` |
+| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, to N characters, so a `Write` of a whole file does not fill the output |
 
 ### sessions
 

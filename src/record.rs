@@ -6,11 +6,22 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::redact::Counts;
+use crate::text::cut_text;
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
 /// The `agent` of every record.
 pub const AGENT: &str = "claude-code";
+
+/// How many characters `--max-message-chars` and `--max-tool-chars` keep of
+/// each string, `None` for all of them.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Cuts {
+    /// The text of a prompt, a reply, or a summary.
+    pub message: Option<usize>,
+    /// Each string in a tool's input, and a tool result's text.
+    pub tool: Option<usize>,
+}
 
 /// The keys every kind of record starts with.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -466,6 +477,48 @@ impl Default for Search {
 }
 
 impl Turn {
+    /// Cuts the record's texts, and the lines `matches` lists of them, to
+    /// what `cuts` keeps: a prompt's, a reply's, or a summary's to
+    /// `message`, and a tool's input and output to `tool`.
+    pub fn cut(&mut self, cuts: Cuts) {
+        let (given, own_text, own_input, search) = match *self {
+            Self::Prompt(ref mut prompt) => (
+                cuts.message,
+                Some(&mut prompt.text),
+                None,
+                &mut prompt.search,
+            ),
+            Self::Reply(ref mut reply) => {
+                (cuts.message, Some(&mut reply.text), None, &mut reply.search)
+            }
+            Self::Summary(ref mut summary) => (
+                cuts.message,
+                Some(&mut summary.text),
+                None,
+                &mut summary.search,
+            ),
+            Self::Call(ref mut call) => (cuts.tool, None, Some(&mut call.input), &mut call.search),
+            Self::Result(ref mut result) => (
+                cuts.tool,
+                Some(&mut result.text),
+                Some(&mut result.input),
+                &mut result.search,
+            ),
+        };
+        let Some(limit) = given else {
+            return;
+        };
+        if let Some(text) = own_text {
+            *text = cut_text(text, limit);
+        }
+        if let Some(input) = own_input {
+            cut_strings(input, limit);
+        }
+        for line in &mut search.matches {
+            line.text = cut_text(&line.text, limit);
+        }
+    }
+
     /// The record inside.
     fn inner(&self) -> &dyn Record {
         match *self {
@@ -497,5 +550,24 @@ impl Record for Turn {
 
     fn subagent(&self) -> &str {
         self.inner().subagent()
+    }
+}
+
+/// Cuts each string in `value` longer than `limit` characters to `limit`,
+/// followed by an ellipsis and how many characters were cut.
+fn cut_strings(value: &mut Value, limit: usize) {
+    match *value {
+        Value::String(ref mut text) => *text = cut_text(text, limit),
+        Value::Array(ref mut items) => {
+            for item in items {
+                cut_strings(item, limit);
+            }
+        }
+        Value::Object(ref mut fields) => {
+            for field in fields.values_mut() {
+                cut_strings(field, limit);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }

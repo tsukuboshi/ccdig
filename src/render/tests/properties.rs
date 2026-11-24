@@ -184,7 +184,7 @@ fn record_markdown_has_only_the_headings_the_writer_puts() -> TestResult {
         let all = prompts(&groups)?;
         let count = all.len();
         let turns: Vec<Turn> = all.into_iter().map(Turn::Prompt).collect();
-        let out = markdown::records(&turns, &tokyo()?, None)?;
+        let out = markdown::records(&turns, &tokyo()?)?;
         let headings = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))
@@ -220,7 +220,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?, None)?;
+        let out = markdown::records(&turns, &tokyo()?)?;
         let headings: Vec<&str> = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))
@@ -269,7 +269,7 @@ fn matched_lines_add_no_heading() -> TestResult {
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?, None)?;
+        let out = markdown::records(&turns, &tokyo()?)?;
         let headings = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))

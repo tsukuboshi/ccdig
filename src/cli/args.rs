@@ -128,10 +128,14 @@ pub enum Command {
         /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
-        /// In Markdown, cut each string in a tool call's input to this many
+        /// Cut the text of each prompt, reply, and summary to this many
         /// characters [default: no limit].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
-        max_input_chars: Option<i64>,
+        max_message_chars: Option<i64>,
+        /// Cut each string in a tool's input, and each tool result's
+        /// output, to this many characters [default: no limit].
+        #[arg(long, value_name = "N", help_heading = "Output", display_order = 63)]
+        max_tool_chars: Option<i64>,
         /// The output format.
         #[command(flatten)]
         output: Output,
@@ -529,6 +533,12 @@ fn hint(error: &clap::Error) -> Option<String> {
         return None;
     }
     let arg = error.get(ContextKind::InvalidArg)?.to_string();
+    if arg == "--max-input-chars" {
+        return Some(
+            "it is --max-tool-chars now, which cuts the tool inputs and outputs in every format"
+                .to_owned(),
+        );
+    }
     KIND_FLAGS.contains(&arg.as_str()).then(|| {
         format!(
             "pick the record types with --type: {}",
