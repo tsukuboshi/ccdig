@@ -8,9 +8,9 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
-use super::collect;
 use super::kinds::{Prompts, Records, Types};
 use super::mask::Mask;
+use super::{Reading, collect};
 use crate::filter::{Filter, Query, patterns};
 use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
@@ -103,7 +103,7 @@ fn grep_sees_the_masked_text_and_project_sees_the_real_path() -> TestResult {
             projects: Filter::names(vec!["corp-hidden".to_owned()]),
             ..Query::default()
         };
-        collect(root.path(), false, false, &query, &mask, || {
+        collect(root.path(), Reading::default(), &query, &mask, || {
             Records::new(ALL)
         })
     };
@@ -147,8 +147,10 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
     )?;
     let corpus = collect(
         root.path(),
-        true,
-        false,
+        Reading {
+            subagents: true,
+            usage: false,
+        },
         &Query::default(),
         &masking(&[])?,
         || Records::new(ALL),
@@ -183,8 +185,7 @@ fn a_record_copied_into_a_resumed_session_is_kept_once_from_the_original() -> Te
     )?;
     let corpus = collect(
         root.path(),
-        false,
-        false,
+        Reading::default(),
         &Query::default(),
         &masking(&[])?,
         || Prompts,
@@ -219,8 +220,10 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
     )?;
     let corpus = collect(
         root.path(),
-        false,
-        true,
+        Reading {
+            subagents: false,
+            usage: true,
+        },
         &Query::default(),
         &masking(&[])?,
         || Records::new(ALL),

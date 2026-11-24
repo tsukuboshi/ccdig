@@ -109,9 +109,23 @@ impl Filter<String> {
     }
 }
 
+impl Filter<Regex> {
+    /// Whether `text` matches a pattern given with a leading `!`.
+    pub fn excludes(&self, text: &str) -> bool {
+        self.exclude.iter().any(|pattern| pattern.is_match(text))
+    }
+
+    /// Whether `text` matches a pattern given without a leading `!`, or
+    /// none was given.
+    pub fn includes(&self, text: &str) -> bool {
+        self.include.is_empty() || self.include.iter().any(|pattern| pattern.is_match(text))
+    }
+}
+
 impl Query {
-    /// Whether a record with `facts` passes every filter.
-    pub fn matches(&self, facts: &Facts<'_>) -> bool {
+    /// Whether a record with `facts` passes every filter but `--grep` and
+    /// `--igrep`.
+    pub fn admits(&self, facts: &Facts<'_>) -> bool {
         self.range.contains(facts.timestamp)
             && self.matches_project(facts.project, facts.cwd)
             && self
@@ -127,7 +141,11 @@ impl Query {
             && self
                 .is_error
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
-            && self.grep.allows(|pattern| pattern.is_match(facts.text))
+    }
+
+    /// Whether a record with `facts` passes every filter.
+    pub fn matches(&self, facts: &Facts<'_>) -> bool {
+        self.admits(facts) && self.grep.includes(facts.text) && !self.grep.excludes(facts.text)
     }
 
     /// Whether the project directory's name or the cwd contains a

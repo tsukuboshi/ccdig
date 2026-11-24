@@ -35,6 +35,16 @@ pub struct Corpus<T> {
     pub warnings: Vec<String>,
 }
 
+/// How to read the transcripts, besides which records to pick and keep.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Reading {
+    /// Whether to read sub-agent transcripts too.
+    pub subagents: bool,
+    /// Whether to add up the tokens of each session's responses in the
+    /// range.
+    pub usage: bool,
+}
+
 /// One kind of record and how it is picked out of transcript lines. A
 /// picker is made for each file, so it can remember what it saw earlier in
 /// the file.
@@ -134,8 +144,8 @@ impl Spot<'_> {
 }
 
 /// Reads every transcript under `root` and keeps the records that
-/// `new_picker` picks and `query` lets through, and with `usage`, adds up
-/// the tokens of each session's responses in the range. A file that cannot
+/// `new_picker` picks and `query` lets through, reading them as `reading`
+/// says. A file that cannot
 /// be read is skipped with a warning, so one bad file does not hide the
 /// rest.
 ///
@@ -145,8 +155,7 @@ impl Spot<'_> {
 /// shown is skipped with a warning.
 pub fn collect<P, F>(
     root: &Path,
-    subagents: bool,
-    usage: bool,
+    reading: Reading,
     query: &Query,
     mask: &Mask,
     new_picker: F,
@@ -155,7 +164,7 @@ where
     P: Pick,
     F: Fn() -> P,
 {
-    let found = walk::find_sessions(root, subagents).map_err(Failure::ListProjects)?;
+    let found = walk::find_sessions(root, reading.subagents).map_err(Failure::ListProjects)?;
     let mut warnings: Vec<String> = found
         .warnings
         .iter()
@@ -182,11 +191,11 @@ where
             // Last written before the first day: nothing to find.
             continue;
         }
-        match read_file(file, query, mask, new_picker(), usage) {
+        match read_file(file, query, mask, new_picker(), reading.usage) {
             Ok(read) => {
                 if file.parent.is_some() {
                     own_titles.insert(file.path.clone(), read.title_masked);
-                } else if subagents && !read.title.is_empty() {
+                } else if reading.subagents && !read.title.is_empty() {
                     titles.insert(file.path.clone(), (read.title, read.title_masked));
                 } else {
                     // No sub-agent reads this title.

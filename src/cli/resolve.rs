@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use super::args::{Activity, Command, Common, MaskKind, RecordType, Status, mask_kinds, on_skip};
 use super::environment::Environment;
 use super::values::{self, Values};
+use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::config::{Config, Format, Shared};
@@ -107,6 +108,10 @@ impl Flags {
                 skills: Filter::names(narrowing.skills),
                 tools: Filter::names(narrowing.tools),
             },
+            reading: Reading {
+                subagents: narrowing.subagents,
+                usage: narrowing.usage,
+            },
             root,
             run: Run {
                 since: common.since,
@@ -116,8 +121,6 @@ impl Flags {
                 mask_values: values.labels,
                 no_mask: common.no_mask,
             },
-            subagents: narrowing.subagents,
-            usage: narrowing.usage,
             zone,
         })
     }

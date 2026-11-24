@@ -8,7 +8,7 @@ use proptest::prop_oneof;
 use proptest::sample::select;
 use proptest::strategy::Strategy;
 
-use crate::filter::{Facts, Filter, Query, compile_grep};
+use crate::filter::{Facts, Filter, Query, compile_grep, patterns};
 use crate::testing::{TestResult, check_eq, for_all, hostile_text};
 
 /// Names a record and a filter share, so that values match often.
@@ -135,6 +135,38 @@ fn excluding_more_never_lets_more_through_and_excluding_the_branch_drops_the_rec
                 .exclude
                 .push(facts.branch.to_owned());
             check_eq(&without_branch.matches(&facts), &false, "branch excluded")?;
+            Ok(())
+        },
+    )
+}
+
+/// The `--grep` and `--igrep` values: escaped names, some with a leading
+/// `!`.
+fn grep_values() -> impl Strategy<Value = Vec<String>> {
+    let value = prop_oneof![
+        select(NAMES).prop_map(regex::escape),
+        select(NAMES).prop_map(|name| format!("!{}", regex::escape(name))),
+    ];
+    vec(value, 0..3)
+}
+
+#[test]
+fn matching_is_the_other_filters_then_the_including_and_excluding_patterns() -> TestResult {
+    for_all(
+        &(query(), grep_values(), grep_values(), record()),
+        |(base, grep, igrep, record)| {
+            let query = Query {
+                grep: patterns(&grep, &igrep)?,
+                ..base
+            };
+            let facts = record.facts();
+            check_eq(
+                &query.matches(&facts),
+                &(query.admits(&facts)
+                    && query.grep.includes(facts.text)
+                    && !query.grep.excludes(facts.text)),
+                "matches",
+            )?;
             Ok(())
         },
     )

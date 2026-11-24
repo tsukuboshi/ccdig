@@ -4,8 +4,8 @@ use proptest::collection::vec;
 use serde_json::{Value, json};
 
 use super::{ALL, Root, masking};
-use crate::collect::collect;
 use crate::collect::kinds::Records;
+use crate::collect::{Reading, collect};
 use crate::filter::Query;
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
 
@@ -83,9 +83,16 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                 .map(|value| (value.as_str(), "\u{FF3B}v\u{FF3D}", "repo"))
                 .collect();
             let mask = masking(&given)?;
-            let corpus = collect(root.path(), false, true, &Query::default(), &mask, || {
-                Records::new(ALL)
-            })?;
+            let corpus = collect(
+                root.path(),
+                Reading {
+                    subagents: false,
+                    usage: true,
+                },
+                &Query::default(),
+                &mask,
+                || Records::new(ALL),
+            )?;
             let printed = format!(
                 "{}\n{}",
                 serde_json::to_string(&corpus.records)?,

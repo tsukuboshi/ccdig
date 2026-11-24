@@ -96,8 +96,7 @@ where
 {
     let mut corpus = collect(
         &shared.root,
-        shared.subagents,
-        shared.usage,
+        shared.reading,
         &shared.query,
         &shared.mask,
         new_picker,
