@@ -281,9 +281,11 @@ Every key is always present. The `kind` of a prompt is how it was typed,
   in, `text` for every kind but a call, and for a call where the string is
   in its input, such as `input.command`; `line` is the line's 1-based
   number in that text, `text` the line, masked, and `hit` whether a
-  pattern matched it. Each pattern is tried on each line alone, so a match
-  that spans lines or is in a call's key names lists no line, and the
-  record is printed whole. Without `--context`, `matches` is empty.
+  pattern matched it. Each pattern is tried on each line alone, so `^` and
+  `$` match at the start and end of each line, and a match that spans
+  lines, is in a call's key names, or needs the escapes of the call's
+  compact JSON, such as `\\`, lists no line, and the record is printed
+  whole. Without `--context`, `matches` is empty.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
