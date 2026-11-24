@@ -60,6 +60,7 @@ fn option() -> impl Strategy<Value = Vec<String>> {
         pair("--fields", &["text", "!usage,!cwd", "type,!type", "nope"]),
         pair("--max-message-chars", &["1", "100", "0"]),
         pair("--max-tool-chars", &["1", "100", "-1"]),
+        pair("--sort", &["time", "matches", "size"]),
         switch,
         hostile_text().prop_map(|text| vec![text]),
     ]

@@ -21,6 +21,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `First match` column in Markdown: the first prompt or reply it matched,
   as its type, time, line number, and the line cut to 200 characters, so
   a session can be judged without reading its records.
+- `sessions --sort matches` lists the sessions a search matched most
+  first; `--limit` then keeps the first N of them.
 
 ### Changed
 

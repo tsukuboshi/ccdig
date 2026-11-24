@@ -12,7 +12,7 @@ use super::values::{self, Values};
 use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
-use crate::config::{Config, Format, Shared};
+use crate::config::{Config, Format, SessionSort, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, patterns};
 use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS};
@@ -462,6 +462,7 @@ pub fn resolve(
         Command::Sessions {
             common: later,
             output,
+            sort,
         } => {
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             let narrowing = Narrowing {
@@ -470,10 +471,17 @@ pub fn resolve(
                 ..Narrowing::default()
             };
             let format = output.format.into();
+            let picked = fields(output.fields, &SESSION_KEYS, format)?;
+            let shared = flags.shared(narrowing, environment)?;
+            let order = sort.into();
+            if order == SessionSort::Matches && !shared.reading.mentions {
+                return Err(Failure::SortNeedsGrep);
+            }
             Ok(Config::Sessions {
-                fields: fields(output.fields, &SESSION_KEYS, format)?,
+                fields: picked,
                 format,
-                shared: Box::new(flags.shared(narrowing, environment)?),
+                shared: Box::new(shared),
+                sort: order,
             })
         }
         Command::Version {

@@ -61,6 +61,10 @@ ccdig records --type reply --project blog --igrep deploy
 ccdig records --session '!current' --type prompt,reply --igrep deploy \
   --format md --limit 20
 
+# "deploy" に最も多く触れたセッションを、最初に一致した行付きで、
+# トークン数を省いて出す
+ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
+
 # 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
@@ -78,7 +82,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
 | `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields` |
+| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
 
@@ -161,6 +165,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `null` で、`text` は本文全体の先頭です。
   `!` で始まらないパターンが無ければ、`first_match` は
   `null` です。Markdown には `Matches` の隣に `First match` 列が加わります。
+- `--sort matches` は一致の多いセッションから並べ、同数なら時刻順にします。
+  `--limit` は並べ替えた後の先頭 N 件を残します。`!` で始まらない
+  パターンが必要です。既定の `--sort time` は、選ばれた最初の依頼文の
+  時刻順に並べます。
 
 レコードは次のキーをこの順に持ちます。
 

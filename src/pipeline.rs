@@ -2,12 +2,14 @@
 //! them, and add up what masking counted. Everything comes in a `Config`,
 //! and the output goes back as text for the caller to write.
 
+use core::cmp::Reverse;
+
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
 use crate::collect::kinds::{Prompts, Records};
 use crate::collect::{Corpus, Pick, Select as _, collect};
-use crate::config::{Config, Format, MaskReport, OnSkip, Shared, VersionFormat};
+use crate::config::{Config, Format, MaskReport, OnSkip, SessionSort, Shared, VersionFormat};
 use crate::failure::Failure;
 use crate::record::Record;
 use crate::redact::Counts;
@@ -38,7 +40,7 @@ pub struct Printed {
 pub fn execute(config: Config) -> Result<Printed, Failure> {
     match config {
         Config::Digest { limits, shared } => {
-            let corpus = gather(&shared, || Prompts)?;
+            let corpus = gather(&shared, SessionSort::Time, || Prompts)?;
             printed(
                 &shared,
                 digest(&corpus.records, &shared.zone, limits)?,
@@ -53,7 +55,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             kinds,
             shared,
         } => {
-            let mut corpus = gather(&shared, || Records::new(kinds))?;
+            let mut corpus = gather(&shared, SessionSort::Time, || Records::new(kinds))?;
             for record in &mut corpus.records {
                 record.cut(cuts);
             }
@@ -71,8 +73,9 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             fields,
             format,
             shared,
+            sort,
         } => {
-            let corpus = gather(&shared, || Prompts)?;
+            let corpus = gather(&shared, sort, || Prompts)?;
             let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
                 markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
             })?;
@@ -95,10 +98,14 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
     }
 }
 
-/// Reads every transcript into records of the kind `new_picker` picks,
-/// keeping at most `--limit` of them, with their times in the zone the day
-/// range was read in.
-fn gather<P, F>(shared: &Shared, new_picker: F) -> Result<Corpus<P::Record>, Failure>
+/// Reads every transcript into records of the kind `new_picker` picks, with
+/// the sessions in the order `sort` asks for, keeping at most `--limit` of
+/// them, with their times in the zone the day range was read in.
+fn gather<P, F>(
+    shared: &Shared,
+    sort: SessionSort,
+    new_picker: F,
+) -> Result<Corpus<P::Record>, Failure>
 where
     P: Pick,
     F: Fn() -> P,
@@ -110,6 +117,12 @@ where
         &shared.mask,
         new_picker,
     )?;
+    if sort == SessionSort::Matches {
+        // A stable sort keeps sessions with as many matches in time order.
+        corpus
+            .sessions
+            .sort_by_key(|session| Reverse(session.match_count));
+    }
     if let Some(limit) = shared.limit {
         let around = shared.reading.around.unwrap_or_default();
         corpus

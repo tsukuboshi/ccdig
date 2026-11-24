@@ -364,6 +364,76 @@ fn sessions_in_markdown_show_the_first_match_with_a_search() -> TestResult {
 }
 
 #[test]
+fn sort_matches_lists_the_sessions_that_mention_it_most_first() -> TestResult {
+    let history = history_with_mentions()?;
+    history.write(
+        "-Users-alice-blog/rrrr.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"r-1","sessionId":"rrrr","timestamp":"2026-10-17T00:00:00Z","message":{"role":"user","content":"cloud costs?"}}"#,
+            r#"{"type":"assistant","uuid":"r-2","sessionId":"rrrr","timestamp":"2026-10-17T00:00:10Z","message":{"content":[{"type":"text","text":"The cloud bill went up."}]}}"#,
+            r#"{"type":"user","uuid":"r-3","sessionId":"rrrr","timestamp":"2026-10-17T00:01:00Z","message":{"role":"user","content":"cut the cloud spend"}}"#,
+        ],
+    )?;
+    let ids = |extra: &[&str]| -> Result<Vec<Value>, Box<dyn Error>> {
+        let mut args = SESSIONS.to_vec();
+        args.extend(["--session", "rrrr", "--igrep", "cloud"]);
+        args.extend_from_slice(extra);
+        Ok(rows(&history, &args)?
+            .iter()
+            .map(|row| json!([row.get(0), row.get(2)]))
+            .collect())
+    };
+    check_eq(
+        &ids(&[])?,
+        &vec![
+            json!(["kkkk", 2_u64]),
+            json!(["llll", 1_u64]),
+            json!(["rrrr", 3_u64]),
+        ],
+        "by time",
+    )?;
+    check_eq(
+        &ids(&["--sort", "time"])?,
+        &ids(&[])?,
+        "time is the default",
+    )?;
+    check_eq(
+        &ids(&["--sort", "matches"])?,
+        &vec![
+            json!(["rrrr", 3_u64]),
+            json!(["kkkk", 2_u64]),
+            json!(["llll", 1_u64]),
+        ],
+        "by matches",
+    )?;
+    check_eq(
+        &ids(&["--sort", "matches", "--limit", "1"])?,
+        &vec![json!(["rrrr", 3_u64])],
+        "--limit after sorting",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn sort_matches_without_a_pattern_to_find_is_an_error() -> TestResult {
+    let history = history_with_mentions()?;
+    for extra in [&[][..], &["--grep", "!typo"][..]] {
+        let mut args = vec!["sessions", "--sort", "matches"];
+        args.extend_from_slice(extra);
+        let ran = history.run_week(&args);
+        let name = args.join(" ");
+        check_eq(&ran.code, &1, &name)?;
+        check_eq(
+            ran.err.as_str(),
+            "ccdig: --sort matches needs --grep or --igrep with a pattern that does not start with !\n",
+            &name,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn a_line_the_harness_wrote_does_not_move_the_end_of_a_session() -> TestResult {
     let history = History::new("root")?;
     history.write(

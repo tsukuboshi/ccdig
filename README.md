@@ -60,6 +60,10 @@ ccdig records --type reply --project blog --igrep deploy
 ccdig records --session '!current' --type prompt,reply --igrep deploy \
   --format md --limit 20
 
+# The sessions that mention "deploy" most, each with the line it first
+# matched, without the tokens
+ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
+
 # Failed Bash calls, with sub-agents, as Markdown
 ccdig records --type result --tool Bash --status error --subagents --format md
 
@@ -77,7 +81,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | Command | Lists | Own options |
 | --- | --- | --- |
 | `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | One record per session with a selected prompt | `--format`, `--fields` |
+| `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
 
@@ -161,6 +165,10 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   match spans lines, `line` is `null` and `text` starts the whole text.
   Without a pattern that does not start with `!`, `first_match` is
   `null`. Markdown adds a `First match` column next to `Matches`.
+- `--sort matches` lists the sessions with the most matches first, and
+  those with as many in time order; `--limit` then keeps the first N of
+  them. It needs a pattern that does not start with `!`. The default,
+  `--sort time`, lists them by their first selected prompt.
 
 A record has these keys, in this order:
 

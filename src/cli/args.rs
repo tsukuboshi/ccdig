@@ -172,6 +172,16 @@ pub enum Command {
         /// The output format.
         #[command(flatten)]
         output: Output,
+        /// The order of the sessions: by the time of their first prompt, or
+        /// by how many prompts and replies --grep or --igrep matched, most
+        /// first, then by time.
+        #[arg(
+            long,
+            default_value = "time",
+            help_heading = "Output",
+            display_order = 65
+        )]
+        sort: SessionSort,
     },
     /// Print the ccdig version.
     #[command(display_order = 4)]
@@ -386,6 +396,15 @@ pub enum Format {
     Markdown,
 }
 
+/// The orders of `sessions --sort`.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SessionSort {
+    /// Most matches first, then by time.
+    Matches,
+    /// By the time of the first prompt.
+    Time,
+}
+
 /// The output formats of `version`.
 #[derive(Clone, Copy, ValueEnum)]
 pub enum VersionFormat {
@@ -496,6 +515,15 @@ impl From<OnSkip> for config::OnSkip {
         match on_skip {
             OnSkip::Fail => Self::Fail,
             OnSkip::Warn => Self::Warn,
+        }
+    }
+}
+
+impl From<SessionSort> for config::SessionSort {
+    fn from(sort: SessionSort) -> Self {
+        match sort {
+            SessionSort::Matches => Self::Matches,
+            SessionSort::Time => Self::Time,
         }
     }
 }

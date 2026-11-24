@@ -43,6 +43,8 @@ pub enum Config {
         format: Format,
         /// What to read and how to report it.
         shared: Box<Shared>,
+        /// The order of the sessions.
+        sort: SessionSort,
     },
     /// `version`.
     Version {
@@ -60,6 +62,16 @@ pub enum Format {
     Jsonl,
     /// Markdown for reading.
     Markdown,
+}
+
+/// The order `sessions --sort` asks for.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SessionSort {
+    /// Most matches first, then by time.
+    Matches,
+    /// By the time of the first prompt.
+    #[default]
+    Time,
 }
 
 /// How `--mask-report` writes the counts.

@@ -763,6 +763,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--format <FORMAT>",
                 "--limit <N>",
                 "--fields <KEY>",
+                "--sort <SORT>",
             ],
         ),
         &true,

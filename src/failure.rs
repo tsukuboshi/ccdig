@@ -99,6 +99,9 @@ pub enum Failure {
     /// `--since` and `--until` describe an empty range.
     #[error("since is after until")]
     SinceAfterUntil,
+    /// `sessions --sort matches` is given without a pattern to count.
+    #[error("--sort matches needs --grep or --igrep with a pattern that does not start with !")]
+    SortNeedsGrep,
     /// A time cannot be formatted, such as one outside the supported years.
     #[error("format time: {0}")]
     TimeFormat(#[source] jiff::Error),
