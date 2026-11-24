@@ -44,6 +44,11 @@ where
         Draft(wrap(self.0))
     }
 
+    /// Marks the record as one `--around` keeps as context.
+    pub fn mark_context(&mut self) {
+        *self.0.matched_mut() = false;
+    }
+
     /// Where the record lists the lines `--grep` matched. They come from
     /// the text, which is already masked.
     pub fn matches_mut(&mut self) -> &mut Vec<MatchLine> {

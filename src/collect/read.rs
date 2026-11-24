@@ -3,12 +3,14 @@
 //! sealed with the file's title once the whole file is read.
 
 use alloc::borrow::Cow;
+use alloc::collections::VecDeque;
+use core::mem;
 use std::collections::HashSet;
 
 use super::excerpt::excerpt;
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Reading, Select, Spot};
-use crate::filter::{Facts, Query};
+use crate::filter::{Facts, Query, Verdict};
 use crate::redact::Counts;
 use crate::transcript::entry::{Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
@@ -40,12 +42,24 @@ struct Kept<T> {
 
 /// The tokens of the response a line is part of, and what tells that
 /// response from the others in the file.
+#[derive(Clone)]
 struct Response {
     /// The response's ID, or for a line without one, which is a response
     /// of its own, the line's number after a NUL, which no ID has.
     key: String,
     /// The tokens.
     tokens: Usage,
+}
+
+/// With `--around`, the records waiting to be kept as context before the
+/// next match, and how many more to keep after the last one.
+struct Window<T> {
+    /// How many more records to keep after the last match.
+    after: usize,
+    /// How many records to keep on each side of a match.
+    around: usize,
+    /// Up to `around` records since the last one kept, the latest last.
+    before: VecDeque<(usize, Draft<T>, Option<Response>)>,
 }
 
 /// Lines skipped across files, for the summary warning.
@@ -91,8 +105,54 @@ where
     }
 }
 
-/// Whether `draft` passes the filters in `query`.
-fn passes<T>(query: &Query, draft: &Draft<T>) -> bool
+impl<T> Window<T>
+where
+    T: Select,
+{
+    /// Keeps `draft`, of `verdict`, in `kept` or for later. A match takes
+    /// the records waiting before it, its lines `--grep` matched when
+    /// `lines` asks for them, and opens the window after it. Another record
+    /// in the window is kept as context; one before the window waits.
+    fn offer(
+        &mut self,
+        kept: &mut Kept<T>,
+        (block, mut draft): (usize, Draft<T>),
+        verdict: Verdict,
+        response: Option<&Response>,
+        query: &Query,
+        lines: Option<usize>,
+    ) {
+        match verdict {
+            Verdict::Hit => {
+                for (earlier, context, of) in mem::take(&mut self.before) {
+                    kept.push(earlier, context, of.as_ref());
+                }
+                if let Some(context) = lines {
+                    let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
+                    *draft.matches_mut() = found;
+                }
+                kept.push(block, draft, response);
+                self.after = self.around;
+            }
+            Verdict::Near if self.after > 0 => {
+                self.after = self.after.saturating_sub(1);
+                draft.mark_context();
+                kept.push(block, draft, response);
+            }
+            Verdict::Near if self.around > 0 => {
+                draft.mark_context();
+                self.before.push_back((block, draft, response.cloned()));
+                if self.before.len() > self.around {
+                    self.before.pop_front();
+                }
+            }
+            Verdict::Near | Verdict::Out => {}
+        }
+    }
+}
+
+/// What the filters in `query` make of `draft`.
+fn verdict<T>(query: &Query, draft: &Draft<T>) -> Verdict
 where
     T: Select,
 {
@@ -104,7 +164,7 @@ where
     } else {
         record.grep_text()
     };
-    query.matches(&Facts {
+    query.verdict(&Facts {
         branch: &head.git_branch,
         cwd: &head.cwd,
         is_error: extra.is_error,
@@ -146,6 +206,11 @@ where
     let mut kept = Kept {
         drafts: Vec::new(),
         priced: HashSet::new(),
+    };
+    let mut window = Window {
+        after: 0,
+        around: reading.around.unwrap_or_default(),
+        before: VecDeque::new(),
     };
     let mut untimed = 0_usize;
     let mut used = Vec::new();
@@ -191,15 +256,16 @@ where
             },
             tokens,
         });
-        for (block, mut draft) in picker.pick(&spot, &entry) {
-            if !passes(query, &draft) {
-                continue;
-            }
-            if let Some(context) = reading.excerpt {
-                let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
-                *draft.matches_mut() = found;
-            }
-            kept.push(block, draft, response.as_ref());
+        for drafted in picker.pick(&spot, &entry) {
+            let found = verdict(query, &drafted.1);
+            window.offer(
+                &mut kept,
+                drafted,
+                found,
+                response.as_ref(),
+                query,
+                reading.excerpt,
+            );
         }
     }
     // Titles are generated from the conversation, so a pasted secret can

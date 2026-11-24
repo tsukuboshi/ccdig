@@ -31,7 +31,7 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
                   \x20 ccdig sessions --igrep deploy --format md\n\
                   \n\
-                  ccdig records --help lists --type, --tool, --status, --skill, --subagents, and --context.",
+                  ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
@@ -114,6 +114,11 @@ pub enum Command {
         /// The flags for assistant lines.
         #[command(flatten)]
         activity: Activity,
+        /// Also list this many records before and after each record --grep
+        /// or --igrep matched, of the types --type picks and in the same
+        /// file, with `matched` false.
+        #[arg(long, value_name = "N", help_heading = "Records", display_order = 11)]
+        around: Option<usize>,
         /// The shared flags.
         #[command(flatten)]
         common: Common,

@@ -15,6 +15,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and Markdown prints those lines in place of the whole text. A tool
   call's input is split into lines string by string, as in
   `input.content`.
+- `records --around N` also lists the N records before and after each
+  record `--grep` matched, such as the prompt a matched reply answered,
+  with a new `matched` key false, and `(context)` in Markdown. `--limit`
+  then counts the matches.
 - `--session current` keeps the session Claude Code runs ccdig in, read
   from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
   so a search no longer lists the session doing it.
@@ -26,7 +30,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The JSON schema is 3: every record ends with `matches`.
+- The JSON schema is 3: every record ends with `matched` and `matches`.
 - In Markdown, a sub-agent's record names the sub-agent at the end of its
   own heading, not only once under the heading of its file, so a reader
   can tell it from the session's own records.

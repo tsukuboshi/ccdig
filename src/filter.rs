@@ -42,6 +42,19 @@ pub struct Filter<T> {
     pub include: Vec<T>,
 }
 
+/// What the filters make of a record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Verdict {
+    /// It passes every filter: `--grep` or `--igrep` matched it, or none
+    /// was given without a leading `!`.
+    Hit,
+    /// It passes every filter but that no including pattern matched it,
+    /// so `--around` can keep it next to a match.
+    Near,
+    /// A filter other than the including patterns left it out.
+    Out,
+}
+
 /// The filters given on the command line. An empty filter or `None` lets
 /// everything through.
 #[derive(Clone, Debug, Default)]
@@ -143,17 +156,23 @@ impl Query {
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
     }
 
-    /// Whether a record with `facts` passes every filter.
-    pub fn matches(&self, facts: &Facts<'_>) -> bool {
-        self.admits(facts) && self.grep.includes(facts.text) && !self.grep.excludes(facts.text)
-    }
-
     /// Whether the project directory's name or the cwd contains a
     /// `--project` value. The directory name is how Claude Code encodes
     /// the cwd (`/` and `.` become `-`), so both spellings work.
     pub fn matches_project(&self, project: &str, cwd: &str) -> bool {
         self.projects
             .allows(|filter| project.contains(filter.as_str()) || cwd.contains(filter.as_str()))
+    }
+
+    /// What the filters make of a record with `facts`.
+    pub fn verdict(&self, facts: &Facts<'_>) -> Verdict {
+        if !self.admits(facts) || self.grep.excludes(facts.text) {
+            Verdict::Out
+        } else if self.grep.includes(facts.text) {
+            Verdict::Hit
+        } else {
+            Verdict::Near
+        }
     }
 }
 

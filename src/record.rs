@@ -91,6 +91,9 @@ pub struct Prompt {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
     /// With `--context`, the lines `--grep` matched and those around them,
     /// in order; empty otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
@@ -110,6 +113,9 @@ pub trait Record {
         all.merge(self.own_masked());
         all
     }
+    /// Whether `--grep` matched the record, rather than `--around` adding
+    /// it as context.
+    fn matched(&self) -> bool;
     /// What masking the record's own fields counted.
     fn own_masked(&self) -> &Counts;
     /// Where the line is.
@@ -143,6 +149,9 @@ pub struct Reply {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
     /// With `--context`, the lines `--grep` matched and those around them,
     /// in order; empty otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
@@ -209,6 +218,9 @@ pub struct Summary {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
     /// With `--context`, the lines `--grep` matched and those around them,
     /// in order; empty otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
@@ -255,6 +267,9 @@ pub struct ToolCall {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
     /// With `--context`, the lines `--grep` matched and those around them,
     /// in order; empty otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
@@ -291,6 +306,9 @@ pub struct ToolResult {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
     /// With `--context`, the lines `--grep` matched and those around them,
     /// in order; empty otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
@@ -326,6 +344,10 @@ impl Record for Prompt {
         &self.head
     }
 
+    fn matched(&self) -> bool {
+        self.matched
+    }
+
     fn own_masked(&self) -> &Counts {
         &self.masked
     }
@@ -342,6 +364,10 @@ impl Record for Prompt {
 impl Record for Reply {
     fn head(&self) -> &Head {
         &self.head
+    }
+
+    fn matched(&self) -> bool {
+        self.matched
     }
 
     fn own_masked(&self) -> &Counts {
@@ -362,6 +388,10 @@ impl Record for Summary {
         &self.head
     }
 
+    fn matched(&self) -> bool {
+        self.matched
+    }
+
     fn own_masked(&self) -> &Counts {
         &self.masked
     }
@@ -380,6 +410,10 @@ impl Record for ToolCall {
         &self.head
     }
 
+    fn matched(&self) -> bool {
+        self.matched
+    }
+
     fn own_masked(&self) -> &Counts {
         &self.masked
     }
@@ -396,6 +430,10 @@ impl Record for ToolCall {
 impl Record for ToolResult {
     fn head(&self) -> &Head {
         &self.head
+    }
+
+    fn matched(&self) -> bool {
+        self.matched
     }
 
     fn own_masked(&self) -> &Counts {
@@ -427,6 +465,10 @@ impl Turn {
 impl Record for Turn {
     fn head(&self) -> &Head {
         self.inner().head()
+    }
+
+    fn matched(&self) -> bool {
+        self.inner().matched()
     }
 
     fn own_masked(&self) -> &Counts {

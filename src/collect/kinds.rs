@@ -180,6 +180,7 @@ impl Pick for Prompts {
                 permission_mode: entry.permission_mode.clone(),
                 redacted,
                 source,
+                matched: true,
                 matches: Vec::new(),
                 masked,
             }),
@@ -209,6 +210,7 @@ impl Pick for Summaries {
                 text,
                 redacted,
                 source,
+                matched: true,
                 matches: Vec::new(),
                 masked,
             }),
@@ -242,6 +244,7 @@ impl Pick for Replies {
                     usage: None,
                     redacted,
                     source,
+                    matched: true,
                     matches: Vec::new(),
                     masked,
                 })
@@ -281,6 +284,7 @@ impl Pick for Results {
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
                     source,
+                    matched: true,
                     matches: Vec::new(),
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
                     masked,
@@ -343,6 +347,7 @@ impl Pick for Tools {
                     usage: None,
                     redacted,
                     source,
+                    matched: true,
                     matches: Vec::new(),
                     masked,
                 })
@@ -385,6 +390,10 @@ impl Select for Prompt {
         &mut self.masked
     }
 
+    fn matched_mut(&mut self) -> &mut bool {
+        &mut self.matched
+    }
+
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
         &mut self.matches
     }
@@ -413,6 +422,10 @@ impl Select for Reply {
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn matched_mut(&mut self) -> &mut bool {
+        &mut self.matched
     }
 
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
@@ -447,6 +460,10 @@ impl Select for Summary {
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn matched_mut(&mut self) -> &mut bool {
+        &mut self.matched
     }
 
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
@@ -488,6 +505,10 @@ impl Select for ToolCall {
         &mut self.masked
     }
 
+    fn matched_mut(&mut self) -> &mut bool {
+        &mut self.matched
+    }
+
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
         &mut self.matches
     }
@@ -522,6 +543,10 @@ impl Select for Turn {
         selected_mut(self).masked_mut()
     }
 
+    fn matched_mut(&mut self) -> &mut bool {
+        selected_mut(self).matched_mut()
+    }
+
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
         selected_mut(self).matches_mut()
     }
@@ -554,6 +579,10 @@ impl Select for ToolResult {
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn matched_mut(&mut self) -> &mut bool {
+        &mut self.matched
     }
 
     fn matches_mut(&mut self) -> &mut Vec<MatchLine> {

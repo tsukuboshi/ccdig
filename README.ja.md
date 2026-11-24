@@ -122,6 +122,12 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - サブエージェントの履歴は、`--subagents` を付けない限り読みません。
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
   されません。出力されるのは、その返答・呼び出し・結果です。
+- `--around N` は、`--grep` か `--igrep` に一致した各レコードの前後 N 件の
+  レコードも出します。一致した返答が答えた依頼文などです。対象は、
+  `--type` で選んだ種類のうち、ほかの絞り込みをすべて通る、同じファイルの
+  レコードです。これらは `matched` が false で、Markdown では種類の後に
+  `(context)` が付きます。`!` 付きのパターンで除いたレコードは、前後の
+  レコードとしても出ません。`!` で始まらないパターンが必要です。
 
 次の 3 つのオプションは出力の形を決めます。
 
@@ -210,8 +216,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 ### 出力の指定
 
-`--limit N` は先頭 N 件のレコードを出します。`--format` はコマンドごとに
-違います。「コマンド」の節を参照してください。
+`--limit N` は先頭 N 件のレコードを出します。`--around` を付けたときは、
+一致したレコードを N 件数え、最後の 1 件の後ろの前後のレコードも残します。
+`--format` はコマンドごとに違います。「コマンド」の節を参照してください。
 
 ### 環境変数
 
@@ -243,12 +250,12 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
- "matches":[]}
+ "matched":true,"matches":[]}
 ```
 
 どのレコードも、`--type` の名前で種類を表す `type` で始まります。ほかの
 種類も、`type` から `timestamp` までの同じキーで始まり、`redacted`・
-`source`・`matches` で終わります。
+`source`・`matched`・`matches` で終わります。
 
 | 種類 | 間に入るキー |
 | --- | --- |
@@ -260,6 +267,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
 レコードの種類は `--type` で選ぶ `type` です。
 
+- `matched` は、`--around` が一致の前後に出したレコードでは `false`、
+  それ以外のレコードでは `true` です。
 - `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
   行とその前後の行を順に並べます。`field` はその行がある文字列で、呼び出し
   以外は `text`、呼び出しでは入力の中の場所（`input.command` など）です。

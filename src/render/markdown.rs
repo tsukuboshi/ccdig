@@ -80,6 +80,9 @@ where
             if !name.is_empty() {
                 out.extend([" - ", name]);
             }
+            if !record.matched() {
+                out.push_str(" (context)");
+            }
             // A record of a sub-agent names it in its own heading too, as a
             // reader searching the records may see this heading alone.
             if !record.subagent().is_empty() {

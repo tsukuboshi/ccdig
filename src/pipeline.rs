@@ -102,10 +102,54 @@ where
         new_picker,
     )?;
     if let Some(limit) = shared.limit {
-        corpus.records.truncate(limit);
+        let around = shared.reading.around.unwrap_or_default();
+        corpus
+            .records
+            .truncate(limit_end(&corpus.records, limit, around));
         corpus.sessions.truncate(limit);
     }
     Ok(corpus)
+}
+
+/// How many of `records` `--limit` keeps: those up to the `limit`-th that
+/// matched, and after it, up to `around` records of context from its file,
+/// which `--around` added after it. Without `--around` every record
+/// matched, so this is `limit`.
+fn limit_end<T>(records: &[T], limit: usize, around: usize) -> usize
+where
+    T: Record,
+{
+    if limit == 0 {
+        return 0;
+    }
+    let mut seen = 0_usize;
+    for (index, record) in records.iter().enumerate() {
+        if record.matched() {
+            seen = seen.saturating_add(1);
+            if seen == limit {
+                return context_end(records, index, around);
+            }
+        }
+    }
+    records.len()
+}
+
+/// Where the context after the match at `index` ends: after up to
+/// `around` records that did not match, from the same file.
+fn context_end<T>(records: &[T], index: usize, around: usize) -> usize
+where
+    T: Record,
+{
+    let Some(matched) = records.get(index) else {
+        return records.len();
+    };
+    let following = records
+        .iter()
+        .skip(index.saturating_add(1))
+        .take(around)
+        .take_while(|record| !record.matched() && record.source().file == matched.source().file)
+        .count();
+    index.saturating_add(1).saturating_add(following)
 }
 
 /// The `--mask-report` line for `total` in `format`, without a newline.

@@ -39,6 +39,9 @@ pub struct Corpus<T> {
 /// How to read the transcripts, besides which records to pick and keep.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Reading {
+    /// With `--around`, how many records before and after a record
+    /// `--grep` matched to keep as context.
+    pub around: Option<usize>,
     /// With `--context`, how many lines around each line `--grep` matched
     /// to list in a record's `matches`.
     pub excerpt: Option<usize>,
@@ -92,6 +95,10 @@ pub trait Select: Record {
 
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
+
+    /// Whether `--grep` matched the record, which `--around` clears for
+    /// one it adds as context.
+    fn matched_mut(&mut self) -> &mut bool;
 
     /// Where `--context` lists the lines `--grep` matched.
     fn matches_mut(&mut self) -> &mut Vec<MatchLine>;

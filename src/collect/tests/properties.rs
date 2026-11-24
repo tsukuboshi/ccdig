@@ -1,12 +1,14 @@
 //! Properties of collecting records that hold for any masked values.
 
 use proptest::collection::vec;
+use proptest::sample::select;
 use serde_json::{Value, json};
 
 use super::{ALL, Root, masking};
 use crate::collect::kinds::Records;
 use crate::collect::{Reading, collect};
 use crate::filter::{Query, patterns};
+use crate::record::{Record as _, Turn};
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
 
 /// Transcripts tried; each writes files and compiles the masking rules.
@@ -94,6 +96,7 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                 let found = collect(
                     root.path(),
                     Reading {
+                        around: None,
                         excerpt,
                         subagents: false,
                         usage: true,
@@ -142,4 +145,86 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
             Ok(())
         },
     )
+}
+
+#[test]
+fn around_adds_only_context_and_lists_each_record_once() -> TestResult {
+    let prompts = vec(select(&["hit", "miss", "WIP hit"][..]), 1..12);
+    for_all_cases(FILE_CASES, &(prompts, 0_usize..4), |(texts, around)| {
+        let root = Root::new()?;
+        let lines: Vec<String> = texts
+            .iter()
+            .enumerate()
+            .map(|(index, text)| {
+                json!({
+                    "type": "user",
+                    "uuid": format!("u-{index}"),
+                    "sessionId": "s-1",
+                    "timestamp": format!("2026-10-15T00:00:{index:02}Z"),
+                    "message": {"role": "user", "content": text},
+                })
+                .to_string()
+            })
+            .collect();
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        root.write("-Users-alice-app/s-1.jsonl", "2026-10-15T01:00:00Z", &refs)?;
+        let query = Query {
+            grep: patterns(&["hit", "!WIP"], &[])?,
+            ..Query::default()
+        };
+        let mask = masking(&[])?;
+        let run = |window| {
+            collect(
+                root.path(),
+                Reading {
+                    around: window,
+                    ..Reading::default()
+                },
+                &query,
+                &mask,
+                || Records::new(ALL),
+            )
+        };
+        let uuids = |records: &[Turn], matched: bool| -> Vec<String> {
+            records
+                .iter()
+                .filter(|record| record.matched() == matched)
+                .map(|record| record.source().uuid.clone())
+                .collect()
+        };
+        let plain = run(None)?;
+        let wide = run(Some(around))?;
+        check_eq(
+            &uuids(&wide.records, true),
+            &uuids(&plain.records, true),
+            "the matches",
+        )?;
+        let mut all: Vec<String> = wide
+            .records
+            .iter()
+            .map(|record| record.source().uuid.clone())
+            .collect();
+        let listed = all.len();
+        all.sort();
+        all.dedup();
+        check_eq(&all.len(), &listed, "each record once")?;
+        let context = uuids(&wide.records, false);
+        check_eq(
+            &context.iter().any(|uuid| {
+                texts
+                    .get(
+                        uuid.trim_start_matches("u-")
+                            .parse::<usize>()
+                            .unwrap_or_default(),
+                    )
+                    .is_some_and(|text| text.contains("WIP"))
+            }),
+            &false,
+            "an excluded record as context",
+        )?;
+        if around == 0 {
+            check_eq(&context.len(), &0, "no context without a window")?;
+        }
+        Ok(())
+    })
 }

@@ -121,6 +121,12 @@ Four options apply to some kinds only:
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are.
+- `--around N` also lists the N records before and after each record
+  `--grep` or `--igrep` matched, such as the prompt a matched reply
+  answered: records of the types `--type` picks that pass every other
+  filter, from the same file. They have `matched` false, and in Markdown
+  `(context)` after their kind. A record a `!` pattern leaves out is not
+  listed as context either. It needs a pattern without a leading `!`.
 
 Three options shape the output:
 
@@ -208,8 +214,9 @@ masked; the Masking section lists the rules.
 
 ### Output
 
-`--limit N` prints the first N records. `--format` belongs to each
-command; see Commands.
+`--limit N` prints the first N records. With `--around`, it counts the
+records that matched and keeps the context after the last of them.
+`--format` belongs to each command; see Commands.
 
 ### Environment variables
 
@@ -241,12 +248,12 @@ command; see Commands.
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
- "matches":[]}
+ "matched":true,"matches":[]}
 ```
 
 Every record starts with `type`, the kind `--type` names. The other kinds
 have the same keys from `type` to `timestamp`, and end with `redacted`,
-`source`, and `matches`:
+`source`, `matched`, and `matches`:
 
 | Type | Keys in between |
 | --- | --- |
@@ -258,6 +265,8 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 Every key is always present. The `kind` of a prompt is how it was typed,
 `slash` or `text`; the record type is `type`, which `--type` picks.
 
+- `matched` is `false` for a record `--around` lists next to a match, and
+  `true` for every other record.
 - `matches` lists, with `--context`, the lines `--grep` or `--igrep`
   matched and those around them, in order: `field` is the text the line is
   in, `text` for every kind but a call, and for a call where the string is

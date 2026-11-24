@@ -215,6 +215,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                         subagent: name.clone(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
+                        matched: true,
                         matches: Vec::new(),
                     })
                 })
@@ -253,6 +254,7 @@ fn matched_lines_add_no_heading() -> TestResult {
                         subagent: String::new(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
+                        matched: true,
                         matches: lines
                             .iter()
                             .map(|&(ref field, ref text, number, hit)| MatchLine {

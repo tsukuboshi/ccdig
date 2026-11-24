@@ -5,6 +5,7 @@
     reason = "the tests build transcript trees on disk"
 )]
 
+mod around;
 mod context;
 mod kinds;
 mod properties;
@@ -675,7 +676,7 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
         "  ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n",
         "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
         "  ccdig sessions --igrep deploy --format md\n",
-        "ccdig records --help lists --type, --tool, --status, --skill, --subagents, and --context.",
+        "ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",
     ];
     for args in [&[][..], &["--help"][..], &["-h"][..]] {
         let out = history.run(args).out;

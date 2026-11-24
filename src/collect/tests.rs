@@ -150,6 +150,7 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
     let corpus = collect(
         root.path(),
         Reading {
+            around: None,
             excerpt: None,
             subagents: true,
             usage: false,
@@ -224,6 +225,7 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
     let corpus = collect(
         root.path(),
         Reading {
+            around: None,
             excerpt: None,
             subagents: false,
             usage: true,

@@ -5,7 +5,7 @@ mod properties;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Facts, Filter, Query, compile_grep, patterns};
+use super::{Facts, Filter, Query, Verdict, compile_grep, patterns};
 use crate::testing::{TestResult, check_eq};
 use crate::when::DayRange;
 
@@ -32,14 +32,18 @@ fn names(items: &[&str]) -> Filter<String> {
 /// Checks each query in `cases` against `facts`.
 fn check_all(facts: &Facts<'_>, cases: Vec<(&str, Query, bool)>) -> TestResult {
     for (name, query, want) in cases {
-        check_eq(&query.matches(facts), &want, name)?;
+        check_eq(&(query.verdict(facts) == Verdict::Hit), &want, name)?;
     }
     Ok(())
 }
 
 #[test]
 fn an_empty_query_lets_everything_through() -> TestResult {
-    check_eq(&Query::default().matches(&record()?), &true, "empty query")?;
+    check_eq(
+        &(Query::default().verdict(&record()?) == Verdict::Hit),
+        &true,
+        "empty query",
+    )?;
     Ok(())
 }
 
@@ -288,13 +292,14 @@ fn kind_filters_let_a_record_without_the_fact_through() -> TestResult {
         ..record()?
     };
     check_eq(
-        &Query {
+        &(Query {
             is_error: Some(true),
             skills: names(&["grilling"]),
             tools: names(&["Read"]),
             ..Query::default()
         }
-        .matches(&prompt),
+        .verdict(&prompt)
+            == Verdict::Hit),
         &true,
         "a prompt",
     )?;
