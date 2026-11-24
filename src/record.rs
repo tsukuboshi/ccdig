@@ -200,7 +200,8 @@ pub struct Session {
     pub mtime: Stamp,
     /// The first prompt's time.
     pub started_at: Stamp,
-    /// The last prompt's time.
+    /// The time of the session's last prompt, reply, tool call, or tool
+    /// result in the range, whether the filters kept it or not.
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,

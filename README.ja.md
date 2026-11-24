@@ -149,7 +149,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   パターンで除いた依頼文は数えません。Markdown には
   `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
   `match_count` は `null` です。
-- `prompt_count`・`started_at`・`ended_at` は、選ばれた依頼文の件数と期間です。
+- `prompt_count` と `started_at` は、選ばれた依頼文の件数と最初の時刻です。
+  `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
+  ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
 
 ### digest
 

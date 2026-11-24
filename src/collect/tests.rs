@@ -211,6 +211,68 @@ fn a_record_copied_into_a_resumed_session_is_kept_once_from_the_original() -> Te
 }
 
 #[test]
+fn each_copy_of_a_resumed_session_ends_at_its_own_last_record() -> TestResult {
+    let root = Root::new()?;
+    let shared = [
+        r#"{"type":"user","uuid":"q-1","sessionId":"qqqq","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"start"}}"#,
+        r#"{"type":"assistant","uuid":"q-2","sessionId":"qqqq","timestamp":"2026-10-15T00:10:00Z","message":{"content":[{"type":"text","text":"Started."}]}}"#,
+    ];
+    root.write(
+        "-Users-alice-q/zz-original.jsonl",
+        "2026-10-15T01:00:00Z",
+        &shared,
+    )?;
+    let mut resumed = shared.to_vec();
+    resumed.extend([
+        r#"{"type":"user","uuid":"q-3","sessionId":"qqqr","timestamp":"2026-10-16T00:00:00Z","message":{"role":"user","content":"go on"}}"#,
+        r#"{"type":"assistant","uuid":"q-4","sessionId":"qqqr","timestamp":"2026-10-16T00:30:00Z","message":{"content":[{"type":"text","text":"Went on."}]}}"#,
+    ]);
+    root.write(
+        "-Users-alice-q/aa-resumed.jsonl",
+        "2026-10-16T01:00:00Z",
+        &resumed,
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading {
+            usage: true,
+            ..Reading::default()
+        },
+        &Query::default(),
+        &masking(&[])?,
+        || Prompts,
+    )?;
+    let spans: Vec<(String, String, String)> = corpus
+        .sessions
+        .iter()
+        .map(|session| {
+            (
+                session.id.clone(),
+                session.started_at.rfc3339(),
+                session.ended_at.rfc3339(),
+            )
+        })
+        .collect();
+    check_eq(
+        &spans,
+        &vec![
+            (
+                "qqqq".to_owned(),
+                "2026-10-15T00:00:00Z".to_owned(),
+                "2026-10-15T00:10:00Z".to_owned(),
+            ),
+            (
+                "qqqr".to_owned(),
+                "2026-10-16T00:00:00Z".to_owned(),
+                "2026-10-16T00:30:00Z".to_owned(),
+            ),
+        ],
+        "spans",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> TestResult {
     let root = Root::new()?;
     root.write(

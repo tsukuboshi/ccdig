@@ -14,6 +14,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lines that matched in `matches` without `--context`, so a record with
   `matched` true says where it matched. Markdown still prints each record
   whole unless `--context` is given.
+- A session's `ended_at` is the time of its last prompt, reply, tool call,
+  or tool result in the range, not of its last prompt, so a session with
+  one prompt no longer ends when it started.
 
 ## [0.0.2] - 2026-11-24
 

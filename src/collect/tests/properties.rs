@@ -268,9 +268,14 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
             )?;
         }
         let mask = masking(&[])?;
+        // As `sessions` reads them: with the assistant lines, for the tokens
+        // and the time of the last record.
         let plain = collect(
             root.path(),
-            Reading::default(),
+            Reading {
+                usage: true,
+                ..Reading::default()
+            },
             &Query::default(),
             &mask,
             || Prompts,
@@ -279,6 +284,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
             root.path(),
             Reading {
                 mentions: true,
+                usage: true,
                 ..Reading::default()
             },
             &Query {

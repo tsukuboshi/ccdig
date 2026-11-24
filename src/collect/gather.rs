@@ -16,6 +16,8 @@ use crate::when::Stamp;
 pub struct FileRecords<'file, T> {
     /// The transcript file.
     pub file: &'file SessionFile,
+    /// The time of the last record read in the range.
+    pub last: Option<Stamp>,
     /// With `Reading::mentions`, the prompts and replies the including
     /// patterns matched, by line ID and block.
     pub mentions: Option<Vec<(String, usize)>>,
@@ -110,6 +112,7 @@ where
             }
         }
         let head = first.head();
+        let last_kept = last.head().timestamp;
         let mut masked = head.masked.clone();
         let shown_file = mask.meta(&session.file.path.to_string_lossy(), &mut masked);
         corpus.sessions.push(Session {
@@ -123,7 +126,13 @@ where
             // UTC keeps the output the same on every machine.
             mtime: session.modified,
             started_at: head.timestamp,
-            ended_at: last.head().timestamp,
+            ended_at: session.last.map_or(last_kept, |read| {
+                if read.instant() > last_kept.instant() {
+                    read
+                } else {
+                    last_kept
+                }
+            }),
             prompt_count: kept.len(),
             match_count,
             usage,

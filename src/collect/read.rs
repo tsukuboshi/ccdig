@@ -11,14 +11,19 @@ use super::excerpt::excerpt;
 use super::kinds::Replies;
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Reading, Select, Spot};
+use crate::classify::human::{Reason, classify};
 use crate::filter::{Facts, Query, Verdict};
 use crate::redact::Counts;
 use crate::transcript::entry::{Entry, Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;
+use crate::when::Stamp;
 
 /// What a transcript file yielded.
 pub struct Read<T> {
+    /// The time of the last prompt, reply, tool call, or tool result read
+    /// in the range, whether the filters kept it or not.
+    pub last: Option<Stamp>,
     /// With `Reading::mentions`, the prompts and replies the including
     /// patterns matched, by line ID and block.
     pub mentions: Option<Vec<(String, usize)>>,
@@ -281,6 +286,25 @@ fn tally(
     }
 }
 
+/// The later of `last` and the time of `entry` when that is in the range
+/// of `query` and the line holds a record: a reply or tool call, a prompt,
+/// a tool result, or a summary, not a line the harness wrote.
+fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
+    let holds_a_record = entry.role == Role::Assistant
+        || entry.content.has_tool_result
+        || matches!(classify(entry), Reason::Human | Reason::CompactSummary);
+    match entry.timestamp {
+        Some(timestamp)
+            if holds_a_record
+                && query.range.contains(timestamp.instant())
+                && last.is_none_or(|seen| seen.instant() < timestamp.instant()) =>
+        {
+            Some(timestamp)
+        }
+        Some(_) | None => last,
+    }
+}
+
 /// What the filters in `query` make of `draft`.
 fn verdict<T>(query: &Query, draft: &Draft<T>) -> Verdict
 where
@@ -340,6 +364,7 @@ where
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
+    let mut last: Option<Stamp> = None;
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
@@ -349,6 +374,7 @@ where
             }
             continue;
         }
+        last = later(last, &entry, query);
         if reading.usage {
             tally(&entry, query, &mut responses, &mut used);
         }
@@ -411,6 +437,7 @@ where
         .collect();
     let stats = lines.stats();
     Ok(Read {
+        last,
         mentions: keeper.mentions(),
         records,
         skipped: Skipped {

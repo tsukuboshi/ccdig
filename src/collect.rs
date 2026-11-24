@@ -228,6 +228,7 @@ where
                 if !read.records.is_empty() {
                     sessions.push(FileRecords {
                         file,
+                        last: read.last,
                         modified,
                         mentions: read.mentions,
                         records: read.records,

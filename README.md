@@ -148,8 +148,10 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   less those a pattern with a leading `!` leaves out, and Markdown adds a
   `Matches` column. Without a pattern that does not start
   with `!`, `match_count` is `null`.
-- `prompt_count`, `started_at`, and `ended_at` count and span the selected
-  prompts.
+- `prompt_count` and `started_at` count the selected prompts and give the
+  first one's time. `ended_at` is the time of the session's last prompt,
+  reply, tool call, or tool result in the range, so it shows when the
+  work ended even when a session has one prompt.
 
 ### digest
 
