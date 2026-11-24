@@ -9,7 +9,9 @@ use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
-use crate::record::{Head, Kind, Prompt, Reply, Source, Summary, ToolCall, ToolResult, Turn};
+use crate::record::{
+    Head, Kind, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
+};
 use crate::redact::Counts;
 use crate::transcript::entry::{Block, Entry, Role, Usage};
 use crate::transcript::reader::Roles;
@@ -178,6 +180,7 @@ impl Pick for Prompts {
                 permission_mode: entry.permission_mode.clone(),
                 redacted,
                 source,
+                search: Search::default(),
                 masked,
             }),
         )]
@@ -206,6 +209,7 @@ impl Pick for Summaries {
                 text,
                 redacted,
                 source,
+                search: Search::default(),
                 masked,
             }),
         )]
@@ -238,6 +242,7 @@ impl Pick for Replies {
                     usage: None,
                     redacted,
                     source,
+                    search: Search::default(),
                     masked,
                 })
             }
@@ -276,6 +281,7 @@ impl Pick for Results {
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
                     source,
+                    search: Search::default(),
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
                     masked,
                 })
@@ -337,6 +343,7 @@ impl Pick for Tools {
                     usage: None,
                     redacted,
                     source,
+                    search: Search::default(),
                     masked,
                 })
             }
@@ -377,6 +384,10 @@ impl Select for Prompt {
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
     }
+
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
+    }
 }
 
 impl Select for Reply {
@@ -402,6 +413,10 @@ impl Select for Reply {
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -433,6 +448,10 @@ impl Select for Summary {
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
     }
+
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
+    }
 }
 
 impl Select for ToolCall {
@@ -442,6 +461,14 @@ impl Select for ToolCall {
             skill: Some(&self.skill),
             tool: Some(&self.tool),
         }
+    }
+
+    /// Each string in the input, named for where it is, as in
+    /// `input.edits[0].new_string`.
+    fn grep_fields(&self) -> Vec<(String, Cow<'_, str>)> {
+        let mut fields = Vec::new();
+        strings_in(&self.input, "input".to_owned(), &mut fields);
+        fields
     }
 
     /// The input as compact JSON.
@@ -461,6 +488,10 @@ impl Select for ToolCall {
         &mut self.masked
     }
 
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
+    }
+
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
         Some(&mut self.usage)
     }
@@ -469,6 +500,10 @@ impl Select for ToolCall {
 impl Select for Turn {
     fn extra(&self) -> Extra<'_> {
         selected(self).extra()
+    }
+
+    fn grep_fields(&self) -> Vec<(String, Cow<'_, str>)> {
+        selected(self).grep_fields()
     }
 
     fn grep_text(&self) -> Cow<'_, str> {
@@ -485,6 +520,10 @@ impl Select for Turn {
 
     fn masked_mut(&mut self) -> &mut Counts {
         selected_mut(self).masked_mut()
+    }
+
+    fn search_mut(&mut self) -> &mut Search {
+        selected_mut(self).search_mut()
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -516,6 +555,10 @@ impl Select for ToolResult {
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
     }
+
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
+    }
 }
 
 /// The records `make` builds from the blocks of `entry`, each with its
@@ -541,6 +584,40 @@ fn selected(turn: &Turn) -> &dyn Select {
         Turn::Call(ref call) => call,
         Turn::Result(ref result) => result,
         Turn::Summary(ref summary) => summary,
+    }
+}
+
+/// Adds each string in `value`, at `path`, to `fields` with its path, in
+/// the order the input has them: `.key` for a key of an object, `["key"]`
+/// for one that could read as more of a path, and `[n]` for an item of an
+/// array.
+fn strings_in<'value>(
+    value: &'value Value,
+    path: String,
+    fields: &mut Vec<(String, Cow<'value, str>)>,
+) {
+    match *value {
+        Value::String(ref text) => fields.push((path, Cow::Borrowed(text))),
+        Value::Array(ref items) => {
+            for (index, item) in items.iter().enumerate() {
+                strings_in(item, format!("{path}[{index}]"), fields);
+            }
+        }
+        Value::Object(ref keys) => {
+            for (key, item) in keys {
+                let plain = !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-');
+                let step = if plain {
+                    format!("{path}.{key}")
+                } else {
+                    format!("{path}[{}]", Value::String(key.clone()))
+                };
+                strings_in(item, step, fields);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }
 

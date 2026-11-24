@@ -1,5 +1,6 @@
 //! Tests for collecting records from transcripts: the order of masking and
-//! filtering, titles for sub-agents, resumed copies, and tokens.
+//! filtering, titles for sub-agents, resumed copies, tokens, and the lines
+//! `--context` lists.
 
 mod properties;
 
@@ -8,9 +9,10 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
-use super::collect;
+use super::excerpt::excerpt;
 use super::kinds::{Prompts, Records, Types};
 use super::mask::Mask;
+use super::{Reading, collect};
 use crate::filter::{Filter, Query, patterns};
 use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
@@ -103,7 +105,7 @@ fn grep_sees_the_masked_text_and_project_sees_the_real_path() -> TestResult {
             projects: Filter::names(vec!["corp-hidden".to_owned()]),
             ..Query::default()
         };
-        collect(root.path(), false, false, &query, &mask, || {
+        collect(root.path(), Reading::default(), &query, &mask, || {
             Records::new(ALL)
         })
     };
@@ -147,8 +149,13 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
     )?;
     let corpus = collect(
         root.path(),
-        true,
-        false,
+        Reading {
+            around: None,
+            excerpt: None,
+            mentions: false,
+            subagents: true,
+            usage: false,
+        },
         &Query::default(),
         &masking(&[])?,
         || Records::new(ALL),
@@ -183,8 +190,7 @@ fn a_record_copied_into_a_resumed_session_is_kept_once_from_the_original() -> Te
     )?;
     let corpus = collect(
         root.path(),
-        false,
-        false,
+        Reading::default(),
         &Query::default(),
         &masking(&[])?,
         || Prompts,
@@ -219,8 +225,13 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
     )?;
     let corpus = collect(
         root.path(),
-        false,
-        true,
+        Reading {
+            around: None,
+            excerpt: None,
+            mentions: false,
+            subagents: false,
+            usage: true,
+        },
         &Query::default(),
         &masking(&[])?,
         || Records::new(ALL),
@@ -254,5 +265,111 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
         },
         "per session",
     )?;
+    Ok(())
+}
+
+#[test]
+fn context_joins_the_windows_around_matches_and_stops_at_the_ends() -> TestResult {
+    let text = "a\nhit 2\nc\nd\ne\nhit 6\ng";
+    let grep = patterns(&["hit"], &[])?;
+    for (context, want) in [
+        (0, vec![(2, true), (6, true)]),
+        (
+            1,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+        (
+            2,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (4, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+        (
+            usize::MAX,
+            vec![
+                (1, false),
+                (2, true),
+                (3, false),
+                (4, false),
+                (5, false),
+                (6, true),
+                (7, false),
+            ],
+        ),
+    ] {
+        let got: Vec<(usize, bool)> = excerpt(&[("text".to_owned(), text.into())], &grep, context)
+            .iter()
+            .map(|line| (line.line, line.hit))
+            .collect();
+        check_eq(&got, &want, &context.to_string())?;
+    }
+    Ok(())
+}
+
+#[test]
+fn context_keeps_each_field_apart_and_lists_nothing_without_a_pattern_to_find() -> TestResult {
+    let fields = [
+        ("input.old".to_owned(), "x\nhit".into()),
+        ("input.new".to_owned(), "hit\r\ny".into()),
+    ];
+    let got: Vec<(String, usize, String)> = excerpt(&fields, &patterns(&["hit"], &[])?, 1)
+        .into_iter()
+        .map(|line| (line.field, line.line, line.text))
+        .collect();
+    check_eq(
+        &got,
+        &vec![
+            ("input.old".to_owned(), 1, "x".to_owned()),
+            ("input.old".to_owned(), 2, "hit".to_owned()),
+            ("input.new".to_owned(), 1, "hit".to_owned()),
+            ("input.new".to_owned(), 2, "y".to_owned()),
+        ],
+        "fields",
+    )?;
+    check_eq(
+        &excerpt(&fields, &patterns(&["!hit"], &[])?, 1).len(),
+        &0,
+        "only an excluding pattern",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_line_without_a_response_id_is_a_response_of_its_own() -> TestResult {
+    let root = Root::new()?;
+    root.write(
+        "-Users-alice-blog/vvvv.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"v-1","sessionId":"vvvv","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"text","text":"Counting."},{"type":"tool_use","id":"toolu_v1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+            r#"{"type":"assistant","uuid":"v-2","sessionId":"vvvv","timestamp":"2026-10-15T00:00:20Z","message":{"content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":2,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+        ],
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading::default(),
+        &Query::default(),
+        &masking(&[])?,
+        || Records::new(ALL),
+    )?;
+    let inputs: Vec<Option<u64>> = corpus
+        .records
+        .iter()
+        .map(|record| usage(record).map(|tokens| tokens.input))
+        .collect();
+    check_eq(&inputs, &vec![Some(1), None, Some(2)], "tokens")?;
     Ok(())
 }

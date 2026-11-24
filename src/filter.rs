@@ -42,6 +42,19 @@ pub struct Filter<T> {
     pub include: Vec<T>,
 }
 
+/// What the filters make of a record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Verdict {
+    /// It passes every filter: `--grep` or `--igrep` matched it, or none
+    /// was given without a leading `!`.
+    Hit,
+    /// It passes every filter but that no including pattern matched it,
+    /// so `--around` can keep it next to a match.
+    Near,
+    /// A filter other than the including patterns left it out.
+    Out,
+}
+
 /// The filters given on the command line. An empty filter or `None` lets
 /// everything through.
 #[derive(Clone, Debug, Default)]
@@ -81,8 +94,25 @@ impl<T> Filter<T> {
     where
         F: Fn(&T) -> bool,
     {
-        (self.include.is_empty() || self.include.iter().any(&test))
-            && !self.exclude.iter().any(test)
+        self.included(&test) && !self.excluded(test)
+    }
+
+    /// Whether a record for which `test` tells which values it matches
+    /// matches a value given with a leading `!`.
+    fn excluded<F>(&self, test: F) -> bool
+    where
+        F: Fn(&T) -> bool,
+    {
+        self.exclude.iter().any(test)
+    }
+
+    /// Whether a record for which `test` tells which values it matches
+    /// matches a value given without a leading `!`, or none was given.
+    fn included<F>(&self, test: F) -> bool
+    where
+        F: Fn(&T) -> bool,
+    {
+        self.include.is_empty() || self.include.iter().any(test)
     }
 
     /// Whether no value was given.
@@ -109,9 +139,23 @@ impl Filter<String> {
     }
 }
 
+impl Filter<Regex> {
+    /// Whether `text` matches a pattern given with a leading `!`.
+    pub fn excludes(&self, text: &str) -> bool {
+        self.excluded(|pattern| pattern.is_match(text))
+    }
+
+    /// Whether `text` matches a pattern given without a leading `!`, or
+    /// none was given.
+    pub fn includes(&self, text: &str) -> bool {
+        self.included(|pattern| pattern.is_match(text))
+    }
+}
+
 impl Query {
-    /// Whether a record with `facts` passes every filter.
-    pub fn matches(&self, facts: &Facts<'_>) -> bool {
+    /// Whether a record with `facts` passes every filter but `--grep` and
+    /// `--igrep`.
+    pub fn admits(&self, facts: &Facts<'_>) -> bool {
         self.range.contains(facts.timestamp)
             && self.matches_project(facts.project, facts.cwd)
             && self
@@ -127,7 +171,6 @@ impl Query {
             && self
                 .is_error
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
-            && self.grep.allows(|pattern| pattern.is_match(facts.text))
     }
 
     /// Whether the project directory's name or the cwd contains a
@@ -136,6 +179,17 @@ impl Query {
     pub fn matches_project(&self, project: &str, cwd: &str) -> bool {
         self.projects
             .allows(|filter| project.contains(filter.as_str()) || cwd.contains(filter.as_str()))
+    }
+
+    /// What the filters make of a record with `facts`.
+    pub fn verdict(&self, facts: &Facts<'_>) -> Verdict {
+        if !self.admits(facts) || self.grep.excludes(facts.text) {
+            Verdict::Out
+        } else if self.grep.includes(facts.text) {
+            Verdict::Hit
+        } else {
+            Verdict::Near
+        }
     }
 }
 

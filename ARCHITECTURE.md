@@ -31,7 +31,7 @@ those before it.
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
 | `filter` | Tester: the filters, as `Query`. |
-| `collect` | The stages joined: `read` picks one file's records as `Draft`s and filters them, `mask::Mask::seal` masks their metadata, and `gather` joins the files. `kinds` holds one picker per kind of record. |
+| `collect` | The stages joined: `read` picks one file's records as `Draft`s and filters them, `mask::Mask::seal` masks their metadata, and `gather` joins the files. `kinds` holds one picker per kind of record, and `excerpt` the lines `--context` lists. |
 | `render` | Consumer: JSON Lines, JSON, Markdown, and the digest. It uses only `record`, `text`, `when`, and `failure`. |
 | `config` | `Config`, what a run does, as plain data. |
 | `pipeline` | Runs a `Config`: collect, render, and add up what masking counted. |
@@ -69,7 +69,8 @@ files below are the ones there are.
   masked text, and `--project` matches the real paths. A picker returns
   each record as a `Draft`, with its text masked, and only `Mask::seal`,
   which masks the metadata, gives the record out, so code that skips that
-  step does not compile.
+  step does not compile. The lines `--context` lists are cut from the
+  masked text, after the filters.
 - **The machine reaches the output only through `cli/environment.rs`.**
   Nothing reads the clock; times come from the transcripts. What the
   machine decides is read there: the system zone when neither `--tz` nor

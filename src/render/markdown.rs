@@ -5,11 +5,12 @@ use jiff::tz::TimeZone;
 use serde_json::Value;
 
 use crate::failure::Failure;
-use crate::record::{Record, Session, ToolCall, ToolResult, Turn};
+use crate::record::{MatchLine, Record, Session, ToolCall, ToolResult, Turn};
 use crate::text::{clean_text, code_span, escape_pipes, fenced, heading_text};
 
 /// Records of any kind, each under a heading that names its kind, with
-/// each string in a tool call's input cut to `input_chars` when given.
+/// each string in a tool call's input cut to `input_chars` when given. A
+/// record with `matches` shows those lines in place of its text.
 ///
 /// # Errors
 ///
@@ -31,18 +32,19 @@ pub fn records(
             Turn::Summary(_) => "Summary",
         },
         |turn| match *turn {
-            Turn::Prompt(ref prompt) => Ok(fenced("text", &clean_text(&prompt.text))),
-            Turn::Reply(ref reply) => Ok(fenced("text", &clean_text(&reply.text))),
+            Turn::Prompt(ref prompt) => Ok(text_or_lines(&prompt.text, &prompt.search.matches)),
+            Turn::Reply(ref reply) => Ok(text_or_lines(&reply.text, &reply.search.matches)),
             Turn::Call(ref call) => tool_call(call, input_chars),
             Turn::Result(ref result) => Ok(tool_result(result)),
-            Turn::Summary(ref summary) => Ok(fenced("text", &clean_text(&summary.text))),
+            Turn::Summary(ref summary) => Ok(text_or_lines(&summary.text, &summary.search.matches)),
         },
     )
 }
 
 /// Groups `records` under one heading per transcript file, with times shown
 /// in `zone`, each record's heading followed by its `label` when that is
-/// not empty, and each record's body written by `body`. Records of a file
+/// not empty and by its sub-agent when it has one, and each record's body
+/// written by `body`. Records of a file
 /// must be adjacent. Two files that share a session ID, such as a resumed
 /// copy, get two headings.
 fn sections<T>(
@@ -78,21 +80,32 @@ where
             if !name.is_empty() {
                 out.extend([" - ", name]);
             }
+            if !record.matched() {
+                out.push_str(" (context)");
+            }
+            // A record of a sub-agent names it in its own heading too, as a
+            // reader searching the records may see this heading alone.
+            if !record.subagent().is_empty() {
+                out.extend([" - ", &code_span(record.subagent())]);
+            }
             out.extend(["\n\n", &body(record)?]);
         }
     }
     Ok(out)
 }
 
-/// Sessions as a table.
+/// Sessions as a table, with how many prompts and replies a search
+/// matched in each when `matches` is set.
 ///
 /// # Errors
 ///
 /// When a time cannot be shown in `zone`.
-pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure> {
-    let mut out = String::from(
-        "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n",
-    );
+pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<String, Failure> {
+    let mut out = String::from(if matches {
+        "# Sessions\n\n| Started | Project | Prompts | Matches | Title |\n| --- | --- | ---: | ---: | --- |\n"
+    } else {
+        "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n"
+    });
     for session in records {
         out.extend([
             "| ",
@@ -102,27 +115,91 @@ pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure>
             " | ",
             &session.prompt_count.to_string(),
             " | ",
-            &heading_text(&session.title),
-            " |\n",
         ]);
+        if matches {
+            out.extend([&session.match_count.unwrap_or_default().to_string(), " | "]);
+        }
+        out.extend([&heading_text(&session.title), " |\n"]);
     }
     Ok(out)
 }
 
 /// A tool result's body: the calling tool's name, whether it failed, and
-/// the output in a text block.
+/// the output in a text block, or its matched lines.
 fn tool_result(result: &ToolResult) -> String {
-    format!(
-        "- Tool: {}\n- Error: {}\n\n{}",
+    let head = format!(
+        "- Tool: {}\n- Error: {}\n",
         tool_name(&result.tool),
         if result.is_error { "yes" } else { "no" },
-        fenced("text", &clean_text(&result.text))
-    )
+    );
+    if result.search.matches.is_empty() {
+        return format!("{head}\n{}", fenced("text", &clean_text(&result.text)));
+    }
+    format!("{head}{}", lines(&result.search.matches, None))
+}
+
+/// `text` in a text block, or when `matches` lists lines of it, those.
+fn text_or_lines(text: &str, matches: &[MatchLine]) -> String {
+    if matches.is_empty() {
+        return fenced("text", &clean_text(text));
+    }
+    lines(matches, None)
+}
+
+/// `matches` in runs of adjacent lines of one field, each a list item that
+/// says which lines it holds, and which of them matched when it holds
+/// others too, followed by the lines in a text block. The line numbers stay
+/// out of the block, so they do not mix with numbers in the text.
+fn lines(matches: &[MatchLine], input_chars: Option<usize>) -> String {
+    let runs = matches.chunk_by(|left, right| {
+        left.field == right.field && left.line.checked_add(1) == Some(right.line)
+    });
+    let mut out = Vec::new();
+    // `chunk_by` gives no empty run.
+    for (first, last, run) in runs.filter_map(|run| Some((run.first()?, run.last()?, run))) {
+        let (single, plural) = if first.field == "text" {
+            ("Line".to_owned(), "Lines".to_owned())
+        } else {
+            let name = code_span(&first.field);
+            (format!("{name} line"), format!("{name} lines"))
+        };
+        let mut item = if first.line == last.line {
+            format!("- {single} {}", first.line)
+        } else {
+            format!("- {plural} {}-{}", first.line, last.line)
+        };
+        if run.iter().any(|line| !line.hit) {
+            let hits: Vec<String> = run
+                .iter()
+                .filter(|line| line.hit)
+                .map(|line| line.line.to_string())
+                .collect();
+            item.extend([", matched ", &hits.join(", ")]);
+        }
+        let text: Vec<String> = run
+            .iter()
+            .map(|line| {
+                input_chars.map_or_else(|| line.text.clone(), |limit| cut_text(&line.text, limit))
+            })
+            .collect();
+        out.push(format!(
+            "{item}\n\n{}",
+            fenced("text", &clean_text(&text.join("\n")))
+        ));
+    }
+    out.join("\n")
 }
 
 /// A tool call's body: the tool's name and its input as indented JSON,
 /// with each string cut to `input_chars` when given.
 fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Failure> {
+    if !call.search.matches.is_empty() {
+        return Ok(format!(
+            "- Tool: {}\n{}",
+            tool_name(&call.tool),
+            lines(&call.search.matches, input_chars)
+        ));
+    }
     let input = input_chars
         .map_or_else(
             || serde_json::to_string_pretty(&call.input),
@@ -140,20 +217,25 @@ fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Fail
     ))
 }
 
+/// `text`, cut to `limit` characters and followed by an ellipsis and how
+/// many characters were cut when it is longer.
+fn cut_text(text: &str, limit: usize) -> String {
+    let length = text.chars().count();
+    if length <= limit {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(limit).collect();
+    format!(
+        "{kept}\u{2026} ({} more characters)",
+        length.saturating_sub(limit)
+    )
+}
+
 /// Cuts each string in `value` longer than `limit` characters to `limit`,
 /// followed by an ellipsis and how many characters were cut.
 fn cut_strings(value: &mut Value, limit: usize) {
     match *value {
-        Value::String(ref mut text) => {
-            let length = text.chars().count();
-            if length > limit {
-                let kept: String = text.chars().take(limit).collect();
-                *text = format!(
-                    "{kept}\u{2026} ({} more characters)",
-                    length.saturating_sub(limit)
-                );
-            }
-        }
+        Value::String(ref mut text) => *text = cut_text(text, limit),
         Value::Array(ref mut items) => {
             for item in items {
                 cut_strings(item, limit);

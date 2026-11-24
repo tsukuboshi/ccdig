@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use jiff::tz::TimeZone;
 
+use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::filter::Query;
@@ -89,14 +90,12 @@ pub struct Shared {
     pub on_skip: OnSkip,
     /// The filters.
     pub query: Query,
+    /// How to read the transcripts.
+    pub reading: Reading,
     /// The transcript root.
     pub root: PathBuf,
     /// The flags that decide what the records hold, for the JSON envelope.
     pub run: Run,
-    /// Whether to read sub-agent transcripts too.
-    pub subagents: bool,
-    /// Whether to add up each session's tokens.
-    pub usage: bool,
     /// The zone for days and Markdown times.
     pub zone: TimeZone,
 }

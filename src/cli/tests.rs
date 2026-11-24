@@ -5,7 +5,10 @@
     reason = "the tests build transcript trees on disk"
 )]
 
+mod around;
+mod context;
 mod kinds;
+mod mentions;
 mod properties;
 
 use core::error::Error;
@@ -589,6 +592,40 @@ fn bad_flags_fail_with_one_line() -> TestResult {
 }
 
 #[test]
+fn a_flag_named_after_the_kind_key_points_at_type() -> TestResult {
+    let history = History::new("root")?;
+    for args in [
+        &["records", "--kind", "prompt"][..],
+        &["records", "--kind=prompt"][..],
+        &["records", "--kinds", "prompt"][..],
+        &["--kind", "prompt", "records"][..],
+    ] {
+        let ran = history.run(args);
+        let name = args.join(" ");
+        check_eq(&ran.code, &1, &name)?;
+        check_eq(
+            ran.err.as_str(),
+            &format!(
+                "ccdig: unexpected argument '{}' found; pick the record types with --type: call, prompt, reply, result, or summary\n",
+                if name.contains("--kinds") {
+                    "--kinds"
+                } else {
+                    "--kind"
+                },
+            ),
+            &name,
+        )?;
+    }
+    let other = history.run(&["records", "--kindly"]);
+    check_eq(
+        other.err.as_str(),
+        "ccdig: unexpected argument '--kindly' found\n",
+        "a flag that only starts with --kind",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn the_digest_rejects_a_prompt_limit_not_below_the_session_limit() -> TestResult {
     let history = History::new("root")?;
     for (prompt, session) in [("300", "100"), ("100", "100")] {
@@ -619,7 +656,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":2,\"filter\":\"strict-v2\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":3,\"filter\":\"strict-v2\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -629,6 +666,34 @@ fn version_and_help() -> TestResult {
         check_eq(&ran.out.contains("Usage: ccdig"), &true, &name)?;
         check_eq(ran.err.as_str(), "", &name)?;
     }
+    Ok(())
+}
+
+#[test]
+fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
+    let history = History::new("root")?;
+    let examples = [
+        "Examples:\n",
+        "  ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n",
+        "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
+        "  ccdig sessions --igrep deploy --format md\n",
+        "ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",
+    ];
+    for args in [&[][..], &["--help"][..], &["-h"][..]] {
+        let out = history.run(args).out;
+        check_eq(&in_order(&out, &examples), &true, &out)?;
+    }
+    let records = history.run(&["records", "--help"]).out;
+    for part in [
+        "Without --type, a search reads prompts, replies, and tool calls",
+        "narrow it with --type and --limit",
+        "Also read sub-agent transcripts, which are left out by default",
+    ] {
+        check_eq(&records.contains(part), &true, &records)?;
+    }
+    let top = history.run(&["--help"]).out;
+    check_eq(&top.contains("kind of record"), &false, &top)?;
+    check_eq(&top.contains("record type"), &true, &top)?;
     Ok(())
 }
 
@@ -1613,7 +1678,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(2_i32)),
+        &Some(&serde_json::json!(3_i32)),
         "schema",
     )?;
     check_eq(
@@ -1715,7 +1780,7 @@ fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> Tes
     let sessions = history.run_week(&["sessions", "--session", "uuuu"]);
     check_eq(
         &sessions.out.contains(
-            r#""prompt_count":1,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
+            r#""prompt_count":1,"match_count":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
         ),
         &true,
         &sessions.out,
@@ -1747,6 +1812,82 @@ fn the_default_root_is_under_home_in_the_environment() -> TestResult {
         "ccdig: find the default --root: HOME is not set\n",
         "no HOME",
     )?;
+    Ok(())
+}
+
+/// The session IDs of the sessions `out` lists as JSON lines, in order.
+fn session_ids(out: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    out.lines()
+        .map(|line| {
+            let session: serde_json::Value = serde_json::from_str(line)?;
+            Ok(session
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn session_current_is_the_session_ccdig_runs_in() -> TestResult {
+    let history = History::new("root")?;
+    let inside = Environment {
+        session_id: Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into()),
+        ..environment()
+    };
+    for (session, listed) in [
+        ("current", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        ("!current", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+    ] {
+        let mut args = vec!["sessions", "--session", session];
+        args.extend(WEEK);
+        let ran = history.run_in(&inside, &args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&session_ids(&ran.out)?, &vec![listed.to_owned()], session)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn session_current_takes_the_variable_as_an_id_even_with_a_leading_bang() -> TestResult {
+    let history = History::new("root")?;
+    let odd = Environment {
+        session_id: Some("!aaaaaaaa".into()),
+        ..environment()
+    };
+    for (session, listed) in [
+        ("current", vec![]),
+        (
+            "!current",
+            vec![
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_owned(),
+            ],
+        ),
+    ] {
+        let mut args = vec!["sessions", "--session", session];
+        args.extend(WEEK);
+        let ran = history.run_in(&odd, &args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&session_ids(&ran.out)?, &listed, session)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn session_current_outside_claude_code_is_an_error() -> TestResult {
+    let history = History::new("root")?;
+    for session in ["current", "!current"] {
+        let ran = history.run(&["sessions", "--session", session]);
+        check_eq(&ran.code, &1, session)?;
+        check_eq(ran.out.as_str(), "", session)?;
+        check_eq(
+            ran.err.as_str(),
+            "ccdig: --session current: CLAUDE_CODE_SESSION_ID is not set; run ccdig inside Claude Code or give a session ID\n",
+            session,
+        )?;
+    }
     Ok(())
 }
 

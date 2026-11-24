@@ -479,16 +479,6 @@ impl ExtraRules {
         masked
     }
 
-    /// Whether no mask was asked for.
-    const fn is_empty(&self) -> bool {
-        self.aws.is_empty()
-            && self.email.is_none()
-            && self.git_user.is_none()
-            && self.ip.is_none()
-            && self.user.is_none()
-            && self.values.is_none()
-    }
-
     /// Compiles the masks `extra` asks for.
     fn new(extra: ExtraMasks) -> Result<Self, regex::Error> {
         let mut seen = HashSet::new();
@@ -668,9 +658,9 @@ impl Redactor {
     /// Masks secrets in every string inside `value`, such as a tool's input,
     /// and reports whether it changed anything. A string under a key that
     /// names a credential, as in `{"password": "..."}`, is masked whole by
-    /// the same test as an assignment. Object keys get the masks asked for
-    /// but not the built-in rules; a key that masking makes equal to an
-    /// earlier one gets `#2`, `#3`, and so on, so no value is lost.
+    /// the same test as an assignment. Object keys are masked as strings
+    /// are; a key that masking makes equal to an earlier one gets `#2`,
+    /// `#3`, and so on, so no value is lost.
     #[cfg(test)]
     pub fn redact_json(&self, value: &mut Value) -> bool {
         self.redact_json_counted(value, &mut Counts::default())
@@ -708,16 +698,24 @@ impl Redactor {
                         changed |= self.redact_json_counted(field, counts);
                     }
                 }
-                // Without masks asked for no key changes, so the object
-                // is not rebuilt.
-                if !self.extra.is_empty() {
+                // A key gets every rule a string does, each key once so
+                // nothing is counted twice, and the object is rebuilt only
+                // when a key changes.
+                let shown: Vec<String> = fields
+                    .keys()
+                    .map(|key| self.redact_counted(key, counts).0)
+                    .collect();
+                if shown
+                    .iter()
+                    .zip(fields.keys())
+                    .any(|(masked, key)| masked != key)
+                {
                     let mut masked = Map::with_capacity(fields.len());
-                    for (key, field) in mem::take(fields) {
-                        let shown = self.extra.apply(&key, counts);
-                        changed |= shown != key;
-                        masked.insert(unused_key(&masked, shown), field);
+                    for ((_, field), key) in mem::take(fields).into_iter().zip(shown) {
+                        masked.insert(unused_key(&masked, key), field);
                     }
                     *fields = masked;
+                    changed = true;
                 }
                 changed
             }

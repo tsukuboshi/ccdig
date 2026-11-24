@@ -8,8 +8,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `records --context N` lists the lines `--grep` or `--igrep` matched in
+  each record, with N lines before and after each, in a new `matches` key,
+  and Markdown prints those lines in place of the whole text. A tool
+  call's input is split into lines string by string, as in
+  `input.content`.
+- `records --around N` also lists the N records before and after each
+  record `--grep` matched, such as the prompt a matched reply answered,
+  with a new `matched` key false, and `(context)` in Markdown. `--limit`
+  then counts the matches.
+- `sessions --grep` and `--igrep` read the replies too, and a new
+  `match_count` key, with a `Matches` column in Markdown, says how many
+  prompts and replies matched in each session.
+- `--session current` keeps the session Claude Code runs ccdig in, read
+  from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
+  so a search no longer lists the session doing it.
+- The help of `ccdig` shows examples of a search and says which flags
+  `ccdig records --help` lists, and the help of `records` says to narrow
+  a search with `--type` and `--limit`.
+- `--kind`, the name of a prompt's key for how it was typed, fails with a
+  pointer to `--type`, which picks the record types.
+
+### Changed
+
+- The JSON schema is 3: every record ends with `matched` and `matches`,
+  and a session has `match_count`.
+- With `--grep` or `--igrep`, a `sessions` record now counts and spans
+  every prompt the other filters keep, not only those that matched, and
+  a session whose replies alone match is listed too. Its `usage` is what
+  it has without `--grep`: a resumed copy no longer counts the tokens of
+  the responses it copied from a session the search skips.
+- In Markdown, a sub-agent's record names the sub-agent at the end of its
+  own heading, not only once under the heading of its file, so a reader
+  can tell it from the session's own records.
+- The help of `--subagents` and the README say that sub-agent transcripts
+  are left out by default and that the instruction a sub-agent was given
+  is not listed.
+
 ### Fixed
 
+- A secret used as a key of a tool's input, such as a token, is now
+  masked by the built-in rules. Only the masks asked for applied to the
+  keys, so it was printed as typed, in `input` and in what `--context`
+  lists.
 - A Japanese name for a credential, such as the word for password, now has
   its value masked when it follows a value or an ASCII word directly, as in
   `token=...` or `ID：user1` followed by the name and a colon. Its value was

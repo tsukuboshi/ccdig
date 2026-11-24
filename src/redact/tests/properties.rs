@@ -234,6 +234,13 @@ fn every_built_in_secret_is_masked_wherever_it_sits() -> TestResult {
         )?;
         check_eq(&changed, &true, "changed")?;
         check_eq(&counts.ranked().is_empty(), &false, "counted")?;
+        let mut keyed = serde_json::json!({ input: 1_i32 });
+        check_eq(&redactor.redact_json(&mut keyed), &true, "a key changed")?;
+        check_eq(
+            &keyed.to_string().contains(&body),
+            &false,
+            &format!("secret left in the key of {keyed}"),
+        )?;
         Ok(())
     })
 }
@@ -357,7 +364,7 @@ fn json_masking_keeps_the_shape_and_reports_any_change() -> TestResult {
         ..ExtraMasks::default()
     })?;
     for_all(&json_value(), |value| {
-        for (redactor, keys_kept) in [(&plain, true), (&user, false)] {
+        for redactor in [&plain, &user] {
             let mut masked = value.clone();
             let changed = redactor.redact_json(&mut masked);
             check_eq(&changed, &(masked != value), "changed")?;
@@ -366,13 +373,6 @@ fn json_masking_keeps_the_shape_and_reports_any_change() -> TestResult {
                 &true,
                 &format!("shape of {masked}"),
             )?;
-            if keys_kept {
-                let keys = |json: &Value| {
-                    json.as_object()
-                        .map(|fields| fields.keys().cloned().collect::<Vec<_>>())
-                };
-                check_eq(&keys(&masked), &keys(&value), "keys")?;
-            }
         }
         Ok(())
     })

@@ -56,6 +56,11 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 # blog プロジェクトで "deploy" に触れた返答を、大文字小文字を区別せずに出す
 ccdig records --type reply --project blog --igrep deploy
 
+# Claude Code の中から、検索している当のセッションを除いて、ほかの
+# セッションの依頼文と返答を 20 件まで検索する
+ccdig records --session '!current' --type prompt,reply --igrep deploy \
+  --format md --limit 20
+
 # 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
@@ -111,11 +116,24 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
 - この 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
+- `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
+  入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
+  出力を小さく保てます。
+- サブエージェントの履歴は、`--subagents` を付けない限り読みません。
+  サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
+  されません。出力されるのは、その返答・呼び出し・結果です。
+- `--around N` は、`--grep` か `--igrep` に一致した各レコードの前後 N 件の
+  レコードも出します。一致した返答が答えた依頼文などです。対象は、
+  `--type` で選んだ種類のうち、ほかの絞り込みをすべて通る、同じファイルの
+  レコードです。これらは `matched` が false で、Markdown では種類の後に
+  `(context)` が付きます。`!` 付きのパターンで除いたレコードは、前後の
+  レコードとしても出ません。`!` で始まらないパターンが必要です。
 
-次の 2 つのオプションは出力の形を決めます。
+次の 3 つのオプションは出力の形を決めます。
 
 | フラグ | 働き |
 | --- | --- |
+| `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
 | `--max-input-chars N` | `--format md` のとき、ツールの呼び出しの入力にある文字列をそれぞれ N 文字で切って `… (M more characters)` を付ける。ファイル全体を書く `Write` でページが埋まらずに済む。JSON と JSON Lines は切らない |
 
@@ -123,6 +141,15 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 選ばれた依頼文を含むセッション 1 つにつき 1 レコードを出します。絞り込みは
 依頼文に適用されます。`--format` は `jsonl`（既定）・`json`・`md` を取ります。
+
+- `--grep` と `--igrep` は、依頼文か返答が一致したセッションを選び、
+  `match_count` にそれぞれで一致した件数を入れます。ある語に最も多く触れた
+  セッションから読めます。ほかのキーは、`--grep` が無いときと同じく、
+  ほかの絞り込みで残ったすべての依頼文から作ります。ただし、`!` 付きの
+  パターンで除いた依頼文は数えません。Markdown には
+  `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
+  `match_count` は `null` です。
+- `prompt_count`・`started_at`・`ended_at` は、選ばれた依頼文の件数と期間です。
 
 ### digest
 
@@ -141,7 +168,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.1","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":3,"filter":"strict-v2"}
 ```
 
 ## 共通オプション
@@ -156,7 +183,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `--since`, `--until` | 開始日から終了日までのレコード。`YYYY-MM-DD` |
 | `--tz` | 日の境界と Markdown の時刻をこの IANA タイムゾーンで扱う。既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`） |
 | `--project` | ディレクトリ名か cwd にこの値を含むプロジェクト |
-| `--session` | ID がこの値で始まるセッション |
+| `--session` | ID がこの値で始まるセッション。`current` なら ccdig を実行しているセッション |
 | `--branch` | この git ブランチ上のレコード |
 | `--grep` | テキストが正規表現に一致するレコード |
 | `--igrep` | 同じく、大文字小文字を区別せずに一致するレコード |
@@ -168,6 +195,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `WIP` に触れたレコードを除いた残りを出します。`!` で始まる値そのものに
   一致させるときは `\!` と書きます。たいていのシェルでは `!` が履歴展開に
   なるので、引用符で囲んでください。
+- `--session current` は、Claude Code が ccdig を実行しているセッションを
+  指し、`CLAUDE_CODE_SESSION_ID` から読みます。`--session '!current'` で、
+  検索している当のセッションを除けます。Claude Code の外では `current` は
+  エラーになります。
 - `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを
   検索します。そのため、秘密情報をその値で探し当てることはできません。
   対象は、依頼文や返答のテキスト、呼び出しの入力を詰めた JSON、結果の
@@ -194,8 +225,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 ### 出力の指定
 
-`--limit N` は先頭 N 件のレコードを出します。`--format` はコマンドごとに
-違います。「コマンド」の節を参照してください。
+`--limit N` は先頭 N 件のレコードを出します。`--around` を付けたときは、
+一致したレコードを N 件数え、最後に一致したレコードの後ろの文脈も残します。
+`--format` はコマンドごとに違います。「コマンド」の節を参照してください。
 
 ### 環境変数
 
@@ -203,6 +235,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- | --- |
 | `CCDIG_ROOT` | `--root` | ディレクトリ。`CLAUDE_CONFIG_DIR` より優先する |
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code 自身の変数。その下の `projects` ディレクトリをルートにする |
+| `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code 自身の変数。ccdig を実行しているセッションの ID |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` か `fail` |
 | `CCDIG_MASK` | `--mask` | カンマ区切りの一覧 |
 | `CCDIG_MASK_VALUES` | `--mask-values` | JSON オブジェクト 1 つ、または `@` とファイル |
@@ -225,12 +258,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
-           "line":3,"uuid":"<entry uuid>"}}
+           "line":3,"uuid":"<entry uuid>"},
+ "matched":true,"matches":[]}
 ```
 
 どのレコードも、`--type` の名前で種類を表す `type` で始まります。ほかの
-種類も、`type` から `timestamp` までの同じキーで始まり、`redacted` と
-`source` で終わります。
+種類も、`type` から `timestamp` までの同じキーで始まり、`redacted`・
+`source`・`matched`・`matches` で終わります。
 
 | 種類 | 間に入るキー |
 | --- | --- |
@@ -239,8 +273,22 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-どのキーも常に出力されます。
+どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
+レコードの種類は `--type` で選ぶ `type` です。
 
+- `matched` は、`--around` が一致の前後に出したレコードでは `false`、
+  それ以外のレコードでは `true` です。
+- `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
+  行とその前後の行を順に並べます。`field` はその行がある文字列で、呼び出し
+  以外は `text`、呼び出しでは入力の中の場所（`input.command` や
+  `input.edits[0].new_string` など）です。英数字・`_`・`-` 以外を含むキーは
+  `input["a.b"]` のように引用します。
+  `line` はその文字列での 1 始まりの行番号、`text` はマスク後の行、`hit` は
+  パターンに一致した行かどうかです。パターンは 1 行ずつ試すので、`^` と
+  `$` は各行の先頭と末尾に一致します。また、行をまたぐ一致、呼び出しの
+  キー名への一致、`\\` のように呼び出しを詰めた JSON のエスケープが要る
+  一致では行が並ばず、レコードを全文で出します。`--context` が無ければ
+  `matches` は空です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。
@@ -277,7 +325,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -296,6 +344,25 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `filter` を確かめられます。
 
 ### Markdown
+
+`records --format md` は、履歴ファイルごとのレコードをプロジェクトと
+セッションを記した 1 つの見出しの下にまとめ、各レコードを時刻と種類の
+見出しの下に置きます。サブエージェントのレコードは、自分の見出しの末尾にも
+サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -
+`agent-1` ``）。セッション本体のレコードと見分けられます。
+
+`--context` を付けると、レコードは全文の代わりに一致した行を出します。
+隣り合う行のかたまりごとに、どの行か、そのうちどれが一致したかを箇条書きで
+示し、その後に行をテキストブロックで置きます。行番号はブロックの外に置くので、
+ツールが読んだファイルの行番号など、本文の中の数字とは混ざりません。
+
+````markdown
+- Lines 41-43, matched 42
+
+```text
+...
+```
+````
 
 Markdown とダイジェストの出力は、履歴のフィールドを信頼できない入力として
 扱います。端末の制御文字と双方向テキストの上書き文字は U+FFFD に置き換え、
@@ -397,7 +464,8 @@ thinking ブロックは決して出力しません。
 これらのマスクと `--mask-values` は、本文でないフィールド、つまり
 `project`・`cwd`・`git_branch`・ファイルのパス・`tool`・`model`・
 `subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
-組み込みのルールはキーにはかけません。
+ツールの入力のキーには組み込みのルールもかけるので、トークンのような秘密が
+キーになっていてもマスクされます。
 
 - マスクした結果、前のキーと同じになったキー（伏せたファイルのパス 2 つ
   など）には `#2`・`#3` と番号を付け、どちらの値も残します。

@@ -3,18 +3,25 @@
 //! sealed with the file's title once the whole file is read.
 
 use alloc::borrow::Cow;
+use alloc::collections::VecDeque;
+use core::mem;
 use std::collections::HashSet;
 
+use super::excerpt::excerpt;
+use super::kinds::Replies;
 use super::mask::{Draft, Mask, Title};
-use super::{Pick, Select, Spot};
-use crate::filter::{Facts, Query};
+use super::{Pick, Reading, Select, Spot};
+use crate::filter::{Facts, Query, Verdict};
 use crate::redact::Counts;
-use crate::transcript::entry::{Role, Usage};
+use crate::transcript::entry::{Entry, Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;
 
 /// What a transcript file yielded.
 pub struct Read<T> {
+    /// With `Reading::mentions`, the prompts and replies the including
+    /// patterns matched, by line ID and block.
+    pub mentions: Option<Vec<(String, usize)>>,
     /// The selected records, in file order, each with its block's index in
     /// the line.
     pub records: Vec<(usize, T)>,
@@ -26,6 +33,61 @@ pub struct Read<T> {
     pub title_masked: Counts,
     /// The tokens of each response in the range, by response ID.
     pub usage: Vec<(String, Usage)>,
+}
+
+/// The records kept from a file so far, in file order, and the responses
+/// whose tokens one of them carries.
+struct Kept<T> {
+    /// The records, each with its block's index in the line.
+    drafts: Vec<(usize, Draft<T>)>,
+    /// The keys of the responses whose tokens a kept record carries.
+    priced: HashSet<String>,
+}
+
+/// The tokens of the response a line is part of, and what tells that
+/// response from the others in the file.
+#[derive(Clone)]
+struct Response {
+    /// The response's ID, or for a line without one, which is a response
+    /// of its own, the line's number after a NUL, which no ID has.
+    key: String,
+    /// The tokens.
+    tokens: Usage,
+}
+
+impl Response {
+    /// The response the line `entry`, at `line`, is part of, or `None`
+    /// when the line has no tokens.
+    fn of(entry: &Entry, line: usize) -> Option<Self> {
+        entry.usage.map(|tokens| Self {
+            key: if entry.message_id.is_empty() {
+                format!("\0{line}")
+            } else {
+                entry.message_id.clone()
+            },
+            tokens,
+        })
+    }
+}
+
+/// With `--around`, the records waiting to be kept as context before the
+/// next match, and how many more to keep after the last one.
+struct Window<T> {
+    /// How many more records to keep after the last match.
+    after: usize,
+    /// How many records to keep on each side of a match.
+    around: usize,
+    /// Up to `around` records since the last one kept, the latest last.
+    before: VecDeque<(usize, Draft<T>, Option<Response>)>,
+}
+
+/// How a file's records are kept once the filters have seen them.
+enum Keeper<T> {
+    /// For `sessions --grep`: every record the other filters let through,
+    /// and the line ID and block of each the including patterns matched.
+    Tally(Vec<(String, usize)>),
+    /// Each match, and with `--around`, the records next to it.
+    Window(Window<T>),
 }
 
 /// Lines skipped across files, for the summary warning.
@@ -54,8 +116,173 @@ impl Skipped {
     }
 }
 
-/// Whether `draft` passes the filters in `query`.
-fn passes<T>(query: &Query, draft: &Draft<T>) -> bool
+impl<T> Kept<T>
+where
+    T: Select,
+{
+    /// Keeps `draft` at `at` in file order, the end when `None`. A
+    /// response's lines repeat its tokens, so only the first record kept
+    /// from it that carries tokens gets them; a match is kept before the
+    /// context `--around` puts ahead of it, so it gets them first.
+    fn keep(
+        &mut self,
+        at: Option<usize>,
+        (block, mut draft): (usize, Draft<T>),
+        response: Option<&Response>,
+    ) {
+        if let Some(of) = response
+            && let Some(slot) = draft.usage_mut()
+            && self.priced.insert(of.key.clone())
+        {
+            *slot = Some(of.tokens);
+        }
+        match at {
+            Some(index) => self.drafts.insert(index, (block, draft)),
+            None => self.drafts.push((block, draft)),
+        }
+    }
+}
+
+impl<T> Keeper<T>
+where
+    T: Select,
+{
+    /// What tallied the matches, or `None` for a window.
+    fn mentions(self) -> Option<Vec<(String, usize)>> {
+        match self {
+            Self::Tally(found) => Some(found),
+            Self::Window(_) => None,
+        }
+    }
+
+    /// The keeper `reading` asks for.
+    fn new(reading: Reading) -> Self {
+        if reading.mentions {
+            return Self::Tally(Vec::new());
+        }
+        Self::Window(Window {
+            after: 0,
+            around: reading.around.unwrap_or_default(),
+            before: VecDeque::new(),
+        })
+    }
+
+    /// Keeps `drafted`, of `verdict`, in `kept` or for later, as the
+    /// keeper does.
+    fn offer(
+        &mut self,
+        kept: &mut Kept<T>,
+        drafted: (usize, Draft<T>),
+        verdict: Verdict,
+        response: Option<&Response>,
+        query: &Query,
+        lines: Option<usize>,
+    ) {
+        match *self {
+            Self::Tally(ref mut found) => {
+                if verdict == Verdict::Hit {
+                    found.push((drafted.1.record().source().uuid.clone(), drafted.0));
+                }
+                if verdict != Verdict::Out {
+                    kept.keep(None, drafted, response);
+                }
+            }
+            Self::Window(ref mut window) => {
+                window.offer(kept, drafted, verdict, response, query, lines);
+            }
+        }
+    }
+}
+
+impl<T> Window<T>
+where
+    T: Select,
+{
+    /// Keeps `draft`, of `verdict`, in `kept` or for later. A match takes
+    /// the records waiting before it, its lines `--grep` matched when
+    /// `lines` asks for them, and opens the window after it. Another record
+    /// in the window is kept as context; one before the window waits.
+    fn offer(
+        &mut self,
+        kept: &mut Kept<T>,
+        (block, mut draft): (usize, Draft<T>),
+        verdict: Verdict,
+        response: Option<&Response>,
+        query: &Query,
+        lines: Option<usize>,
+    ) {
+        match verdict {
+            Verdict::Hit => {
+                if let Some(context) = lines {
+                    let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
+                    *draft.matches_mut() = found;
+                }
+                let at = kept.drafts.len();
+                kept.keep(None, (block, draft), response);
+                for (offset, (earlier, context, of)) in
+                    mem::take(&mut self.before).into_iter().enumerate()
+                {
+                    kept.keep(
+                        Some(at.saturating_add(offset)),
+                        (earlier, context),
+                        of.as_ref(),
+                    );
+                }
+                self.after = self.around;
+            }
+            Verdict::Near if self.after > 0 => {
+                self.after = self.after.saturating_sub(1);
+                draft.mark_context();
+                kept.keep(None, (block, draft), response);
+            }
+            Verdict::Near if self.around > 0 => {
+                draft.mark_context();
+                self.before.push_back((block, draft, response.cloned()));
+                if self.before.len() > self.around {
+                    self.before.pop_front();
+                }
+            }
+            Verdict::Near | Verdict::Out => {}
+        }
+    }
+}
+
+/// The replies of the assistant line `entry` that the including patterns
+/// of `query` match and the other filters let through, by line ID and
+/// block. They are counted, not kept, and a line out of the range is not
+/// masked only to be dropped.
+fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<(String, usize)> {
+    if !query.range.contains(spot.timestamp.instant()) {
+        return Vec::new();
+    }
+    Replies
+        .pick(spot, entry)
+        .into_iter()
+        .filter(|pair| verdict(query, &pair.1) == Verdict::Hit)
+        .map(|(block, _)| (entry.uuid.clone(), block))
+        .collect()
+}
+
+/// Adds the tokens of the assistant line `entry` to `used` when it is in
+/// the range of `query` and the first line of its response, by
+/// `responses`; a line without a response ID is a response of its own.
+fn tally(
+    entry: &Entry,
+    query: &Query,
+    responses: &mut HashSet<String>,
+    used: &mut Vec<(String, Usage)>,
+) {
+    if entry.role == Role::Assistant
+        && let (Some(tokens), Some(timestamp)) = (entry.usage, entry.timestamp)
+        && query.range.contains(timestamp.instant())
+        && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
+    {
+        used.push((entry.message_id.clone(), tokens));
+    }
+}
+
+/// What the filters in `query` make of `draft`.
+fn verdict<T>(query: &Query, draft: &Draft<T>) -> Verdict
 where
     T: Select,
 {
@@ -67,7 +294,7 @@ where
     } else {
         record.grep_text()
     };
-    query.matches(&Facts {
+    query.verdict(&Facts {
         branch: &head.git_branch,
         cwd: &head.cwd,
         is_error: extra.is_error,
@@ -81,7 +308,8 @@ where
 }
 
 /// Reads one transcript and returns its selected records in file order,
-/// and with `usage`, the tokens of each response in the range, once.
+/// with the lines `--grep` matched when `reading` asks for an excerpt, and
+/// when it asks for usage, the tokens of each response in the range, once.
 ///
 /// # Errors
 ///
@@ -91,24 +319,27 @@ pub fn read_file<P>(
     query: &Query,
     mask: &Mask,
     mut picker: P,
-    usage: bool,
+    reading: Reading,
 ) -> Result<Read<P::Record>, String>
 where
     P: Pick,
 {
     let wanted = picker.roles();
     let roles = Roles {
-        assistant: wanted.assistant || usage,
+        assistant: wanted.assistant || reading.usage || reading.mentions,
         user: wanted.user,
     };
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
         .map_err(|error| format!("open transcript: {error}"))?;
     let mut title = String::new();
-    let mut drafts: Vec<(usize, Draft<P::Record>)> = Vec::new();
+    let mut kept = Kept {
+        drafts: Vec::new(),
+        priced: HashSet::new(),
+    };
+    let mut keeper = Keeper::new(reading);
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
-    let mut priced = HashSet::new();
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
@@ -118,13 +349,23 @@ where
             }
             continue;
         }
-        if usage
+        if reading.usage {
+            tally(&entry, query, &mut responses, &mut used);
+        }
+        if let Keeper::Tally(ref mut found) = keeper
             && entry.role == Role::Assistant
-            && let (Some(tokens), Some(timestamp)) = (entry.usage, entry.timestamp)
-            && query.range.contains(timestamp.instant())
-            && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
+            && let Some(timestamp) = entry.timestamp
         {
-            used.push((entry.message_id.clone(), tokens));
+            found.extend(mentioned_replies(
+                &Spot {
+                    file,
+                    line,
+                    mask,
+                    timestamp,
+                },
+                &entry,
+                query,
+            ));
         }
         if !wanted.assistant && entry.role == Role::Assistant {
             continue;
@@ -142,23 +383,17 @@ where
             mask,
             timestamp,
         };
-        let first_new = drafts.len();
-        drafts.extend(
-            picker
-                .pick(&spot, &entry)
-                .into_iter()
-                .filter(|pair| passes(query, &pair.1)),
-        );
-        // A response's lines repeat its tokens, so only the first record
-        // printed from it carries them; a line without an ID is a response
-        // of its own.
-        if let Some(tokens) = entry.usage
-            && let Some(slot) = drafts
-                .get_mut(first_new..)
-                .and_then(|fresh| fresh.iter_mut().find_map(|pair| pair.1.usage_mut()))
-            && (entry.message_id.is_empty() || priced.insert(entry.message_id.clone()))
-        {
-            *slot = Some(tokens);
+        let response = Response::of(&entry, line);
+        for drafted in picker.pick(&spot, &entry) {
+            let found = verdict(query, &drafted.1);
+            keeper.offer(
+                &mut kept,
+                drafted,
+                found,
+                response.as_ref(),
+                query,
+                reading.excerpt,
+            );
         }
     }
     // Titles are generated from the conversation, so a pasted secret can
@@ -169,12 +404,14 @@ where
         masked: file.parent.is_none().then_some(&title_masked),
         text: &masked_title,
     };
-    let records = drafts
+    let records = kept
+        .drafts
         .into_iter()
         .map(|(block, draft)| (block, mask.seal(draft, &sealing)))
         .collect();
     let stats = lines.stats();
     Ok(Read {
+        mentions: keeper.mentions(),
         records,
         skipped: Skipped {
             oversized: stats.oversized,

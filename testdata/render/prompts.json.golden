@@ -1,5 +1,5 @@
 {
-  "schema": 2,
+  "schema": 3,
   "filter": "strict-v2",
   "ccdig": "0.1.0",
   "run": {
@@ -29,7 +29,9 @@
         "file": "/home/alice/.claude/projects/-Users-alice-blog/1111.jsonl",
         "line": 4,
         "uuid": "u-1"
-      }
+      },
+      "matched": true,
+      "matches": []
     }
   ]
 }

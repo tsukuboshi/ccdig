@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use super::mask::Mask;
 use super::{Corpus, Select};
-use crate::record::{AGENT, Session};
+use crate::record::{AGENT, Record, Session};
 use crate::redact::Counts;
 use crate::transcript::entry::Usage;
 use crate::transcript::walk::SessionFile;
@@ -16,6 +16,9 @@ use crate::when::Stamp;
 pub struct FileRecords<'file, T> {
     /// The transcript file.
     pub file: &'file SessionFile,
+    /// With `Reading::mentions`, the prompts and replies the including
+    /// patterns matched, by line ID and block.
+    pub mentions: Option<Vec<(String, usize)>>,
     /// When the file was last written to.
     pub modified: Stamp,
     /// The records, each with its block's index in the line.
@@ -26,8 +29,15 @@ pub struct FileRecords<'file, T> {
 
 /// Keeps each record once across sessions, in session order, and builds
 /// the session records. A resumed or forked session starts with a copy of
-/// earlier entries, IDs included; the first session in order wins.
-pub fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>, mask: &Mask) -> Corpus<T>
+/// earlier entries, IDs included; the first session in order wins. A
+/// record `--around` kept as context goes too when no match it is within
+/// `around` records of is left in its file.
+pub fn gather<T>(
+    sessions: Vec<FileRecords<'_, T>>,
+    warnings: Vec<String>,
+    mask: &Mask,
+    around: usize,
+) -> Corpus<T>
 where
     T: Select,
 {
@@ -35,23 +45,63 @@ where
     // The responses already added to a session, which a resumed copy
     // repeats.
     let mut priced: HashSet<String> = HashSet::new();
+    // The matched prompts and replies already counted, which a resumed copy
+    // repeats.
+    let mut mentioned: HashSet<(String, usize)> = HashSet::new();
     let mut corpus = Corpus {
         records: Vec::new(),
         sessions: Vec::new(),
         warnings,
     };
     for session in sessions {
+        // Whether each record is new, here and in the files before. Only a
+        // record kept is marked as seen, so context a copy drops can come
+        // back for a later match.
+        let mut here = HashSet::new();
+        let fresh: Vec<bool> = session
+            .records
+            .iter()
+            .map(|&(block, ref record)| {
+                let key = (record.source().uuid.clone(), block);
+                key.0.is_empty() || (!seen.contains(&key) && here.insert(key))
+            })
+            .collect();
+        let near = near_a_match(&session.records, &fresh, around);
         let kept: Vec<T> = session
             .records
             .into_iter()
-            .filter(|&(block, ref record)| {
+            .zip(fresh.iter().zip(near))
+            .filter(|&(ref pair, (&is_fresh, is_near))| is_fresh && (pair.1.matched() || is_near))
+            .map(|((block, record), _)| {
                 let uuid = &record.source().uuid;
-                uuid.is_empty() || seen.insert((uuid.clone(), block))
+                if !uuid.is_empty() {
+                    seen.insert((uuid.clone(), block));
+                }
+                record
             })
-            .map(|(_, record)| record)
             .collect();
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
+        };
+        let match_count = match session.mentions {
+            Some(found) => {
+                let count = found
+                    .into_iter()
+                    .filter(|key| key.0.is_empty() || mentioned.insert(key.clone()))
+                    .count();
+                if count == 0 {
+                    // A resumed copy repeats these responses, and must not
+                    // count them as its own.
+                    for response in &session.usage {
+                        if !response.0.is_empty() {
+                            priced.insert(response.0.clone());
+                        }
+                    }
+                    continue;
+                }
+                Some(count)
+            }
+            None => None,
         };
         let mut usage = Usage::default();
         for (id, tokens) in session.usage {
@@ -75,12 +125,51 @@ where
             started_at: head.timestamp,
             ended_at: last.head().timestamp,
             prompt_count: kept.len(),
+            match_count,
             usage,
             masked,
         });
         corpus.records.extend(kept);
     }
     corpus
+}
+
+/// For each of `records`, whether a match that is `fresh` is at most
+/// `around` records away, looking both ways in one pass each. The records
+/// of a file are its matches and the context `Window` kept around them, so
+/// a record of context is within `around` of the match it was kept for.
+fn near_a_match<T>(records: &[(usize, T)], fresh: &[bool], around: usize) -> Vec<bool>
+where
+    T: Record,
+{
+    let hits: Vec<bool> = records
+        .iter()
+        .zip(fresh)
+        .map(|(pair, &is_fresh)| is_fresh && pair.1.matched())
+        .collect();
+    let mut near = vec![false; hits.len()];
+    // How far the last match is, in the direction of the pass.
+    let mut pass = |index: usize, since: &mut Option<usize>| {
+        if hits.get(index).copied().unwrap_or_default() {
+            *since = Some(0);
+        } else {
+            *since = since.map(|count| count.saturating_add(1));
+        }
+        if since.is_some_and(|count| count <= around)
+            && let Some(slot) = near.get_mut(index)
+        {
+            *slot = true;
+        }
+    };
+    let mut since = None;
+    for index in 0..hits.len() {
+        pass(index, &mut since);
+    }
+    since = None;
+    for index in (0..hits.len()).rev() {
+        pass(index, &mut since);
+    }
+    near
 }
 
 /// Gives the records of a sub-agent's transcript the title of its session,

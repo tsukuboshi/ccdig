@@ -48,6 +48,37 @@ pub enum Kind {
     Text,
 }
 
+/// A line of a record that `--grep` matched, or one around it, for
+/// `--context`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct MatchLine {
+    /// The text the line is in: `text`, or for a tool call, where the
+    /// string is in the input, such as `input.command`.
+    pub field: String,
+    /// The 1-based number of the line in that text.
+    pub line: usize,
+    /// The line, masked, without its line break.
+    pub text: String,
+    /// Whether `--grep` matched the line, rather than it being one around
+    /// a matched line.
+    pub hit: bool,
+}
+
+/// What the search made of a record, the last keys of every kind.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Search {
+    /// Whether `--grep` matched the record: `false` for one `--around`
+    /// adds next to a match, `true` otherwise.
+    pub matched: bool,
+    /// With `--context`, the lines `--grep` matched and those around them,
+    /// in order; empty otherwise, or when no single line matched.
+    pub matches: Vec<MatchLine>,
+}
+
 /// A prompt a person typed: a `prompt` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
@@ -71,6 +102,9 @@ pub struct Prompt {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What the search made of the record.
+    #[serde(flatten)]
+    pub search: Search,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -87,8 +121,15 @@ pub trait Record {
         all.merge(self.own_masked());
         all
     }
+    /// Whether `--grep` matched the record, rather than `--around` adding
+    /// it as context.
+    fn matched(&self) -> bool {
+        self.search().matched
+    }
     /// What masking the record's own fields counted.
     fn own_masked(&self) -> &Counts;
+    /// What the search made of the record.
+    fn search(&self) -> &Search;
     /// Where the line is.
     fn source(&self) -> &Source;
     /// The sub-agent file name, or empty for the session itself.
@@ -120,6 +161,9 @@ pub struct Reply {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What the search made of the record.
+    #[serde(flatten)]
+    pub search: Search,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -158,6 +202,9 @@ pub struct Session {
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
+    /// With `--grep` or `--igrep`, how many of the session's prompts and
+    /// replies they matched; `null` otherwise.
+    pub match_count: Option<usize>,
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
@@ -183,6 +230,9 @@ pub struct Summary {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What the search made of the record.
+    #[serde(flatten)]
+    pub search: Search,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -226,6 +276,9 @@ pub struct ToolCall {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What the search made of the record.
+    #[serde(flatten)]
+    pub search: Search,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -259,6 +312,9 @@ pub struct ToolResult {
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
+    /// What the search made of the record.
+    #[serde(flatten)]
+    pub search: Search,
     /// The skill running when the call was made, for `--skill`; not
     /// written.
     #[serde(skip)]
@@ -295,6 +351,10 @@ impl Record for Prompt {
         &self.masked
     }
 
+    fn search(&self) -> &Search {
+        &self.search
+    }
+
     fn source(&self) -> &Source {
         &self.source
     }
@@ -311,6 +371,10 @@ impl Record for Reply {
 
     fn own_masked(&self) -> &Counts {
         &self.masked
+    }
+
+    fn search(&self) -> &Search {
+        &self.search
     }
 
     fn source(&self) -> &Source {
@@ -331,6 +395,10 @@ impl Record for Summary {
         &self.masked
     }
 
+    fn search(&self) -> &Search {
+        &self.search
+    }
+
     fn source(&self) -> &Source {
         &self.source
     }
@@ -347,6 +415,10 @@ impl Record for ToolCall {
 
     fn own_masked(&self) -> &Counts {
         &self.masked
+    }
+
+    fn search(&self) -> &Search {
+        &self.search
     }
 
     fn source(&self) -> &Source {
@@ -367,12 +439,26 @@ impl Record for ToolResult {
         &self.masked
     }
 
+    fn search(&self) -> &Search {
+        &self.search
+    }
+
     fn source(&self) -> &Source {
         &self.source
     }
 
     fn subagent(&self) -> &str {
         &self.subagent
+    }
+}
+
+impl Default for Search {
+    /// A record the search matched, with no lines listed.
+    fn default() -> Self {
+        Self {
+            matched: true,
+            matches: Vec::new(),
+        }
     }
 }
 
@@ -396,6 +482,10 @@ impl Record for Turn {
 
     fn own_masked(&self) -> &Counts {
         self.inner().own_masked()
+    }
+
+    fn search(&self) -> &Search {
+        self.inner().search()
     }
 
     fn source(&self) -> &Source {

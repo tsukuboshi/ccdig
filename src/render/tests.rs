@@ -9,7 +9,7 @@ use super::digest::{Limits, digest};
 use super::json::{Run, document, lines};
 use super::markdown;
 use crate::record::{
-    AGENT, Head, Kind, Prompt, Reply, Session, Source, ToolCall, ToolResult, Turn,
+    AGENT, Head, Kind, Prompt, Reply, Search, Session, Source, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, golden, zone};
@@ -52,6 +52,7 @@ fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
         command: String::new(),
         redacted: false,
         source: source(file, 0, ""),
+        search: Search::default(),
     }
 }
 
@@ -76,6 +77,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             command: "/weekly-report".to_owned(),
             redacted: false,
             source: source(BLOG_FILE, 4, "u-1"),
+            search: Search::default(),
         },
         Prompt {
             permission_mode: String::new(),
@@ -86,6 +88,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             command: String::new(),
             redacted: true,
             source: source(BLOG_FILE, 9, "u-2"),
+            search: Search::default(),
         },
     ])
 }
@@ -106,6 +109,7 @@ fn sample_session() -> Result<Session, String> {
         started_at: at("2026-10-13T01:23:45.678Z")?,
         ended_at: at("2026-10-13T01:30:00Z")?,
         prompt_count: 2,
+        match_count: None,
     })
 }
 
@@ -185,7 +189,7 @@ fn sessions_as_json_lines() -> TestResult {
 fn sessions_as_a_markdown_table() -> TestResult {
     golden(
         "render/sessions.md.golden",
-        &markdown::sessions(&[sample_session()?], &tokyo()?)?,
+        &markdown::sessions(&[sample_session()?], &tokyo()?, false)?,
     )
 }
 
@@ -274,6 +278,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         subagent: String::new(),
         redacted: false,
         source: source(BLOG_FILE, 5, "a-1"),
+        search: Search::default(),
     };
     let call = ToolCall {
         usage: None,
@@ -290,6 +295,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
             2,
             "a-2",
         ),
+        search: Search::default(),
     };
     let result = ToolResult {
         masked: Counts::default(),
@@ -306,6 +312,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
             3,
             "u-3",
         ),
+        search: Search::default(),
         skill: "weekly-report".to_owned(),
     };
     let orphan = ToolResult {
@@ -317,6 +324,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         text: "ok".to_owned(),
         subagent: String::new(),
         source: source(BLOG_FILE, 7, "u-4"),
+        search: Search::default(),
         ..result.clone()
     };
     let zone = tokyo()?;

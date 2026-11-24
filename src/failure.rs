@@ -5,6 +5,12 @@ use std::io;
 /// An error that stops a command. The message is printed after `ccdig: `.
 #[derive(Debug, thiserror::Error)]
 pub enum Failure {
+    /// `--around` is given without a pattern for it to find.
+    #[error("--around needs --grep or --igrep with a pattern that does not start with !")]
+    AroundNeedsGrep,
+    /// `--context` is given without a pattern for it to find.
+    #[error("--context needs --grep or --igrep with a pattern that does not start with !")]
+    ContextNeedsGrep,
     /// The digest limits are not both positive.
     #[error("--max-prompt-chars and --max-session-chars must be positive")]
     DigestLimitNotPositive,
@@ -78,6 +84,12 @@ pub enum Failure {
     /// `--no-mask` is given with `--mask` or `--mask-values`.
     #[error("--no-mask cannot be used with --mask or --mask-values")]
     MaskWithNoMask,
+    /// `--session current` is given outside Claude Code, where no variable
+    /// names the session ccdig runs in.
+    #[error(
+        "--session current: CLAUDE_CODE_SESSION_ID is not set; run ccdig inside Claude Code or give a session ID"
+    )]
+    NoCurrentSession,
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]
     Rules(#[source] regex::Error),

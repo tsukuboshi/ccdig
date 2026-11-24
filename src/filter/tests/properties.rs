@@ -8,7 +8,7 @@ use proptest::prop_oneof;
 use proptest::sample::select;
 use proptest::strategy::Strategy;
 
-use crate::filter::{Facts, Filter, Query, compile_grep};
+use crate::filter::{Facts, Filter, Query, Verdict, compile_grep, patterns};
 use crate::testing::{TestResult, check_eq, for_all, hostile_text};
 
 /// Names a record and a filter share, so that values match often.
@@ -111,7 +111,11 @@ fn name_values_split_into_include_and_exclude_and_spell_back() -> TestResult {
 #[test]
 fn an_empty_query_lets_every_record_through() -> TestResult {
     for_all(&record(), |record| {
-        check_eq(&Query::default().matches(&record.facts()), &true, "matches")?;
+        check_eq(
+            &(Query::default().verdict(&record.facts()) == Verdict::Hit),
+            &true,
+            "matches",
+        )?;
         Ok(())
     })
 }
@@ -126,15 +130,55 @@ fn excluding_more_never_lets_more_through_and_excluding_the_branch_drops_the_rec
             let mut narrower = query.clone();
             narrower.branches.exclude.push(extra.to_owned());
             narrower.tools.exclude.push(extra.to_owned());
-            if narrower.matches(&facts) {
-                check_eq(&query.matches(&facts), &true, "the wider query")?;
+            if narrower.verdict(&facts) == Verdict::Hit {
+                check_eq(
+                    &(query.verdict(&facts) == Verdict::Hit),
+                    &true,
+                    "the wider query",
+                )?;
             }
             let mut without_branch = query;
             without_branch
                 .branches
                 .exclude
                 .push(facts.branch.to_owned());
-            check_eq(&without_branch.matches(&facts), &false, "branch excluded")?;
+            check_eq(
+                &(without_branch.verdict(&facts) == Verdict::Hit),
+                &false,
+                "branch excluded",
+            )?;
+            Ok(())
+        },
+    )
+}
+
+/// The `--grep` and `--igrep` values: escaped names, some with a leading
+/// `!`.
+fn grep_values() -> impl Strategy<Value = Vec<String>> {
+    let value = prop_oneof![
+        select(NAMES).prop_map(regex::escape),
+        select(NAMES).prop_map(|name| format!("!{}", regex::escape(name))),
+    ];
+    vec(value, 0..3)
+}
+
+#[test]
+fn the_verdict_is_the_other_filters_then_the_excluding_and_including_patterns() -> TestResult {
+    for_all(
+        &(query(), grep_values(), grep_values(), record()),
+        |(base, grep, igrep, record)| {
+            let query = Query {
+                grep: patterns(&grep, &igrep)?,
+                ..base
+            };
+            let facts = record.facts();
+            let open = query.admits(&facts) && !query.grep.excludes(facts.text);
+            let want = match (open, query.grep.includes(facts.text)) {
+                (false, _) => Verdict::Out,
+                (true, true) => Verdict::Hit,
+                (true, false) => Verdict::Near,
+            };
+            check_eq(&query.verdict(&facts), &want, "verdict")?;
             Ok(())
         },
     )

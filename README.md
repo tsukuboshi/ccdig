@@ -4,7 +4,7 @@
 
 Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
-session, branch, text, kind of record, tool, outcome, and skill to narrow
+session, branch, text, record type, tool, outcome, and skill to narrow
 the history down to the part that matters, and write it as Markdown to
 read or JSON Lines to process. Common secrets are masked by default, and
 email addresses, IP addresses, your user name, and values you list can be
@@ -54,6 +54,11 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 
 # Replies in the blog project that mention "deploy", ignoring case
 ccdig records --type reply --project blog --igrep deploy
+
+# From Claude Code, search the other sessions' prompts and replies, 20 at
+# most, leaving out the session doing the search
+ccdig records --session '!current' --type prompt,reply --igrep deploy \
+  --format md --limit 20
 
 # Failed Bash calls, with sub-agents, as Markdown
 ccdig records --type result --tool Bash --status error --subagents --format md
@@ -110,11 +115,24 @@ Four options apply to some kinds only:
   `--tool`, `--status`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
 - Each of the four needs a `--type` it applies to, or the command fails.
+- A search without `--type` reads the tool calls too, and a call's input
+  can be long: give `--type prompt,reply` and `--limit` to keep the output
+  small.
+- Sub-agent transcripts are left out unless `--subagents` is given. The
+  instruction a sub-agent was given is not a prompt a person typed, so it
+  is never listed; its replies, calls, and results are.
+- `--around N` also lists the N records before and after each record
+  `--grep` or `--igrep` matched, such as the prompt a matched reply
+  answered: records of the types `--type` picks that pass every other
+  filter, from the same file. They have `matched` false, and in Markdown
+  `(context)` after their kind. A record a `!` pattern leaves out is not
+  listed as context either. It needs a pattern without a leading `!`.
 
-Two options shape the output:
+Three options shape the output:
 
 | Flag | Does |
 | --- | --- |
+| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
 | `--max-input-chars N` | With `--format md`, cuts each string in a tool call's input to N characters, followed by `… (M more characters)`, so a `Write` of a whole file does not fill the page. JSON and JSON Lines are never cut |
 
@@ -122,6 +140,16 @@ Two options shape the output:
 
 One record per session that has a selected prompt: the filters apply to
 the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
+
+- `--grep` and `--igrep` pick the sessions whose prompts or replies they
+  match, and `match_count` says how many of them matched in each, so the
+  session that mentions a word most can be read first. The other keys
+  come from every prompt the other filters keep, as without `--grep`,
+  less those a pattern with a leading `!` leaves out, and Markdown adds a
+  `Matches` column. Without a pattern that does not start
+  with `!`, `match_count` is `null`.
+- `prompt_count`, `started_at`, and `ended_at` count and span the selected
+  prompts.
 
 ### digest
 
@@ -140,7 +168,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.1","schema":2,"filter":"strict-v2"}
+{"version":"0.0.1","schema":3,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -155,7 +183,7 @@ of a repeatable flag on both sides add up.
 | `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD` |
 | `--tz` | Day boundaries and Markdown times in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
 | `--project` | Projects whose directory name or cwd contains the value |
-| `--session` | Sessions whose ID starts with the value |
+| `--session` | Sessions whose ID starts with the value, or with `current`, the session ccdig runs in |
 | `--branch` | Records on this git branch |
 | `--grep` | Records whose text matches the regular expression |
 | `--igrep` | The same, ignoring case |
@@ -167,6 +195,10 @@ of a repeatable flag on both sides add up.
   drops the records that mention `WIP`. Write `\!` for a value that starts
   with `!`, and quote such a value, as `!` starts a history expansion in
   most shells.
+- `--session current` is the session Claude Code runs ccdig in, read from
+  `CLAUDE_CODE_SESSION_ID`, so `--session '!current'` leaves out the
+  session that is doing the search. Outside Claude Code, `current` is an
+  error.
 - `--grep` searches the text as it will be printed: after masking, so a
   secret cannot be found by its value. It reads the prompt or reply text,
   a call's input as compact JSON, or a result's text.
@@ -192,8 +224,9 @@ masked; the Masking section lists the rules.
 
 ### Output
 
-`--limit N` prints the first N records. `--format` belongs to each
-command; see Commands.
+`--limit N` prints the first N records. With `--around`, it counts the
+records that matched and keeps the context after the last of them.
+`--format` belongs to each command; see Commands.
 
 ### Environment variables
 
@@ -201,6 +234,7 @@ command; see Commands.
 | --- | --- | --- |
 | `CCDIG_ROOT` | `--root` | A directory. It comes before `CLAUDE_CONFIG_DIR` |
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code's own variable; its `projects` directory is the root |
+| `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code's own variable; the ID of the session it runs ccdig in |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` or `fail` |
 | `CCDIG_MASK` | `--mask` | A comma-separated list |
 | `CCDIG_MASK_VALUES` | `--mask-values` | One JSON object, or `@` and a file |
@@ -223,12 +257,13 @@ command; see Commands.
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
-           "line":3,"uuid":"<entry uuid>"}}
+           "line":3,"uuid":"<entry uuid>"},
+ "matched":true,"matches":[]}
 ```
 
 Every record starts with `type`, the kind `--type` names. The other kinds
-have the same keys from `type` to `timestamp`, and end with `redacted` and
-`source`:
+have the same keys from `type` to `timestamp`, and end with `redacted`,
+`source`, `matched`, and `matches`:
 
 | Type | Keys in between |
 | --- | --- |
@@ -237,8 +272,23 @@ have the same keys from `type` to `timestamp`, and end with `redacted` and
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-Every key is always present.
+Every key is always present. The `kind` of a prompt is how it was typed,
+`slash` or `text`; the record type is `type`, which `--type` picks.
 
+- `matched` is `false` for a record `--around` lists next to a match, and
+  `true` for every other record.
+- `matches` lists, with `--context`, the lines `--grep` or `--igrep`
+  matched and those around them, in order: `field` is the text the line is
+  in, `text` for every kind but a call, and for a call where the string is
+  in its input, such as `input.command` or `input.edits[0].new_string`,
+  with a key other than letters, digits, `_`, and `-` quoted, as in
+  `input["a.b"]`; `line` is the line's 1-based
+  number in that text, `text` the line, masked, and `hit` whether a
+  pattern matched it. Each pattern is tried on each line alone, so `^` and
+  `$` match at the start and end of each line, and a match that spans
+  lines, is in a call's key names, or needs the escapes of the call's
+  compact JSON, such as `\\`, lists no line, and the record is printed
+  whole. Without `--context`, `matches` is empty.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
@@ -276,7 +326,7 @@ Every key is always present.
 run:
 
 ```json
-{"schema":2,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -295,6 +345,26 @@ A script can check `schema` and `filter` with
 `ccdig version --format json` before it reads the output.
 
 ### Markdown
+
+`records --format md` puts the records of each transcript file under one
+heading with the project and session, and each record under a heading
+with its time and kind. A sub-agent's record names the sub-agent at the
+end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
+`agent-1` ``, so it stands apart from the session's own records.
+
+With `--context`, a record shows its matched lines in place of its text:
+each run of adjacent lines is a list item that says which lines it holds,
+and which of them matched, followed by the lines in a text block. The
+numbers stay out of the block, apart from any numbers in the text, such
+as those of a file a tool read:
+
+````markdown
+- Lines 41-43, matched 42
+
+```text
+...
+```
+````
 
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened
@@ -393,7 +463,8 @@ comma-separated or repeated, as in `--mask email,user`:
 These masks and `--mask-values` also apply to the fields that are not
 text: `project`, `cwd`, `git_branch`, file paths, `tool`, `model`,
 `subagent`, `command`, the keys of a tool's input, and the warnings on
-stderr. The built-in rules leave the keys alone.
+stderr. The keys of a tool's input get the built-in rules too, so a
+secret used as a key, such as a token, is masked there.
 
 - A key that masking makes equal to an earlier one, such as two masked
   file paths, gets `#2`, `#3`, and so on, so both values stay.

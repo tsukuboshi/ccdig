@@ -762,13 +762,30 @@ fn redact_json_numbers_the_keys_that_masking_makes_equal() -> TestResult {
 }
 
 #[test]
-fn redact_json_leaves_keys_alone_without_extra_masks() -> TestResult {
+fn redact_json_masks_a_secret_in_a_key_and_leaves_the_other_keys_alone() -> TestResult {
     let redactor = Redactor::new()?;
     let token = fake_github("ghp");
-    let mut value = json!({ "corp-internal": 1_i32, token: 2_i32 });
-    let before = value.clone();
-    check_eq(&redactor.redact_json(&mut value), &false, "changed")?;
-    check_eq(&value, &before, "keys")?;
+    let mut plain = json!({ "corp-internal": 1_i32, "command": "ls" });
+    let before = plain.clone();
+    check_eq(
+        &redactor.redact_json(&mut plain),
+        &false,
+        "plain keys changed",
+    )?;
+    check_eq(&plain, &before, "plain keys")?;
+    let mut secret = json!({ token.clone(): 2_i32 });
+    let mut counts = Counts::default();
+    check_eq(
+        &redactor.redact_json_counted(&mut secret, &mut counts),
+        &true,
+        "a secret key changed",
+    )?;
+    check_eq(
+        &secret.to_string().contains(&token),
+        &false,
+        &secret.to_string(),
+    )?;
+    check_eq(&counts.ranked().is_empty(), &false, "counted")?;
     Ok(())
 }
 

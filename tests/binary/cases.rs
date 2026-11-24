@@ -7,22 +7,23 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// The variables ccdig reads its defaults from.
-const VARIABLES: [&str; 5] = [
+const VARIABLES: [&str; 6] = [
     "CCDIG_MASK",
     "CCDIG_MASK_VALUES",
     "CCDIG_ON_SKIP",
     "CCDIG_ROOT",
+    "CLAUDE_CODE_SESSION_ID",
     "CLAUDE_CONFIG_DIR",
 ];
 
-/// Runs ccdig with `args` and `TZ` set to `tz`, without the `CCDIG_*`
-/// variables of the test process.
+/// Runs ccdig with `args` and `TZ` set to `tz`, without the variables in
+/// `VARIABLES` that the test process has.
 fn ccdig(args: &[&str], tz: &str) -> io::Result<Output> {
     ccdig_with(args, tz, &[])
 }
 
-/// Runs ccdig with `args`, `TZ` set to `tz`, and only the `CCDIG_*`
-/// variables in `vars`.
+/// Runs ccdig with `args`, `TZ` set to `tz`, and only the variables of
+/// `VARIABLES` given in `vars`.
 fn ccdig_with(args: &[&str], tz: &str, vars: &[(&str, &str)]) -> io::Result<Output> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_ccdig"));
     for name in VARIABLES {
@@ -174,6 +175,33 @@ fn ccdig_root_is_the_default_root_and_empty_variables_are_unset() -> Result<(), 
     let stderr = String::from_utf8(replaced.stderr)?;
     if replaced.status.code() != Some(1_i32) || !stderr.starts_with("ccdig: list projects:") {
         return Err(format!("--root: status {:?}, stderr {stderr:?}", replaced.status).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn session_current_reads_claude_code_session_id() -> Result<(), Box<dyn Error>> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata/root")
+        .to_string_lossy()
+        .into_owned();
+    let args = week(&root, &["--session", "current"]);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let inside = ccdig_with(
+        &refs,
+        "Asia/Tokyo",
+        &[(
+            "CLAUDE_CODE_SESSION_ID",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        )],
+    )?;
+    let lines = String::from_utf8(inside.stdout)?.lines().count();
+    if !inside.status.success() || lines != 1 {
+        return Err(format!("inside: status {:?}, {lines} lines", inside.status).into());
+    }
+    let outside = ccdig(&refs, "Asia/Tokyo")?;
+    if outside.status.code() != Some(1_i32) {
+        return Err(format!("outside: status {:?}", outside.status).into());
     }
     Ok(())
 }

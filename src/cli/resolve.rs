@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use super::args::{Activity, Command, Common, MaskKind, RecordType, Status, mask_kinds, on_skip};
 use super::environment::Environment;
 use super::values::{self, Values};
+use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::config::{Config, Format, Shared};
@@ -31,9 +32,16 @@ struct Flags {
 /// The kind-specific filters, empty for `sessions` and `digest`.
 #[derive(Default)]
 struct Narrowing {
+    /// `--around`: how many records around each match to keep.
+    around: Option<usize>,
+    /// `--context`: how many lines around each matched line to list.
+    context: Option<usize>,
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
+    /// For `sessions`: whether a search counts the prompts and replies it
+    /// matches.
+    mentions: bool,
     /// `--skill`.
     skills: Vec<String>,
     /// `--subagents`.
@@ -60,6 +68,13 @@ impl Flags {
     fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
         let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
         let grep = patterns(&self.common.grep, &self.common.igrep)?;
+        let finds = !grep.include.is_empty();
+        if narrowing.around.is_some() && !finds {
+            return Err(Failure::AroundNeedsGrep);
+        }
+        if narrowing.context.is_some() && !finds {
+            return Err(Failure::ContextNeedsGrep);
+        }
         let range = DayRange::parse(
             self.common.since.as_deref().unwrap_or_default(),
             self.common.until.as_deref().unwrap_or_default(),
@@ -67,6 +82,7 @@ impl Flags {
         )?;
         let root = self.history_root(environment)?;
         let user = self.user(environment)?;
+        let sessions = current_session(&self.common.sessions, environment)?;
         let Self {
             common,
             git_users,
@@ -102,9 +118,16 @@ impl Flags {
                 is_error: narrowing.is_error,
                 projects: Filter::names(common.projects),
                 range,
-                sessions: Filter::names(common.sessions),
+                sessions: Filter::names(sessions),
                 skills: Filter::names(narrowing.skills),
                 tools: Filter::names(narrowing.tools),
+            },
+            reading: Reading {
+                around: narrowing.around,
+                excerpt: narrowing.context,
+                mentions: narrowing.mentions && finds,
+                subagents: narrowing.subagents,
+                usage: narrowing.usage,
             },
             root,
             run: Run {
@@ -115,8 +138,6 @@ impl Flags {
                 mask_values: values.labels,
                 no_mask: common.no_mask,
             },
-            subagents: narrowing.subagents,
-            usage: narrowing.usage,
             zone,
         })
     }
@@ -233,6 +254,39 @@ fn check_kinds(kinds: Types, activity: &Activity, tool: bool, status: bool) -> R
     Ok(())
 }
 
+/// The `--session` values with `current`, alone or after `!`, replaced by
+/// the ID of the session ccdig runs in.
+///
+/// # Errors
+///
+/// When `current` is given and the environment names no session.
+fn current_session(sessions: &[String], environment: &Environment) -> Result<Vec<String>, Failure> {
+    sessions
+        .iter()
+        .map(|value| {
+            let (bang, name) = value
+                .strip_prefix('!')
+                .map_or(("", value.as_str()), |name| ("!", name));
+            if name != "current" {
+                return Ok(value.clone());
+            }
+            let id = environment
+                .session_id
+                .as_deref()
+                .ok_or(Failure::NoCurrentSession)?;
+            // `Filter::names` reads a leading `!` as leaving out, so an ID
+            // that starts with one is escaped to stay an ID.
+            let shown = id.to_string_lossy();
+            let escape = if bang.is_empty() && shown.starts_with('!') {
+                "\\"
+            } else {
+                ""
+            };
+            Ok(format!("{bang}{escape}{shown}"))
+        })
+        .collect()
+}
+
 /// Checks the digest limits and converts them.
 fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failure> {
     let (Ok(prompt), Ok(session)) = (
@@ -328,7 +382,9 @@ pub fn resolve(
         }
         Command::Records {
             activity,
+            around,
             common: later,
+            context,
             max_input_chars,
             output,
             statuses,
@@ -345,6 +401,8 @@ pub fn resolve(
             let format = output.format.into();
             let input_chars = input_limit(max_input_chars, format)?;
             let narrowing = Narrowing {
+                around,
+                context,
                 is_error: status_filter(&statuses),
                 tools,
                 ..activity.into()
@@ -363,6 +421,7 @@ pub fn resolve(
         } => {
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             let narrowing = Narrowing {
+                mentions: true,
                 usage: true,
                 ..Narrowing::default()
             };

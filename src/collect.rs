@@ -3,6 +3,7 @@
 //! records with their text masked, filter them, mask their metadata, and
 //! join the files, dropping resumed copies.
 
+mod excerpt;
 mod gather;
 pub mod kinds;
 pub mod mask;
@@ -17,7 +18,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Record, Session};
+use crate::record::{AGENT, Head, Record, Search, Session};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -33,6 +34,26 @@ pub struct Corpus<T> {
     pub sessions: Vec<Session>,
     /// What was skipped, each a line for stderr.
     pub warnings: Vec<String>,
+}
+
+/// How to read the transcripts, besides which records to pick and keep.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Reading {
+    /// With `--around`, how many records before and after a record
+    /// `--grep` matched to keep as context.
+    pub around: Option<usize>,
+    /// With `--context`, how many lines around each line `--grep` matched
+    /// to list in a record's `matches`.
+    pub excerpt: Option<usize>,
+    /// For `sessions --grep`: whether to keep every prompt the other
+    /// filters let through and count the prompts and replies the including
+    /// patterns match, rather than keep only the prompts they match.
+    pub mentions: bool,
+    /// Whether to read sub-agent transcripts too.
+    pub subagents: bool,
+    /// Whether to add up the tokens of each session's responses in the
+    /// range.
+    pub usage: bool,
 }
 
 /// One kind of record and how it is picked out of transcript lines. A
@@ -60,6 +81,12 @@ pub trait Select: Record {
     /// The kind's own facts for the filters.
     fn extra(&self) -> Extra<'_>;
 
+    /// The texts `--context` lists lines of, each named for `field`:
+    /// `text` by default.
+    fn grep_fields(&self) -> Vec<(String, Cow<'_, str>)> {
+        vec![("text".to_owned(), self.grep_text())]
+    }
+
     /// What `--grep` searches, built only when `--grep` is given.
     fn grep_text(&self) -> Cow<'_, str>;
 
@@ -72,6 +99,10 @@ pub trait Select: Record {
 
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
+
+    /// What the search made of the record, which `--around` and
+    /// `--context` fill in.
+    fn search_mut(&mut self) -> &mut Search;
 
     /// Where the kind carries the tokens of its response, `None` for a kind
     /// that does not.
@@ -134,8 +165,8 @@ impl Spot<'_> {
 }
 
 /// Reads every transcript under `root` and keeps the records that
-/// `new_picker` picks and `query` lets through, and with `usage`, adds up
-/// the tokens of each session's responses in the range. A file that cannot
+/// `new_picker` picks and `query` lets through, reading them as `reading`
+/// says. A file that cannot
 /// be read is skipped with a warning, so one bad file does not hide the
 /// rest.
 ///
@@ -145,8 +176,7 @@ impl Spot<'_> {
 /// shown is skipped with a warning.
 pub fn collect<P, F>(
     root: &Path,
-    subagents: bool,
-    usage: bool,
+    reading: Reading,
     query: &Query,
     mask: &Mask,
     new_picker: F,
@@ -155,7 +185,7 @@ where
     P: Pick,
     F: Fn() -> P,
 {
-    let found = walk::find_sessions(root, subagents).map_err(Failure::ListProjects)?;
+    let found = walk::find_sessions(root, reading.subagents).map_err(Failure::ListProjects)?;
     let mut warnings: Vec<String> = found
         .warnings
         .iter()
@@ -182,11 +212,11 @@ where
             // Last written before the first day: nothing to find.
             continue;
         }
-        match read_file(file, query, mask, new_picker(), usage) {
+        match read_file(file, query, mask, new_picker(), reading) {
             Ok(read) => {
                 if file.parent.is_some() {
                     own_titles.insert(file.path.clone(), read.title_masked);
-                } else if subagents && !read.title.is_empty() {
+                } else if reading.subagents && !read.title.is_empty() {
                     titles.insert(file.path.clone(), (read.title, read.title_masked));
                 } else {
                     // No sub-agent reads this title.
@@ -199,6 +229,7 @@ where
                     sessions.push(FileRecords {
                         file,
                         modified,
+                        mentions: read.mentions,
                         records: read.records,
                         usage: read.usage,
                     });
@@ -239,7 +270,12 @@ where
         .iter()
         .map(|warning| mask.meta(warning, &mut Counts::default()))
         .collect();
-    Ok(gather(sessions, shown, mask))
+    Ok(gather(
+        sessions,
+        shown,
+        mask,
+        reading.around.unwrap_or_default(),
+    ))
 }
 
 /// A warning about `path`. Control characters are neutralized because the
