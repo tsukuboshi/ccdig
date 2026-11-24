@@ -234,3 +234,38 @@ fn max_input_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn context_reads_only_the_strings_of_a_call_s_input() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/uuuu.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"u-1","sessionId":"uuuu","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_u1","name":"Edit","input":{"replace_all":true,"limit":3,"offset":null,"edits":[{"new_string":"a\ncloud edition"}]}}]}}"#,
+        ],
+    )?;
+    let got = records(
+        &history,
+        &[
+            "records",
+            "--session",
+            "uuuu",
+            "--type",
+            "call",
+            "--grep",
+            "cloud",
+            "--context",
+            "1",
+        ],
+    )?;
+    check_eq(
+        &matches(&got),
+        &vec![Value::Array(vec![
+            line("input.edits[0].new_string", 1, "a", false),
+            line("input.edits[0].new_string", 2, "cloud edition", true),
+        ])],
+        "matches",
+    )?;
+    Ok(())
+}

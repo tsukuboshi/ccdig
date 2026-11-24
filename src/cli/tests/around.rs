@@ -272,3 +272,58 @@ fn a_resumed_copy_lists_no_context_whose_match_its_original_listed() -> TestResu
     )?;
     Ok(())
 }
+
+#[test]
+fn limit_zero_lists_nothing_and_a_limit_above_the_matches_lists_them_all() -> TestResult {
+    let history = history_with_a_thread()?;
+    check_eq(
+        &listed(&history, &search(&["--around", "1", "--limit", "0"]))?,
+        &Vec::new(),
+        "--limit 0",
+    )?;
+    check_eq(
+        &listed(&history, &search(&["--around", "1", "--limit", "9"]))?,
+        &listed(&history, &search(&["--around", "1"]))?,
+        "--limit 9",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn calls_results_and_summaries_can_be_context_too() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/tttt.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"t-1","sessionId":"tttt","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"deploy it"}}"#,
+            r#"{"type":"assistant","uuid":"t-2","sessionId":"tttt","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_t1","name":"Bash","input":{"command":"ls"}}]}}"#,
+            r#"{"type":"user","uuid":"t-3","sessionId":"tttt","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_t1","content":"a.md"}]}}"#,
+            r#"{"type":"user","uuid":"t-4","sessionId":"tttt","isCompactSummary":true,"timestamp":"2026-10-15T00:00:30Z","message":{"role":"user","content":"The session so far."}}"#,
+        ],
+    )?;
+    check_eq(
+        &listed(
+            &history,
+            &[
+                "records",
+                "--session",
+                "tttt",
+                "--type",
+                "prompt,call,result,summary",
+                "--grep",
+                "deploy",
+                "--around",
+                "3",
+            ],
+        )?,
+        &pairs(&[
+            ("t-1", true),
+            ("t-2", false),
+            ("t-3", false),
+            ("t-4", false),
+        ]),
+        "records",
+    )?;
+    Ok(())
+}
