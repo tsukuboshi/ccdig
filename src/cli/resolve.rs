@@ -69,10 +69,10 @@ impl Flags {
         let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
         let grep = patterns(&self.common.grep, &self.common.igrep)?;
         let finds = !grep.include.is_empty();
-        if narrowing.around.is_some() && grep.include.is_empty() {
+        if narrowing.around.is_some() && !finds {
             return Err(Failure::AroundNeedsGrep);
         }
-        if narrowing.context.is_some() && grep.include.is_empty() {
+        if narrowing.context.is_some() && !finds {
             return Err(Failure::ContextNeedsGrep);
         }
         let range = DayRange::parse(

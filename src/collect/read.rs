@@ -202,8 +202,12 @@ where
 
 /// The replies of the assistant line `entry` that the including patterns
 /// of `query` match and the other filters let through, by line ID and
-/// block. They are counted, not kept.
+/// block. They are counted, not kept, and a line out of the range is not
+/// masked only to be dropped.
 fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<(String, usize)> {
+    if !query.range.contains(spot.timestamp.instant()) {
+        return Vec::new();
+    }
     Replies
         .pick(spot, entry)
         .into_iter()

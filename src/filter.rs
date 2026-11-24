@@ -94,8 +94,25 @@ impl<T> Filter<T> {
     where
         F: Fn(&T) -> bool,
     {
-        (self.include.is_empty() || self.include.iter().any(&test))
-            && !self.exclude.iter().any(test)
+        self.included(&test) && !self.excluded(test)
+    }
+
+    /// Whether a record for which `test` tells which values it matches
+    /// matches a value given with a leading `!`.
+    fn excluded<F>(&self, test: F) -> bool
+    where
+        F: Fn(&T) -> bool,
+    {
+        self.exclude.iter().any(test)
+    }
+
+    /// Whether a record for which `test` tells which values it matches
+    /// matches a value given without a leading `!`, or none was given.
+    fn included<F>(&self, test: F) -> bool
+    where
+        F: Fn(&T) -> bool,
+    {
+        self.include.is_empty() || self.include.iter().any(test)
     }
 
     /// Whether no value was given.
@@ -125,13 +142,13 @@ impl Filter<String> {
 impl Filter<Regex> {
     /// Whether `text` matches a pattern given with a leading `!`.
     pub fn excludes(&self, text: &str) -> bool {
-        self.exclude.iter().any(|pattern| pattern.is_match(text))
+        self.excluded(|pattern| pattern.is_match(text))
     }
 
     /// Whether `text` matches a pattern given without a leading `!`, or
     /// none was given.
     pub fn includes(&self, text: &str) -> bool {
-        self.include.is_empty() || self.include.iter().any(|pattern| pattern.is_match(text))
+        self.included(|pattern| pattern.is_match(text))
     }
 }
 
