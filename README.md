@@ -144,8 +144,9 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
 - `--grep` and `--igrep` pick the sessions whose prompts or replies they
   match, and `match_count` says how many of them matched in each, so the
   session that mentions a word most can be read first. The other keys
-  come from every prompt the other filters keep, as without `--grep`, and
-  Markdown adds a `Matches` column. Without a pattern that does not start
+  come from every prompt the other filters keep, as without `--grep`,
+  less those a pattern with a leading `!` leaves out, and Markdown adds a
+  `Matches` column. Without a pattern that does not start
   with `!`, `match_count` is `null`.
 - `prompt_count`, `started_at`, and `ended_at` count and span the selected
   prompts.

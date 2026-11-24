@@ -37,7 +37,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and a session has `match_count`.
 - With `--grep` or `--igrep`, a `sessions` record now counts and spans
   every prompt the other filters keep, not only those that matched, and
-  a session whose replies alone match is listed too.
+  a session whose replies alone match is listed too. Its `usage` is what
+  it has without `--grep`: a resumed copy no longer counts the tokens of
+  the responses it copied from a session the search skips.
 - In Markdown, a sub-agent's record names the sub-agent at the end of its
   own heading, not only once under the heading of its file, so a reader
   can tell it from the session's own records.

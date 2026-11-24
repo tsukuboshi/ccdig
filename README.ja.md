@@ -145,7 +145,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - `--grep` と `--igrep` は、依頼文か返答が一致したセッションを選び、
   `match_count` にそれぞれで一致した件数を入れます。ある語に最も多く触れた
   セッションから読めます。ほかのキーは、`--grep` が無いときと同じく、
-  ほかの絞り込みで残ったすべての依頼文から作ります。Markdown には
+  ほかの絞り込みで残ったすべての依頼文から作ります。ただし、`!` 付きの
+  パターンで除いた依頼文は数えません。Markdown には
   `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
   `match_count` は `null` です。
 - `prompt_count`・`started_at`・`ended_at` は、選ばれた依頼文の件数と期間です。
