@@ -269,3 +269,35 @@ fn context_reads_only_the_strings_of_a_call_s_input() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn a_secret_in_a_key_of_a_call_s_input_is_masked_in_the_input_and_the_lines() -> TestResult {
+    let history = History::new("root")?;
+    let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    history.write(
+        "-Users-alice-blog/wwww.jsonl",
+        fixture_time()?,
+        &[&format!(
+            r#"{{"type":"assistant","uuid":"w-1","sessionId":"wwww","timestamp":"2026-10-15T00:00:10Z","message":{{"content":[{{"type":"tool_use","id":"toolu_w1","name":"Bash","input":{{"{token}":"needle"}}}}]}}}}"#
+        )],
+    )?;
+    for format in ["jsonl", "md"] {
+        let ran = history.run_week(&[
+            "records",
+            "--session",
+            "wwww",
+            "--type",
+            "call",
+            "--grep",
+            "needle",
+            "--context",
+            "0",
+            "--format",
+            format,
+        ]);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&ran.out.contains("needle"), &true, &ran.out)?;
+        check_eq(&ran.out.contains(token), &false, &ran.out)?;
+    }
+    Ok(())
+}

@@ -47,6 +47,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A secret used as a key of a tool's input, such as a token, is now
+  masked by the built-in rules. Only the masks asked for applied to the
+  keys, so it was printed as typed, in `input` and in what `--context`
+  lists.
 - A Japanese name for a credential, such as the word for password, now has
   its value masked when it follows a value or an ASCII word directly, as in
   `token=...` or `ID：user1` followed by the name and a colon. Its value was
