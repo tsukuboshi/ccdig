@@ -74,8 +74,10 @@ pub struct Search {
     /// Whether `--grep` matched the record: `false` for one `--around`
     /// adds next to a match, `true` otherwise.
     pub matched: bool,
-    /// With `--context`, the lines `--grep` matched and those around them,
-    /// in order; empty otherwise, or when no single line matched.
+    /// The lines `--grep` matched and, with `--context`, those around
+    /// them, in order: in JSON and JSON Lines whenever a pattern without a
+    /// leading `!` is given, in Markdown only with `--context`. Empty
+    /// otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
 }
 

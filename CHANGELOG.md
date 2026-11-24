@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- With `--grep` or `--igrep`, `records` in JSON and JSON Lines lists the
+  lines that matched in `matches` without `--context`, so a record with
+  `matched` true says where it matched. Markdown still prints each record
+  whole unless `--context` is given.
+
 ## [0.0.2] - 2026-11-24
 
 ### Added

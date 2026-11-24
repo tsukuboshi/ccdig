@@ -124,7 +124,8 @@ pub enum Command {
         common: Common,
         /// List the lines --grep or --igrep matched in each record, with
         /// this many lines before and after each, in `matches`; Markdown
-        /// prints those lines in place of the whole text.
+        /// prints those lines in place of the whole text [default: 0 in
+        /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
         /// In Markdown, cut each string in a tool call's input to this many

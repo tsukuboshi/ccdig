@@ -133,7 +133,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | フラグ | 働き |
 | --- | --- |
-| `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す |
+| `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す。付けなければ、JSON と JSON Lines は一致した行だけを並べる |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
 | `--max-input-chars N` | `--format md` のとき、ツールの呼び出しの入力にある文字列をそれぞれ N 文字で切って `… (M more characters)` を付ける。ファイル全体を書く `Write` でページが埋まらずに済む。JSON と JSON Lines は切らない |
 
@@ -287,7 +287,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   パターンに一致した行かどうかです。パターンは 1 行ずつ試すので、`^` と
   `$` は各行の先頭と末尾に一致します。また、行をまたぐ一致、呼び出しの
   キー名への一致、`\\` のように呼び出しを詰めた JSON のエスケープが要る
-  一致では行が並ばず、レコードを全文で出します。`--context` が無ければ
+  一致では行が並ばず、レコードを全文で出します。`--context` が無ければ、
+  JSON と JSON Lines は一致した行だけを並べ、Markdown は行を並べずに
+  レコードを全文で出します。`!` で始まらないパターンが無ければ
   `matches` は空です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、

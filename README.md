@@ -132,7 +132,7 @@ Three options shape the output:
 
 | Flag | Does |
 | --- | --- |
-| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text |
+| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
 | `--max-input-chars N` | With `--format md`, cuts each string in a tool call's input to N characters, followed by `… (M more characters)`, so a `Write` of a whole file does not fill the page. JSON and JSON Lines are never cut |
 
@@ -288,7 +288,9 @@ Every key is always present. The `kind` of a prompt is how it was typed,
   `$` match at the start and end of each line, and a match that spans
   lines, is in a call's key names, or needs the escapes of the call's
   compact JSON, such as `\\`, lists no line, and the record is printed
-  whole. Without `--context`, `matches` is empty.
+  whole. Without `--context`, JSON and JSON Lines list the matched lines
+  alone, and Markdown lists none, so it prints each record whole.
+  `matches` is empty without a pattern that does not start with `!`.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.

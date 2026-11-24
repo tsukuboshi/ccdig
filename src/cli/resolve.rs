@@ -36,6 +36,11 @@ struct Narrowing {
     around: Option<usize>,
     /// `--context`: how many lines around each matched line to list.
     context: Option<usize>,
+    /// How many lines around each matched line a search lists without
+    /// `--context`: none, but the lines themselves, in JSON and JSON Lines.
+    /// Markdown prints those lines in place of the whole text, so it lists
+    /// them only when asked.
+    context_by_default: Option<usize>,
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
@@ -124,7 +129,9 @@ impl Flags {
             },
             reading: Reading {
                 around: narrowing.around,
-                excerpt: narrowing.context,
+                excerpt: narrowing
+                    .context
+                    .or_else(|| narrowing.context_by_default.filter(|_| finds)),
                 mentions: narrowing.mentions && finds,
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
@@ -404,6 +411,7 @@ pub fn resolve(
                 around,
                 context,
                 is_error: status_filter(&statuses),
+                context_by_default: (format != Format::Markdown).then_some(0),
                 tools,
                 ..activity.into()
             };
