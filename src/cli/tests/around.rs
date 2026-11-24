@@ -327,3 +327,47 @@ fn calls_results_and_summaries_can_be_context_too() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn context_a_copy_dropped_still_comes_back_for_a_later_match() -> TestResult {
+    let history = History::new("root")?;
+    let prompt = |uuid: &str, at: &str, text: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","sessionId":"cdf","timestamp":"{at}","message":{{"role":"user","content":"{text}"}}}}"#
+        )
+    };
+    let first = prompt("q1", "2026-10-15T00:00:00Z", "deploy one");
+    let second = prompt("q2", "2026-10-15T01:00:00Z", "plain");
+    let third = prompt("q3", "2026-10-15T02:00:00Z", "deploy two");
+    for (file, lines) in [
+        ("cccc-c", vec![first.clone()]),
+        ("cccc-d", vec![first.clone(), second.clone()]),
+        ("cccc-f", vec![first, second, third]),
+    ] {
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        history.write(
+            &format!("-Users-alice-blog/{file}.jsonl"),
+            fixture_time()?,
+            &refs,
+        )?;
+    }
+    check_eq(
+        &listed(
+            &history,
+            &[
+                "records",
+                "--session",
+                "cdf",
+                "--type",
+                "prompt",
+                "--grep",
+                "deploy",
+                "--around",
+                "1",
+            ],
+        )?,
+        &pairs(&[("q1", true), ("q2", false), ("q3", true)]),
+        "records",
+    )?;
+    Ok(())
+}

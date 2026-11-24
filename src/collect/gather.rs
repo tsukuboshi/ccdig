@@ -54,12 +54,16 @@ where
         warnings,
     };
     for session in sessions {
+        // Whether each record is new, here and in the files before. Only a
+        // record kept is marked as seen, so context a copy drops can come
+        // back for a later match.
+        let mut here = HashSet::new();
         let fresh: Vec<bool> = session
             .records
             .iter()
             .map(|&(block, ref record)| {
-                let uuid = &record.source().uuid;
-                uuid.is_empty() || seen.insert((uuid.clone(), block))
+                let key = (record.source().uuid.clone(), block);
+                key.0.is_empty() || (!seen.contains(&key) && here.insert(key))
             })
             .collect();
         let near = near_a_match(&session.records, &fresh, around);
@@ -68,7 +72,13 @@ where
             .into_iter()
             .zip(fresh.iter().zip(near))
             .filter(|&(ref pair, (&is_fresh, is_near))| is_fresh && (pair.1.matched() || is_near))
-            .map(|((_, record), _)| record)
+            .map(|((block, record), _)| {
+                let uuid = &record.source().uuid;
+                if !uuid.is_empty() {
+                    seen.insert((uuid.clone(), block));
+                }
+                record
+            })
             .collect();
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
@@ -125,7 +135,9 @@ where
 }
 
 /// For each of `records`, whether a match that is `fresh` is at most
-/// `around` records away, looking both ways in one pass each.
+/// `around` records away, looking both ways in one pass each. The records
+/// of a file are its matches and the context `Window` kept around them, so
+/// a record of context is within `around` of the match it was kept for.
 fn near_a_match<T>(records: &[(usize, T)], fresh: &[bool], around: usize) -> Vec<bool>
 where
     T: Record,
@@ -136,25 +148,26 @@ where
         .map(|(pair, &is_fresh)| is_fresh && pair.1.matched())
         .collect();
     let mut near = vec![false; hits.len()];
-    for forward in [true, false] {
-        let mut since: Option<usize> = None;
-        let order: Vec<usize> = if forward {
-            (0..hits.len()).collect()
+    // How far the last match is, in the direction of the pass.
+    let mut pass = |index: usize, since: &mut Option<usize>| {
+        if hits.get(index).copied().unwrap_or_default() {
+            *since = Some(0);
         } else {
-            (0..hits.len()).rev().collect()
-        };
-        for index in order {
-            if hits.get(index).copied().unwrap_or_default() {
-                since = Some(0);
-            } else {
-                since = since.map(|count| count.saturating_add(1));
-            }
-            if since.is_some_and(|count| count <= around)
-                && let Some(slot) = near.get_mut(index)
-            {
-                *slot = true;
-            }
+            *since = since.map(|count| count.saturating_add(1));
         }
+        if since.is_some_and(|count| count <= around)
+            && let Some(slot) = near.get_mut(index)
+        {
+            *slot = true;
+        }
+    };
+    let mut since = None;
+    for index in 0..hits.len() {
+        pass(index, &mut since);
+    }
+    since = None;
+    for index in (0..hits.len()).rev() {
+        pass(index, &mut since);
     }
     near
 }
