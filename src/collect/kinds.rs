@@ -10,7 +10,7 @@ use super::{Extra, Pick, Select, Spot};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
 use crate::record::{
-    Head, Kind, MatchLine, Prompt, Reply, Source, Summary, ToolCall, ToolResult, Turn,
+    Head, Kind, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::transcript::entry::{Block, Entry, Role, Usage};
@@ -180,8 +180,7 @@ impl Pick for Prompts {
                 permission_mode: entry.permission_mode.clone(),
                 redacted,
                 source,
-                matched: true,
-                matches: Vec::new(),
+                search: Search::default(),
                 masked,
             }),
         )]
@@ -210,8 +209,7 @@ impl Pick for Summaries {
                 text,
                 redacted,
                 source,
-                matched: true,
-                matches: Vec::new(),
+                search: Search::default(),
                 masked,
             }),
         )]
@@ -244,8 +242,7 @@ impl Pick for Replies {
                     usage: None,
                     redacted,
                     source,
-                    matched: true,
-                    matches: Vec::new(),
+                    search: Search::default(),
                     masked,
                 })
             }
@@ -284,8 +281,7 @@ impl Pick for Results {
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
                     source,
-                    matched: true,
-                    matches: Vec::new(),
+                    search: Search::default(),
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
                     masked,
                 })
@@ -347,8 +343,7 @@ impl Pick for Tools {
                     usage: None,
                     redacted,
                     source,
-                    matched: true,
-                    matches: Vec::new(),
+                    search: Search::default(),
                     masked,
                 })
             }
@@ -390,12 +385,8 @@ impl Select for Prompt {
         &mut self.masked
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        &mut self.matched
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        &mut self.matches
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 }
 
@@ -424,12 +415,8 @@ impl Select for Reply {
         &mut self.masked
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        &mut self.matched
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        &mut self.matches
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -462,12 +449,8 @@ impl Select for Summary {
         &mut self.masked
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        &mut self.matched
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        &mut self.matches
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 }
 
@@ -505,12 +488,8 @@ impl Select for ToolCall {
         &mut self.masked
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        &mut self.matched
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        &mut self.matches
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -543,12 +522,8 @@ impl Select for Turn {
         selected_mut(self).masked_mut()
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        selected_mut(self).matched_mut()
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        selected_mut(self).matches_mut()
+    fn search_mut(&mut self) -> &mut Search {
+        selected_mut(self).search_mut()
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -581,12 +556,8 @@ impl Select for ToolResult {
         &mut self.masked
     }
 
-    fn matched_mut(&mut self) -> &mut bool {
-        &mut self.matched
-    }
-
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine> {
-        &mut self.matches
+    fn search_mut(&mut self) -> &mut Search {
+        &mut self.search
     }
 }
 

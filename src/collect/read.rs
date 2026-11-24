@@ -79,10 +79,15 @@ struct Window<T> {
     around: usize,
     /// Up to `around` records since the last one kept, the latest last.
     before: VecDeque<(usize, Draft<T>, Option<Response>)>,
-    /// With `Reading::mentions`, the records the including patterns
-    /// matched, by line ID and block; every record the other filters let
-    /// through is then kept.
-    mentions: Option<Vec<(String, usize)>>,
+}
+
+/// How a file's records are kept once the filters have seen them.
+enum Keeper<T> {
+    /// For `sessions --grep`: every record the other filters let through,
+    /// and the line ID and block of each the including patterns matched.
+    Tally(Vec<(String, usize)>),
+    /// Each match, and with `--around`, the records next to it.
+    Window(Window<T>),
 }
 
 /// Lines skipped across files, for the summary warning.
@@ -138,6 +143,57 @@ where
     }
 }
 
+impl<T> Keeper<T>
+where
+    T: Select,
+{
+    /// What tallied the matches, or `None` for a window.
+    fn mentions(self) -> Option<Vec<(String, usize)>> {
+        match self {
+            Self::Tally(found) => Some(found),
+            Self::Window(_) => None,
+        }
+    }
+
+    /// The keeper `reading` asks for.
+    fn new(reading: Reading) -> Self {
+        if reading.mentions {
+            return Self::Tally(Vec::new());
+        }
+        Self::Window(Window {
+            after: 0,
+            around: reading.around.unwrap_or_default(),
+            before: VecDeque::new(),
+        })
+    }
+
+    /// Keeps `drafted`, of `verdict`, in `kept` or for later, as the
+    /// keeper does.
+    fn offer(
+        &mut self,
+        kept: &mut Kept<T>,
+        drafted: (usize, Draft<T>),
+        verdict: Verdict,
+        response: Option<&Response>,
+        query: &Query,
+        lines: Option<usize>,
+    ) {
+        match *self {
+            Self::Tally(ref mut found) => {
+                if verdict == Verdict::Hit {
+                    found.push((drafted.1.record().source().uuid.clone(), drafted.0));
+                }
+                if verdict != Verdict::Out {
+                    kept.keep(None, drafted, response);
+                }
+            }
+            Self::Window(ref mut window) => {
+                window.offer(kept, drafted, verdict, response, query, lines);
+            }
+        }
+    }
+}
+
 impl<T> Window<T>
 where
     T: Select,
@@ -155,15 +211,6 @@ where
         query: &Query,
         lines: Option<usize>,
     ) {
-        if let Some(ref mut found) = self.mentions {
-            if verdict == Verdict::Hit {
-                found.push((draft.record().source().uuid.clone(), block));
-            }
-            if verdict != Verdict::Out {
-                kept.keep(None, (block, draft), response);
-            }
-            return;
-        }
         match verdict {
             Verdict::Hit => {
                 if let Some(context) = lines {
@@ -289,12 +336,7 @@ where
         drafts: Vec::new(),
         priced: HashSet::new(),
     };
-    let mut window = Window {
-        after: 0,
-        around: reading.around.unwrap_or_default(),
-        before: VecDeque::new(),
-        mentions: reading.mentions.then(Vec::new),
-    };
+    let mut keeper = Keeper::new(reading);
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
@@ -310,7 +352,7 @@ where
         if reading.usage {
             tally(&entry, query, &mut responses, &mut used);
         }
-        if let Some(ref mut found) = window.mentions
+        if let Keeper::Tally(ref mut found) = keeper
             && entry.role == Role::Assistant
             && let Some(timestamp) = entry.timestamp
         {
@@ -344,7 +386,7 @@ where
         let response = Response::of(&entry, line);
         for drafted in picker.pick(&spot, &entry) {
             let found = verdict(query, &drafted.1);
-            window.offer(
+            keeper.offer(
                 &mut kept,
                 drafted,
                 found,
@@ -369,7 +411,7 @@ where
         .collect();
     let stats = lines.stats();
     Ok(Read {
-        mentions: window.mentions,
+        mentions: keeper.mentions(),
         records,
         skipped: Skipped {
             oversized: stats.oversized,

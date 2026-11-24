@@ -18,7 +18,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, MatchLine, Record, Session};
+use crate::record::{AGENT, Head, Record, Search, Session};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -100,12 +100,9 @@ pub trait Select: Record {
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
 
-    /// Whether `--grep` matched the record, which `--around` clears for
-    /// one it adds as context.
-    fn matched_mut(&mut self) -> &mut bool;
-
-    /// Where `--context` lists the lines `--grep` matched.
-    fn matches_mut(&mut self) -> &mut Vec<MatchLine>;
+    /// What the search made of the record, which `--around` and
+    /// `--context` fill in.
+    fn search_mut(&mut self) -> &mut Search;
 
     /// Where the kind carries the tokens of its response, `None` for a kind
     /// that does not.

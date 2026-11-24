@@ -6,7 +6,7 @@ use proptest::strategy::Strategy;
 use serde_json::Value;
 
 use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
-use crate::record::{AGENT, Head, MatchLine, Prompt, Reply, Session, Turn};
+use crate::record::{AGENT, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Run, document, lines};
@@ -215,8 +215,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                         subagent: name.clone(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
-                        matched: true,
-                        matches: Vec::new(),
+                        search: Search::default(),
                     })
                 })
             })
@@ -254,16 +253,18 @@ fn matched_lines_add_no_heading() -> TestResult {
                         subagent: String::new(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
-                        matched: true,
-                        matches: lines
-                            .iter()
-                            .map(|&(ref field, ref text, number, hit)| MatchLine {
-                                field: field.clone(),
-                                line: number,
-                                text: text.clone(),
-                                hit,
-                            })
-                            .collect(),
+                        search: Search {
+                            matched: true,
+                            matches: lines
+                                .iter()
+                                .map(|&(ref field, ref text, number, hit)| MatchLine {
+                                    field: field.clone(),
+                                    line: number,
+                                    text: text.clone(),
+                                    hit,
+                                })
+                                .collect(),
+                        },
                     })
                 })
             })

@@ -32,11 +32,11 @@ pub fn records(
             Turn::Summary(_) => "Summary",
         },
         |turn| match *turn {
-            Turn::Prompt(ref prompt) => Ok(text_or_lines(&prompt.text, &prompt.matches)),
-            Turn::Reply(ref reply) => Ok(text_or_lines(&reply.text, &reply.matches)),
+            Turn::Prompt(ref prompt) => Ok(text_or_lines(&prompt.text, &prompt.search.matches)),
+            Turn::Reply(ref reply) => Ok(text_or_lines(&reply.text, &reply.search.matches)),
             Turn::Call(ref call) => tool_call(call, input_chars),
             Turn::Result(ref result) => Ok(tool_result(result)),
-            Turn::Summary(ref summary) => Ok(text_or_lines(&summary.text, &summary.matches)),
+            Turn::Summary(ref summary) => Ok(text_or_lines(&summary.text, &summary.search.matches)),
         },
     )
 }
@@ -132,10 +132,10 @@ fn tool_result(result: &ToolResult) -> String {
         tool_name(&result.tool),
         if result.is_error { "yes" } else { "no" },
     );
-    if result.matches.is_empty() {
+    if result.search.matches.is_empty() {
         return format!("{head}\n{}", fenced("text", &clean_text(&result.text)));
     }
-    format!("{head}{}", lines(&result.matches, None))
+    format!("{head}{}", lines(&result.search.matches, None))
 }
 
 /// `text` in a text block, or when `matches` lists lines of it, those.
@@ -193,11 +193,11 @@ fn lines(matches: &[MatchLine], input_chars: Option<usize>) -> String {
 /// A tool call's body: the tool's name and its input as indented JSON,
 /// with each string cut to `input_chars` when given.
 fn tool_call(call: &ToolCall, input_chars: Option<usize>) -> Result<String, Failure> {
-    if !call.matches.is_empty() {
+    if !call.search.matches.is_empty() {
         return Ok(format!(
             "- Tool: {}\n{}",
             tool_name(&call.tool),
-            lines(&call.matches, input_chars)
+            lines(&call.search.matches, input_chars)
         ));
     }
     let input = input_chars

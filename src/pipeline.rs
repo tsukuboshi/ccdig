@@ -127,22 +127,19 @@ where
         if record.matched() {
             seen = seen.saturating_add(1);
             if seen == limit {
-                return context_end(records, index, around);
+                return context_end(records, index, record, around);
             }
         }
     }
     records.len()
 }
 
-/// Where the context after the match at `index` ends: after up to
+/// Where the context after `matched`, at `index`, ends: after up to
 /// `around` records that did not match, from the same file.
-fn context_end<T>(records: &[T], index: usize, around: usize) -> usize
+fn context_end<T>(records: &[T], index: usize, matched: &T, around: usize) -> usize
 where
     T: Record,
 {
-    let Some(matched) = records.get(index) else {
-        return records.len();
-    };
     let following = records
         .iter()
         .skip(index.saturating_add(1))
