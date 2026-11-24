@@ -195,8 +195,8 @@ pub struct Session {
     pub git_branch: String,
     /// The transcript file.
     pub file: String,
-    /// The file's modification time, in UTC, for tools that assign
-    /// sessions to weeks by it.
+    /// The file's modification time, for tools that assign sessions to
+    /// weeks by it.
     pub mtime: Stamp,
     /// The first prompt's time.
     pub started_at: Stamp,

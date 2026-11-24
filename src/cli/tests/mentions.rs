@@ -41,7 +41,7 @@ fn history_with_mentions() -> Result<History, Box<dyn Error>> {
             &prompt(
                 "k-1",
                 "kkkk",
-                "2026-10-15T00:00:00Z",
+                "2026-10-15T09:00:00+09:00",
                 "move the blog to the cloud",
             ),
             &reply("k-2", "kkkk", "2026-10-15T00:00:10Z", "Moved."),
@@ -49,7 +49,7 @@ fn history_with_mentions() -> Result<History, Box<dyn Error>> {
             &reply(
                 "k-4",
                 "kkkk",
-                "2026-10-15T00:05:10Z",
+                "2026-10-15T09:05:10+09:00",
                 "They are in the Cloud bucket.",
             ),
         ],
@@ -107,15 +107,15 @@ fn sessions_grep_reads_the_prompts_and_the_replies_and_counts_the_matches() -> T
                 "kkkk",
                 2_u64,
                 2_u64,
-                "2026-10-15T00:00:00Z",
-                "2026-10-15T00:05:10Z"
+                "2026-10-15T09:00:00+09:00",
+                "2026-10-15T09:05:10+09:00"
             ]),
             json!([
                 "llll",
                 1_u64,
                 1_u64,
-                "2026-10-16T00:00:00Z",
-                "2026-10-16T00:00:10Z"
+                "2026-10-16T09:00:00+09:00",
+                "2026-10-16T09:00:10+09:00"
             ]),
         ],
         "rows",
@@ -134,22 +134,22 @@ fn sessions_without_grep_have_no_match_count_and_the_same_rows() -> TestResult {
                 "kkkk",
                 2_u64,
                 null,
-                "2026-10-15T00:00:00Z",
-                "2026-10-15T00:05:10Z"
+                "2026-10-15T09:00:00+09:00",
+                "2026-10-15T09:05:10+09:00"
             ]),
             json!([
                 "llll",
                 1_u64,
                 null,
-                "2026-10-16T00:00:00Z",
-                "2026-10-16T00:00:10Z"
+                "2026-10-16T09:00:00+09:00",
+                "2026-10-16T09:00:10+09:00"
             ]),
             json!([
                 "mmmm",
                 1_u64,
                 null,
-                "2026-10-16T01:00:00Z",
-                "2026-10-16T01:00:10Z"
+                "2026-10-16T10:00:00+09:00",
+                "2026-10-16T10:00:10+09:00"
             ]),
         ],
         "rows",
@@ -217,15 +217,15 @@ fn a_session_ends_at_its_last_record_in_the_range() -> TestResult {
                 "nnnn",
                 1_u64,
                 null,
-                "2026-10-17T00:00:00Z",
-                "2026-10-17T00:23:00Z"
+                "2026-10-17T09:00:00+09:00",
+                "2026-10-17T09:23:00+09:00"
             ]),
             json!([
                 "oooo",
                 1_u64,
                 null,
-                "2026-10-19T14:59:00Z",
-                "2026-10-19T14:59:00Z"
+                "2026-10-19T23:59:00+09:00",
+                "2026-10-19T23:59:00+09:00"
             ]),
         ],
         "a tool result counts, and a reply after --until does not",
@@ -249,7 +249,7 @@ fn a_line_the_harness_wrote_does_not_move_the_end_of_a_session() -> TestResult {
     let got = rows(&history, &["sessions", "--session", "ssss"])?;
     check_eq(
         &got.first().and_then(|row| row.get(4)),
-        &Some(&json!("2026-10-17T00:10:00Z")),
+        &Some(&json!("2026-10-17T09:10:00+09:00")),
         "the reply ends it",
     )?;
     Ok(())
@@ -283,7 +283,7 @@ fn a_session_a_search_skips_leaves_its_tokens_out_of_a_resumed_copy() -> TestRes
         line(
             "o-2",
             "oooo",
-            "2026-10-15T00:00:10Z",
+            "2026-10-15T09:00:10+09:00",
             "assistant",
             "hi",
             "msg_o",
@@ -294,7 +294,7 @@ fn a_session_a_search_skips_leaves_its_tokens_out_of_a_resumed_copy() -> TestRes
         line(
             "p-1",
             "pppp",
-            "2026-10-15T01:00:00Z",
+            "2026-10-15T10:00:00+09:00",
             "user",
             "deploy now",
             "",
@@ -302,7 +302,7 @@ fn a_session_a_search_skips_leaves_its_tokens_out_of_a_resumed_copy() -> TestRes
         line(
             "p-2",
             "pppp",
-            "2026-10-15T01:00:10Z",
+            "2026-10-15T10:00:10+09:00",
             "assistant",
             "ok",
             "msg_p",

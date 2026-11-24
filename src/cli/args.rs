@@ -199,8 +199,8 @@ pub struct Common {
     /// Last day to include, YYYY-MM-DD (record time, in --tz).
     #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 21)]
     pub until: Option<String>,
-    /// IANA time zone for --since, --until, and Markdown times [default:
-    /// Local, the system zone; set TZ to override].
+    /// IANA time zone for --since, --until, and the times in the output
+    /// [default: Local, the system zone; set TZ to override].
     #[arg(
         long,
         value_name = "ZONE",

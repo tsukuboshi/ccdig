@@ -23,8 +23,9 @@ pub struct DayRange {
     to: Option<Timestamp>,
 }
 
-/// A transcript time: the instant and the offset it was written with, so
-/// JSON output can repeat it as written.
+/// A transcript time: the instant and the offset to write it with, which is
+/// the one in the transcript until `shown_in` moves it to the output's
+/// zone.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Stamp {
     /// When it happened.
@@ -160,17 +161,26 @@ impl Stamp {
         Some(Self { instant, offset })
     }
 
-    /// Formats the time as RFC 3339: the offset as written,
-    /// `Z` for zero, and the fraction with its trailing zeros dropped.
+    /// Formats the time as RFC 3339: with its offset, `Z` for zero, and the
+    /// fraction with its trailing zeros dropped.
     pub fn rfc3339(&self) -> String {
         if self.offset == Offset::UTC {
             return self.instant.to_string();
         }
         self.instant.display_with_offset(self.offset).to_string()
     }
+
+    /// The same instant with the offset `zone` has at that time, so JSON
+    /// output writes it in the zone the day range was read in.
+    pub fn shown_in(&self, zone: &TimeZone) -> Self {
+        Self {
+            instant: self.instant,
+            offset: zone.to_offset(self.instant),
+        }
+    }
 }
 
-/// Written as RFC 3339 with the offset it was read with.
+/// Written as RFC 3339 with its offset.
 impl Serialize for Stamp {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

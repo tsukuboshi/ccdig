@@ -17,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A session's `ended_at` is the time of its last prompt, reply, tool call,
   or tool result in the range, not of its last prompt, so a session with
   one prompt no longer ends when it started.
+- JSON and JSON Lines write `timestamp`, `started_at`, `ended_at`, and
+  `mtime` with the offset of the zone `--tz` names, as Markdown shows
+  them, so the times read in the zone the days were cut in.
 
 ## [0.0.2] - 2026-11-24
 

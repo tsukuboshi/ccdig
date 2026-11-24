@@ -123,7 +123,6 @@ where
             cwd: head.cwd.clone(),
             git_branch: head.git_branch.clone(),
             file: shown_file,
-            // UTC keeps the output the same on every machine.
             mtime: session.modified,
             started_at: head.timestamp,
             ended_at: session.last.map_or(last_kept, |read| {

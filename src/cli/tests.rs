@@ -1919,3 +1919,48 @@ fn the_local_zone_comes_from_tz_in_the_environment() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn json_times_are_written_in_the_zone_of_the_day_range() -> TestResult {
+    let history = History::new("root")?;
+    let tz = |value: &str| Environment {
+        tz: Some(value.into()),
+        ..environment()
+    };
+    for (given, local, want) in [
+        (Some("Asia/Tokyo"), "UTC", "2026-10-13T10:00:01+09:00"),
+        (Some("UTC"), "Asia/Tokyo", "2026-10-13T01:00:01Z"),
+        (None, "Asia/Tokyo", "2026-10-13T10:00:01+09:00"),
+    ] {
+        let mut args = vec![
+            "--session",
+            "aaaa",
+            "--since",
+            "2026-10-13",
+            "--until",
+            "2026-10-19",
+        ];
+        if let Some(zone) = given {
+            args.extend(["--tz", zone]);
+        }
+        for command in ["records", "sessions"] {
+            let mut full = vec![command];
+            full.extend_from_slice(&args);
+            let ran = history.run_in(&tz(local), &full);
+            check_eq(&ran.code, &0, &ran.err)?;
+            let first: serde_json::Value =
+                serde_json::from_str(ran.out.lines().next().unwrap_or_default())?;
+            let key = if command == "records" {
+                "timestamp"
+            } else {
+                "started_at"
+            };
+            check_eq(
+                &first.get(key).and_then(serde_json::Value::as_str),
+                &Some(want),
+                &format!("{command} {given:?} with TZ={local}"),
+            )?;
+        }
+    }
+    Ok(())
+}

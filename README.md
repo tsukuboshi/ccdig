@@ -183,7 +183,7 @@ of a repeatable flag on both sides add up.
 | Flag | Keeps |
 | --- | --- |
 | `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD` |
-| `--tz` | Day boundaries and Markdown times in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
+| `--tz` | Day boundaries and the times in the output, Markdown and JSON alike, in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
 | `--project` | Projects whose directory name or cwd contains the value |
 | `--session` | Sessions whose ID starts with the value, or with `current`, the session ccdig runs in |
 | `--branch` | Records on this git branch |
@@ -255,7 +255,7 @@ records that matched and keeps the context after the last of them.
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
- "timestamp":"2026-10-13T01:00:01Z",
+ "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
@@ -304,6 +304,10 @@ Every key is always present. The `kind` of a prompt is how it was typed,
   Claude Code stored one, and the `tool_use` block's otherwise. A result
   whose call was not found has an empty `tool` and a `null` `input`.
 - `usage` is the tokens of the response; see Tokens.
+- `timestamp`, like the times of a `sessions` record, is RFC 3339 with
+  the offset of the zone `--tz` names at that time, as in
+  `2026-10-13T10:00:01+09:00`, so the times read in the zone the days
+  were cut in. UTC is written `Z`.
 
 ### Tokens
 

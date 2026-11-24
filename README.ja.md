@@ -183,7 +183,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | フラグ | 残すもの |
 | --- | --- |
 | `--since`, `--until` | 開始日から終了日までのレコード。`YYYY-MM-DD` |
-| `--tz` | 日の境界と Markdown の時刻をこの IANA タイムゾーンで扱う。既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`） |
+| `--tz` | 日の境界と出力の時刻（Markdown も JSON も）をこの IANA タイムゾーンで扱う。既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`） |
 | `--project` | ディレクトリ名か cwd にこの値を含むプロジェクト |
 | `--session` | ID がこの値で始まるセッション。`current` なら ccdig を実行しているセッション |
 | `--branch` | この git ブランチ上のレコード |
@@ -256,7 +256,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
- "timestamp":"2026-10-13T01:00:01Z",
+ "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
@@ -304,6 +304,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   ある切り詰められていない入力で、なければ `tool_use` ブロックの入力です。
   呼び出しが見つからなかった結果は、`tool` が空で `input` が `null` です。
 - `usage` は応答のトークン数です。「トークン数」の節を参照してください。
+- `timestamp` は、`sessions` のレコードの時刻と同じく、`--tz` のゾーンの
+  その時点のオフセットを付けた RFC 3339 で、
+  `2026-10-13T10:00:01+09:00` のように書きます。日を区切ったゾーンで
+  時刻を読めます。UTC は `Z` と書きます。
 
 ### トークン数
 

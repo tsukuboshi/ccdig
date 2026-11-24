@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
 use crate::collect::kinds::{Prompts, Records};
-use crate::collect::{Corpus, Pick, collect};
+use crate::collect::{Corpus, Pick, Select as _, collect};
 use crate::config::{Config, Format, MaskReport, OnSkip, Shared, VersionFormat};
 use crate::failure::Failure;
 use crate::record::Record;
@@ -88,7 +88,8 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
 }
 
 /// Reads every transcript into records of the kind `new_picker` picks,
-/// keeping at most `--limit` of them.
+/// keeping at most `--limit` of them, with their times in the zone the day
+/// range was read in.
 fn gather<P, F>(shared: &Shared, new_picker: F) -> Result<Corpus<P::Record>, Failure>
 where
     P: Pick,
@@ -107,6 +108,17 @@ where
             .records
             .truncate(limit_end(&corpus.records, limit, around));
         corpus.sessions.truncate(limit);
+    }
+    // Sorting and joining compared instants; only the offset written
+    // changes.
+    for record in &mut corpus.records {
+        let head = record.head_mut();
+        head.timestamp = head.timestamp.shown_in(&shared.zone);
+    }
+    for session in &mut corpus.sessions {
+        session.mtime = session.mtime.shown_in(&shared.zone);
+        session.started_at = session.started_at.shown_in(&shared.zone);
+        session.ended_at = session.ended_at.shown_in(&shared.zone);
     }
     Ok(corpus)
 }
