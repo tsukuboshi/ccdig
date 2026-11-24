@@ -9,8 +9,9 @@ use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::filter::Query;
+use crate::record::Cuts;
 use crate::render::digest::Limits;
-use crate::render::json::Run;
+use crate::render::json::{Fields, Run};
 
 /// A subcommand with everything it needs.
 pub enum Config {
@@ -23,11 +24,12 @@ pub enum Config {
     },
     /// `records`.
     Records {
+        /// How many characters to keep of each text.
+        cuts: Cuts,
+        /// The keys to write in JSON and JSON Lines.
+        fields: Fields,
         /// The output format.
         format: Format,
-        /// In Markdown, how many characters to keep of each string in a
-        /// tool call's input, or `None` for all of them.
-        input_chars: Option<usize>,
         /// The kinds of record to pick.
         kinds: Types,
         /// What to read and how to report it.
@@ -35,10 +37,14 @@ pub enum Config {
     },
     /// `sessions`.
     Sessions {
+        /// The keys to write in JSON and JSON Lines.
+        fields: Fields,
         /// The output format.
         format: Format,
         /// What to read and how to report it.
         shared: Box<Shared>,
+        /// The order of the sessions.
+        sort: SessionSort,
     },
     /// `version`.
     Version {
@@ -56,6 +62,16 @@ pub enum Format {
     Jsonl,
     /// Markdown for reading.
     Markdown,
+}
+
+/// The order `sessions --sort` asks for.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SessionSort {
+    /// Most matches first, then by time.
+    Matches,
+    /// By the time of the first prompt.
+    #[default]
+    Time,
 }
 
 /// How `--mask-report` writes the counts.

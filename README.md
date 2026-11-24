@@ -5,10 +5,11 @@
 Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
 session, branch, text, record type, tool, outcome, and skill to narrow
-the history down to the part that matters, and write it as Markdown to
-read or JSON Lines to process. Common secrets are masked by default, and
-email addresses, IP addresses, your user name, and values you list can be
-masked too.
+the history down to the part that matters. `records` and `sessions`
+write JSON Lines to process by default, on a terminal and in a pipe
+alike; give `--format md` for Markdown to read. Common secrets are
+masked by default, and email addresses, IP addresses, your user name,
+and values you list can be masked too.
 
 [日本語](README.ja.md)
 
@@ -60,6 +61,10 @@ ccdig records --type reply --project blog --igrep deploy
 ccdig records --session '!current' --type prompt,reply --igrep deploy \
   --format md --limit 20
 
+# The sessions that mention "deploy" most, each with the line it first
+# matched, without the tokens
+ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
+
 # Failed Bash calls, with sub-agents, as Markdown
 ccdig records --type result --tool Bash --status error --subagents --format md
 
@@ -76,8 +81,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--max-input-chars` |
-| `sessions` | One record per session with a selected prompt | `--format` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
 
@@ -117,7 +122,8 @@ Four options apply to some kinds only:
 - Each of the four needs a `--type` it applies to, or the command fails.
 - A search without `--type` reads the tool calls too, and a call's input
   can be long: give `--type prompt,reply` and `--limit` to keep the output
-  small.
+  small, or cut the texts with `--max-message-chars` and `--max-tool-chars`
+  and leave keys out with `--fields`.
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are.
@@ -128,13 +134,14 @@ Four options apply to some kinds only:
   `(context)` after their kind. A record a `!` pattern leaves out is not
   listed as context either. It needs a pattern without a leading `!`.
 
-Three options shape the output:
+Four options shape the output:
 
 | Flag | Does |
 | --- | --- |
-| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text |
+| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
-| `--max-input-chars N` | With `--format md`, cuts each string in a tool call's input to N characters, followed by `… (M more characters)`, so a `Write` of a whole file does not fill the page. JSON and JSON Lines are never cut |
+| `--max-message-chars N` | Cuts the text of each prompt, reply, and summary to N characters, followed by `… (M more characters)` |
+| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, to N characters, so a `Write` of a whole file does not fill the output |
 
 ### sessions
 
@@ -148,8 +155,35 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   less those a pattern with a leading `!` leaves out, and Markdown adds a
   `Matches` column. Without a pattern that does not start
   with `!`, `match_count` is `null`.
-- `prompt_count`, `started_at`, and `ended_at` count and span the selected
-  prompts.
+- `prompt_count` and `started_at` count the selected prompts and give the
+  first one's time. `ended_at` is the time of the session's last prompt,
+  reply, tool call, or tool result in the range, so it shows when the
+  work ended even when a session has one prompt.
+- `first_match` holds the first prompt or reply a search matched in the
+  session, so it can be judged without reading its records: its `type`,
+  `timestamp`, the `line` a pattern matched in its text, and that line,
+  masked, on one line and cut to 200 characters, as `text`. When the
+  match spans lines, `line` is `null` and `text` starts the whole text.
+  Without a pattern that does not start with `!`, `first_match` is
+  `null`. Markdown adds a `First match` column next to `Matches`.
+- `--sort matches` lists the sessions with the most matches first, and
+  those with as many in time order; `--limit` then keeps the first N of
+  them. It needs a pattern that does not start with `!`. The default,
+  `--sort time`, lists them by their first selected prompt.
+
+A record has these keys, in this order:
+
+| Key | Holds |
+| --- | --- |
+| `agent` | `claude-code` |
+| `session_id` | The session ID |
+| `title` | The session's last title, or empty |
+| `project` | The project directory's name |
+| `cwd`, `git_branch` | Those of the first selected prompt |
+| `file` | The transcript file |
+| `mtime` | When the file was last written to |
+| `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | As above |
+| `usage` | The tokens; see Tokens |
 
 ### digest
 
@@ -168,7 +202,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.2","schema":3,"filter":"strict-v2"}
+{"version":"0.0.2","schema":4,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -181,7 +215,7 @@ of a repeatable flag on both sides add up.
 | Flag | Keeps |
 | --- | --- |
 | `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD` |
-| `--tz` | Day boundaries and Markdown times in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
+| `--tz` | Day boundaries and the times in the output, Markdown and JSON alike, in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
 | `--project` | Projects whose directory name or cwd contains the value |
 | `--session` | Sessions whose ID starts with the value, or with `current`, the session ccdig runs in |
 | `--branch` | Records on this git branch |
@@ -228,6 +262,15 @@ masked; the Masking section lists the rules.
 records that matched and keeps the context after the last of them.
 `--format` belongs to each command; see Commands.
 
+`records` and `sessions` take `--fields` too: in JSON and JSON Lines it
+writes only the keys it names, comma-separated or repeated, in the order
+the records write them. A key with a leading `!` is left out instead, as
+with the filters, so
+`--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the keys
+every record of a session repeats, and `sessions --fields '!usage'` drops
+the tokens. A key the command does not write is an error, and so is
+`--fields` with `--format md`.
+
 ### Environment variables
 
 | Variable | Sets the default of | Value |
@@ -253,7 +296,7 @@ records that matched and keeps the context after the last of them.
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
- "timestamp":"2026-10-13T01:00:01Z",
+ "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
@@ -272,7 +315,7 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
 | `summary` | `text` |
 
-Every key is always present. The `kind` of a prompt is how it was typed,
+Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
 `slash` or `text`; the record type is `type`, which `--type` picks.
 
 - `matched` is `false` for a record `--around` lists next to a match, and
@@ -288,7 +331,9 @@ Every key is always present. The `kind` of a prompt is how it was typed,
   `$` match at the start and end of each line, and a match that spans
   lines, is in a call's key names, or needs the escapes of the call's
   compact JSON, such as `\\`, lists no line, and the record is printed
-  whole. Without `--context`, `matches` is empty.
+  whole. Without `--context`, JSON and JSON Lines list the matched lines
+  alone, and Markdown lists none, so it prints each record whole.
+  `matches` is empty without a pattern that does not start with `!`.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
@@ -300,6 +345,10 @@ Every key is always present. The `kind` of a prompt is how it was typed,
   Claude Code stored one, and the `tool_use` block's otherwise. A result
   whose call was not found has an empty `tool` and a `null` `input`.
 - `usage` is the tokens of the response; see Tokens.
+- `timestamp`, like the times of a `sessions` record, is RFC 3339 with
+  the offset of the zone `--tz` names at that time, as in
+  `2026-10-13T10:00:01+09:00`, so the times read in the zone the days
+  were cut in. UTC is written `Z`.
 
 ### Tokens
 
@@ -326,7 +375,7 @@ Every key is always present. The `kind` of a prompt is how it was typed,
 run:
 
 ```json
-{"schema":3,"filter":"strict-v2","ccdig":"0.0.2",
+{"schema":4,"filter":"strict-v2","ccdig":"0.0.2",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

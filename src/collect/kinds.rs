@@ -377,6 +377,10 @@ impl Select for Prompt {
         &mut self.head
     }
 
+    fn kind(&self) -> &'static str {
+        "prompt"
+    }
+
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.command]
     }
@@ -405,6 +409,10 @@ impl Select for Reply {
 
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
+    }
+
+    fn kind(&self) -> &'static str {
+        "reply"
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
@@ -439,6 +447,10 @@ impl Select for Summary {
 
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
+    }
+
+    fn kind(&self) -> &'static str {
+        "summary"
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
@@ -480,6 +492,10 @@ impl Select for ToolCall {
         &mut self.head
     }
 
+    fn kind(&self) -> &'static str {
+        "call"
+    }
+
     fn labels_mut(&mut self) -> Vec<&mut String> {
         vec![&mut self.tool, &mut self.subagent]
     }
@@ -514,6 +530,10 @@ impl Select for Turn {
         selected_mut(self).head_mut()
     }
 
+    fn kind(&self) -> &'static str {
+        selected(self).kind()
+    }
+
     fn labels_mut(&mut self) -> Vec<&mut String> {
         selected_mut(self).labels_mut()
     }
@@ -546,6 +566,10 @@ impl Select for ToolResult {
 
     fn head_mut(&mut self) -> &mut Head {
         &mut self.head
+    }
+
+    fn kind(&self) -> &'static str {
+        "result"
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {

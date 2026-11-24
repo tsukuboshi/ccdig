@@ -8,6 +8,9 @@ pub enum Failure {
     /// `--around` is given without a pattern for it to find.
     #[error("--around needs --grep or --igrep with a pattern that does not start with !")]
     AroundNeedsGrep,
+    /// `--max-message-chars` or `--max-tool-chars` is not positive.
+    #[error("{0} must be positive")]
+    CharLimitNotPositive(&'static str),
     /// `--context` is given without a pattern for it to find.
     #[error("--context needs --grep or --igrep with a pattern that does not start with !")]
     ContextNeedsGrep,
@@ -37,18 +40,15 @@ pub enum Failure {
         /// The variable.
         variable: &'static str,
     },
+    /// `--fields` is given for Markdown.
+    #[error("--fields needs --format json or jsonl")]
+    FieldsNeedJson,
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),
     /// `--root` is not given and there is no home directory to default to.
     #[error("find the default --root: HOME is not set")]
     Home,
-    /// `--max-input-chars` is given for a format other than Markdown.
-    #[error("--max-input-chars needs --format md")]
-    InputLimitNeedsMarkdown,
-    /// `--max-input-chars` is not positive.
-    #[error("--max-input-chars must be positive")]
-    InputLimitNotPositive,
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),
@@ -99,6 +99,9 @@ pub enum Failure {
     /// `--since` and `--until` describe an empty range.
     #[error("since is after until")]
     SinceAfterUntil,
+    /// `sessions --sort matches` is given without a pattern to count.
+    #[error("--sort matches needs --grep or --igrep with a pattern that does not start with !")]
+    SortNeedsGrep,
     /// A time cannot be formatted, such as one outside the supported years.
     #[error("format time: {0}")]
     TimeFormat(#[source] jiff::Error),
@@ -109,6 +112,14 @@ pub enum Failure {
         flag: &'static str,
         /// The kinds it applies to.
         kinds: &'static str,
+    },
+    /// `--fields` names a key the command does not write.
+    #[error("--fields: unknown key {name:?}: use {known}")]
+    UnknownField {
+        /// The keys the command writes, listed.
+        known: String,
+        /// The unknown key.
+        name: String,
     },
     /// `--tz` names no known time zone.
     #[error("load time zone: unknown time zone {name}")]

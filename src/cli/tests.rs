@@ -7,6 +7,7 @@
 
 mod around;
 mod context;
+mod fields;
 mod kinds;
 mod mentions;
 mod properties;
@@ -17,6 +18,7 @@ use std::os::unix::fs::{PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 use super::environment::Environment;
@@ -656,7 +658,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":3,\"filter\":\"strict-v2\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":4,\"filter\":\"strict-v2\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -694,6 +696,18 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     let top = history.run(&["--help"]).out;
     check_eq(&top.contains("kind of record"), &false, &top)?;
     check_eq(&top.contains("record type"), &true, &top)?;
+    check_eq(
+        &top.contains("JSON Lines by default, on a terminal and in a pipe alike"),
+        &true,
+        &top,
+    )?;
+    let long = history.run(&["records", "--help"]).out;
+    for part in [
+        "JSON Lines by default, on a terminal and in a pipe alike; md to read",
+        "--around lists the records and --context the lines around a match",
+    ] {
+        check_eq(&long.contains(part), &true, &long)?;
+    }
     Ok(())
 }
 
@@ -744,10 +758,28 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "Output:\n",
                 "--format <FORMAT>",
                 "--limit <N>",
+                "--max-message-chars <N>",
+                "--max-tool-chars <N>",
+                "--fields <KEY>",
             ],
         ),
         &true,
         &records,
+    )?;
+    let sessions = history.run(&["sessions", "-h"]).out;
+    check_eq(
+        &in_order(
+            &sessions,
+            &[
+                "Output:\n",
+                "--format <FORMAT>",
+                "--limit <N>",
+                "--fields <KEY>",
+                "--sort <SORT>",
+            ],
+        ),
+        &true,
+        &sessions,
     )?;
     check_eq(
         &records.contains("[possible values: json, jsonl, md]"),
@@ -1279,7 +1311,7 @@ fn on_skip_fail_ends_with_status_1_after_writing_the_output() -> TestResult {
 }
 
 #[test]
-fn max_input_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
+fn max_tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
     let history = History::new("root")?;
     history.write(
         "-Users-alice-blog/wwww.jsonl",
@@ -1296,7 +1328,7 @@ fn max_input_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult
         "call",
         "--format",
         "md",
-        "--max-input-chars",
+        "--max-tool-chars",
         "10",
     ]);
     check_eq(&cut.code, &0, &cut.err)?;
@@ -1307,22 +1339,96 @@ fn max_input_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult
         &true,
         &whole.out,
     )?;
-    for (args, want) in [
-        (
-            &["--max-input-chars", "10"][..],
-            "ccdig: --max-input-chars needs --format md\n",
-        ),
-        (
-            &["--format", "md", "--max-input-chars", "0"][..],
-            "ccdig: --max-input-chars must be positive\n",
-        ),
-    ] {
-        let mut full = vec!["records", "--type", "call"];
-        full.extend_from_slice(args);
-        let ran = history.run(&full);
-        check_eq(&ran.code, &1, &format!("{args:?}"))?;
-        check_eq(ran.err.as_str(), want, &format!("{args:?}"))?;
+    for flag in ["--max-tool-chars", "--max-message-chars"] {
+        let ran = history.run(&["records", flag, "0"]);
+        check_eq(&ran.code, &1, flag)?;
+        check_eq(
+            ran.err.as_str(),
+            format!("ccdig: {flag} must be positive\n").as_str(),
+            flag,
+        )?;
     }
+    Ok(())
+}
+
+#[test]
+fn max_chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/vvvv.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"v-1","sessionId":"vvvv","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"please write the long notes file"}}"#,
+            r#"{"type":"assistant","uuid":"v-2","sessionId":"vvvv","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"text","text":"Writing the notes now."},{"type":"tool_use","id":"toolu_v1","name":"Write","input":{"file_path":"/tmp/notes.md","content":"0123456789abcdefghij"}}]}}"#,
+            r#"{"type":"user","uuid":"v-3","sessionId":"vvvv","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_v1","content":"File created successfully"}]}}"#,
+        ],
+    )?;
+    let texts = |extra: &[&str]| -> Result<Vec<Value>, Box<dyn Error>> {
+        let mut args = vec![
+            "records",
+            "--session",
+            "vvvv",
+            "--type",
+            "prompt,reply,call,result",
+        ];
+        args.extend_from_slice(extra);
+        let ran = history.run_week(&args);
+        if ran.code != 0 {
+            return Err(ran.err.into());
+        }
+        ran.out
+            .lines()
+            .map(|line| {
+                let record: Value = serde_json::from_str(line)?;
+                Ok(json!([
+                    record.get("type"),
+                    record.get("text"),
+                    record.pointer("/input/content"),
+                ]))
+            })
+            .collect()
+    };
+    check_eq(
+        &texts(&["--max-tool-chars", "4"])?,
+        &vec![
+            json!(["prompt", "please write the long notes file", null]),
+            json!(["reply", "Writing the notes now.", null]),
+            json!(["call", null, "0123\u{2026} (16 more characters)"]),
+            json!([
+                "result",
+                "File\u{2026} (21 more characters)",
+                "0123\u{2026} (16 more characters)"
+            ]),
+        ],
+        "--max-tool-chars",
+    )?;
+    check_eq(
+        &texts(&["--max-message-chars", "6"])?,
+        &vec![
+            json!(["prompt", "please\u{2026} (26 more characters)", null]),
+            json!(["reply", "Writin\u{2026} (16 more characters)", null]),
+            json!(["call", null, "0123456789abcdefghij"]),
+            json!([
+                "result",
+                "File created successfully",
+                "0123456789abcdefghij"
+            ]),
+        ],
+        "--max-message-chars",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn max_input_chars_points_at_max_tool_chars() -> TestResult {
+    let history = History::new("root")?;
+    let ran = history.run(&["records", "--max-input-chars", "10"]);
+    check_eq(&ran.code, &1, &ran.err)?;
+    check_eq(
+        ran.err.as_str(),
+        "ccdig: unexpected argument '--max-input-chars' found; it is --max-tool-chars now, which cuts the tool inputs and outputs in every format\n",
+        "hint",
+    )?;
     Ok(())
 }
 
@@ -1629,7 +1735,7 @@ fn a_prompt_carries_the_permission_mode_recorded_on_its_line() -> TestResult {
             serde_json::from_str::<serde_json::Value>(line).map(|record| {
                 record
                     .get("permission_mode")
-                    .and_then(serde_json::Value::as_str)
+                    .and_then(Value::as_str)
                     .unwrap_or("(missing)")
                     .to_owned()
             })
@@ -1678,7 +1784,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(3_i32)),
+        &Some(&serde_json::json!(4_i32)),
         "schema",
     )?;
     check_eq(
@@ -1780,7 +1886,7 @@ fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> Tes
     let sessions = history.run_week(&["sessions", "--session", "uuuu"]);
     check_eq(
         &sessions.out.contains(
-            r#""prompt_count":1,"match_count":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
+            r#""prompt_count":1,"match_count":null,"first_match":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
         ),
         &true,
         &sessions.out,
@@ -1822,7 +1928,7 @@ fn session_ids(out: &str) -> Result<Vec<String>, Box<dyn Error>> {
             let session: serde_json::Value = serde_json::from_str(line)?;
             Ok(session
                 .get("session_id")
-                .and_then(serde_json::Value::as_str)
+                .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned())
         })
@@ -1916,6 +2022,50 @@ fn the_local_zone_comes_from_tz_in_the_environment() -> TestResult {
         let ran = history.run_in(&tz(value), &args);
         check_eq(&ran.code, &0, &ran.err)?;
         check_eq(&ran.out.contains(want), &true, &ran.out)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn json_times_are_written_in_the_zone_of_the_day_range() -> TestResult {
+    let history = History::new("root")?;
+    let tz = |value: &str| Environment {
+        tz: Some(value.into()),
+        ..environment()
+    };
+    for (given, local, want) in [
+        (Some("Asia/Tokyo"), "UTC", "2026-10-13T10:00:01+09:00"),
+        (Some("UTC"), "Asia/Tokyo", "2026-10-13T01:00:01Z"),
+        (None, "Asia/Tokyo", "2026-10-13T10:00:01+09:00"),
+    ] {
+        let mut args = vec![
+            "--session",
+            "aaaa",
+            "--since",
+            "2026-10-13",
+            "--until",
+            "2026-10-19",
+        ];
+        if let Some(zone) = given {
+            args.extend(["--tz", zone]);
+        }
+        for command in ["records", "sessions"] {
+            let mut full = vec![command];
+            full.extend_from_slice(&args);
+            let ran = history.run_in(&tz(local), &full);
+            check_eq(&ran.code, &0, &ran.err)?;
+            let first: Value = serde_json::from_str(ran.out.lines().next().unwrap_or_default())?;
+            let key = if command == "records" {
+                "timestamp"
+            } else {
+                "started_at"
+            };
+            check_eq(
+                &first.get(key).and_then(Value::as_str),
+                &Some(want),
+                &format!("{command} {given:?} with TZ={local}"),
+            )?;
+        }
     }
     Ok(())
 }

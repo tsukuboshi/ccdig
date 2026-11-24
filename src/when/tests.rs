@@ -182,6 +182,41 @@ fn rfc3339_keeps_the_offset_and_trims_the_fraction_like_go() -> TestResult {
 }
 
 #[test]
+fn shown_in_writes_the_instant_with_the_zone_s_offset_at_that_time() -> TestResult {
+    for (input, name, want) in [
+        (
+            "2026-10-13T01:00:01Z",
+            "Asia/Tokyo",
+            "2026-10-13T10:00:01+09:00",
+        ),
+        ("2026-10-13T10:00:01+09:00", "UTC", "2026-10-13T01:00:01Z"),
+        (
+            "2026-10-13T01:02:03.456Z",
+            "Asia/Kolkata",
+            "2026-10-13T06:32:03.456+05:30",
+        ),
+        // New York leaves daylight saving time on the first Sunday of
+        // November.
+        (
+            "2026-11-01T05:59:59Z",
+            "America/New_York",
+            "2026-11-01T01:59:59-04:00",
+        ),
+        (
+            "2026-11-01T06:00:00Z",
+            "America/New_York",
+            "2026-11-01T01:00:00-05:00",
+        ),
+    ] {
+        let stamp = Stamp::parse_rfc3339(input).ok_or(input)?;
+        let shown = stamp.shown_in(&zone(name)?);
+        check_eq(shown.rfc3339().as_str(), want, name)?;
+        check_eq(&shown.instant(), &stamp.instant(), "the same instant")?;
+    }
+    Ok(())
+}
+
+#[test]
 fn an_offset_and_utc_spelling_of_one_instant_compare_by_instant() -> TestResult {
     let tokyo_spelling = Stamp::parse_rfc3339("2026-10-13T10:00:00+09:00").ok_or("tokyo")?;
     let utc_spelling = Stamp::parse_rfc3339("2026-10-13T01:00:00Z").ok_or("utc")?;

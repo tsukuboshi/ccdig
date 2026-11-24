@@ -8,6 +8,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `records --max-message-chars N` cuts the text of each prompt, reply, and
+  summary to N characters, in every format.
+- `records --fields` and `sessions --fields` write only the keys they
+  name in JSON and JSON Lines, or with a leading `!`, leave them out, so
+  `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the
+  keys every record of a session repeats and `sessions --fields '!usage'`
+  drops the tokens.
+- `sessions --grep` gives each session a new `first_match` key, with a
+  `First match` column in Markdown: the first prompt or reply it matched,
+  as its type, time, line number, and the line cut to 200 characters, so
+  a session can be judged without reading its records.
+- `sessions --sort matches` lists the sessions a search matched most
+  first; `--limit` then keeps the first N of them.
+
+### Changed
+
+- The JSON schema is 4: a session has `first_match`, and `ended_at`, the
+  times' offsets, and `matches` without `--context` mean what follows.
+- `records --max-input-chars` is now `--max-tool-chars`. It cuts each
+  tool result's output as well as each string in a tool's input, and works
+  in JSON and JSON Lines too. The old name fails with a pointer to the new
+  one.
+- With `--grep` or `--igrep`, `records` in JSON and JSON Lines lists the
+  lines that matched in `matches` without `--context`, so a record with
+  `matched` true says where it matched. Markdown still prints each record
+  whole unless `--context` is given.
+- A session's `ended_at` is the time of its last prompt, reply, tool call,
+  or tool result in the range, not of its last prompt, so a session with
+  one prompt no longer ends when it started.
+- JSON and JSON Lines write `timestamp`, `started_at`, `ended_at`, and
+  `mtime` with the offset of the zone `--tz` names, as Markdown shows
+  them, so the times read in the zone the days were cut in.
+- The help and the README say that `records` and `sessions` write JSON
+  Lines by default, on a terminal and in a pipe alike, and that
+  `--format md` gives Markdown to read. The help of `--grep` points at
+  `--around` and `--context`, which list what is around a match.
+
 ## [0.0.2] - 2026-11-24
 
 ### Added

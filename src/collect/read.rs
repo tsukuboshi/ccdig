@@ -11,17 +11,26 @@ use super::excerpt::excerpt;
 use super::kinds::Replies;
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Reading, Select, Spot};
-use crate::filter::{Facts, Query, Verdict};
+use regex::Regex;
+
+use crate::classify::human::{Reason, classify};
+use crate::filter::{Facts, Filter, Query, Verdict};
+use crate::record::{FIRST_MATCH_CHARS, FirstMatch};
 use crate::redact::Counts;
+use crate::text::{cut_text, one_line};
 use crate::transcript::entry::{Entry, Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;
+use crate::when::Stamp;
 
 /// What a transcript file yielded.
 pub struct Read<T> {
+    /// The time of the last prompt, reply, tool call, or tool result read
+    /// in the range, whether the filters kept it or not.
+    pub last: Option<Stamp>,
     /// With `Reading::mentions`, the prompts and replies the including
-    /// patterns matched, by line ID and block.
-    pub mentions: Option<Vec<(String, usize)>>,
+    /// patterns matched, in file order.
+    pub mentions: Option<Vec<Mention>>,
     /// The selected records, in file order, each with its block's index in
     /// the line.
     pub records: Vec<(usize, T)>,
@@ -33,6 +42,83 @@ pub struct Read<T> {
     pub title_masked: Counts,
     /// The tokens of each response in the range, by response ID.
     pub usage: Vec<(String, Usage)>,
+}
+
+/// A prompt or reply the including patterns matched, for `sessions`. Only
+/// the first one a session counts is shown, so the line it matched is
+/// found when `first_match` asks for it, not for every match.
+pub struct Mention {
+    /// The texts a search reads, masked, each named for its field.
+    fields: Vec<(String, String)>,
+    /// Its line ID and block, which a resumed copy repeats.
+    key: (String, usize),
+    /// `prompt` or `reply`.
+    kind: &'static str,
+    /// What masking its text counted.
+    masked: Counts,
+    /// When it was written.
+    timestamp: Stamp,
+}
+
+impl Mention {
+    /// What it shows of the match: the first line a pattern of `grep`
+    /// matched, or the start of its text when no single line did, on one
+    /// line and cut to `FIRST_MATCH_CHARS` characters.
+    pub fn first_match(&self, grep: &Filter<Regex>) -> FirstMatch {
+        let fields: Vec<(String, Cow<'_, str>)> = self
+            .fields
+            .iter()
+            .map(|named| (named.0.clone(), Cow::Borrowed(named.1.as_str())))
+            .collect();
+        let (line, text) = excerpt(&fields, grep, 0)
+            .into_iter()
+            .find(|listed| listed.hit)
+            .map_or_else(
+                || {
+                    (
+                        None,
+                        self.fields
+                            .first()
+                            .map_or_else(String::new, |named| named.1.clone()),
+                    )
+                },
+                |listed| (Some(listed.line), listed.text),
+            );
+        FirstMatch {
+            kind: self.kind,
+            timestamp: self.timestamp,
+            line,
+            text: cut_text(&one_line(&text), FIRST_MATCH_CHARS),
+        }
+    }
+
+    /// Its line ID and block, which a resumed copy repeats.
+    pub const fn key(&self) -> &(String, usize) {
+        &self.key
+    }
+
+    /// What masking its text counted.
+    pub const fn masked(&self) -> &Counts {
+        &self.masked
+    }
+
+    /// The mention of `record`, its block `block`, with its masked text.
+    fn of<T>(record: &T, block: usize) -> Self
+    where
+        T: Select,
+    {
+        Self {
+            fields: record
+                .grep_fields()
+                .into_iter()
+                .map(|(field, text)| (field, text.into_owned()))
+                .collect(),
+            key: (record.source().uuid.clone(), block),
+            kind: record.kind(),
+            masked: record.masked(),
+            timestamp: record.head().timestamp,
+        }
+    }
 }
 
 /// The records kept from a file so far, in file order, and the responses
@@ -84,8 +170,8 @@ struct Window<T> {
 /// How a file's records are kept once the filters have seen them.
 enum Keeper<T> {
     /// For `sessions --grep`: every record the other filters let through,
-    /// and the line ID and block of each the including patterns matched.
-    Tally(Vec<(String, usize)>),
+    /// and each the including patterns matched.
+    Tally(Vec<Mention>),
     /// Each match, and with `--around`, the records next to it.
     Window(Window<T>),
 }
@@ -148,7 +234,7 @@ where
     T: Select,
 {
     /// What tallied the matches, or `None` for a window.
-    fn mentions(self) -> Option<Vec<(String, usize)>> {
+    fn mentions(self) -> Option<Vec<Mention>> {
         match self {
             Self::Tally(found) => Some(found),
             Self::Window(_) => None,
@@ -181,7 +267,7 @@ where
         match *self {
             Self::Tally(ref mut found) => {
                 if verdict == Verdict::Hit {
-                    found.push((drafted.1.record().source().uuid.clone(), drafted.0));
+                    found.push(Mention::of(drafted.1.record(), drafted.0));
                 }
                 if verdict != Verdict::Out {
                     kept.keep(None, drafted, response);
@@ -251,7 +337,7 @@ where
 /// of `query` match and the other filters let through, by line ID and
 /// block. They are counted, not kept, and a line out of the range is not
 /// masked only to be dropped.
-fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<(String, usize)> {
+fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<Mention> {
     if !query.range.contains(spot.timestamp.instant()) {
         return Vec::new();
     }
@@ -259,7 +345,7 @@ fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<(Stri
         .pick(spot, entry)
         .into_iter()
         .filter(|pair| verdict(query, &pair.1) == Verdict::Hit)
-        .map(|(block, _)| (entry.uuid.clone(), block))
+        .map(|(block, draft)| Mention::of(draft.record(), block))
         .collect()
 }
 
@@ -278,6 +364,25 @@ fn tally(
         && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
     {
         used.push((entry.message_id.clone(), tokens));
+    }
+}
+
+/// The later of `last` and the time of `entry` when that is in the range
+/// of `query` and the line holds a record: a reply or tool call, a prompt,
+/// a tool result, or a summary, not a line the harness wrote.
+fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
+    let holds_a_record = entry.role == Role::Assistant
+        || entry.content.has_tool_result
+        || matches!(classify(entry), Reason::Human | Reason::CompactSummary);
+    match entry.timestamp {
+        Some(timestamp)
+            if holds_a_record
+                && query.range.contains(timestamp.instant())
+                && last.is_none_or(|seen| seen.instant() < timestamp.instant()) =>
+        {
+            Some(timestamp)
+        }
+        Some(_) | None => last,
     }
 }
 
@@ -340,6 +445,7 @@ where
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
+    let mut last: Option<Stamp> = None;
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
@@ -349,6 +455,7 @@ where
             }
             continue;
         }
+        last = later(last, &entry, query);
         if reading.usage {
             tally(&entry, query, &mut responses, &mut used);
         }
@@ -411,6 +518,7 @@ where
         .collect();
     let stats = lines.stats();
     Ok(Read {
+        last,
         mentions: keeper.mentions(),
         records,
         skipped: Skipped {

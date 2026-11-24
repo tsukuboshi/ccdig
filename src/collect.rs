@@ -93,6 +93,9 @@ pub trait Select: Record {
     /// The shared keys, to fill in the session title.
     fn head_mut(&mut self) -> &mut Head;
 
+    /// The record's `type`, as `--type` names it.
+    fn kind(&self) -> &'static str;
+
     /// The kind's own fields that are not text, such as the tool's name,
     /// for the masks `--mask-values` asks for.
     fn labels_mut(&mut self) -> Vec<&mut String>;
@@ -228,6 +231,7 @@ where
                 if !read.records.is_empty() {
                     sessions.push(FileRecords {
                         file,
+                        last: read.last,
                         modified,
                         mentions: read.mentions,
                         records: read.records,
@@ -275,6 +279,7 @@ where
         shown,
         mask,
         reading.around.unwrap_or_default(),
+        &query.grep,
     ))
 }
 

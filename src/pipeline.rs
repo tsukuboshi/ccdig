@@ -2,17 +2,19 @@
 //! them, and add up what masking counted. Everything comes in a `Config`,
 //! and the output goes back as text for the caller to write.
 
+use core::cmp::Reverse;
+
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
 use crate::collect::kinds::{Prompts, Records};
-use crate::collect::{Corpus, Pick, collect};
-use crate::config::{Config, Format, MaskReport, OnSkip, Shared, VersionFormat};
+use crate::collect::{Corpus, Pick, Select as _, collect};
+use crate::config::{Config, Format, MaskReport, OnSkip, SessionSort, Shared, VersionFormat};
 use crate::failure::Failure;
 use crate::record::Record;
 use crate::redact::Counts;
 use crate::render::digest::digest;
-use crate::render::json::{Run, document, lines, version};
+use crate::render::json::{Fields, Run, document, lines, version};
 use crate::render::markdown;
 
 /// The version of this build.
@@ -38,7 +40,7 @@ pub struct Printed {
 pub fn execute(config: Config) -> Result<Printed, Failure> {
     match config {
         Config::Digest { limits, shared } => {
-            let corpus = gather(&shared, || Prompts)?;
+            let corpus = gather(&shared, SessionSort::Time, || Prompts)?;
             printed(
                 &shared,
                 digest(&corpus.records, &shared.zone, limits)?,
@@ -47,14 +49,18 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             )
         }
         Config::Records {
+            cuts,
+            fields,
             format,
-            input_chars,
             kinds,
             shared,
         } => {
-            let corpus = gather(&shared, || Records::new(kinds))?;
-            let out = write(format, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone, input_chars)
+            let mut corpus = gather(&shared, SessionSort::Time, || Records::new(kinds))?;
+            for record in &mut corpus.records {
+                record.cut(cuts);
+            }
+            let out = write(format, &fields, &corpus.records, &shared.run, |records| {
+                markdown::records(records, &shared.zone)
             })?;
             printed(
                 &shared,
@@ -63,9 +69,14 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                 corpus.records.iter().map(Record::masked),
             )
         }
-        Config::Sessions { format, shared } => {
-            let corpus = gather(&shared, || Prompts)?;
-            let out = write(format, &corpus.sessions, &shared.run, |sessions| {
+        Config::Sessions {
+            fields,
+            format,
+            shared,
+            sort,
+        } => {
+            let corpus = gather(&shared, sort, || Prompts)?;
+            let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
                 markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
             })?;
             printed(
@@ -87,9 +98,14 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
     }
 }
 
-/// Reads every transcript into records of the kind `new_picker` picks,
-/// keeping at most `--limit` of them.
-fn gather<P, F>(shared: &Shared, new_picker: F) -> Result<Corpus<P::Record>, Failure>
+/// Reads every transcript into records of the kind `new_picker` picks, with
+/// the sessions in the order `sort` asks for, keeping at most `--limit` of
+/// them, with their times in the zone the day range was read in.
+fn gather<P, F>(
+    shared: &Shared,
+    sort: SessionSort,
+    new_picker: F,
+) -> Result<Corpus<P::Record>, Failure>
 where
     P: Pick,
     F: Fn() -> P,
@@ -101,12 +117,32 @@ where
         &shared.mask,
         new_picker,
     )?;
+    if sort == SessionSort::Matches {
+        // A stable sort keeps sessions with as many matches in time order.
+        corpus
+            .sessions
+            .sort_by_key(|session| Reverse(session.match_count));
+    }
     if let Some(limit) = shared.limit {
         let around = shared.reading.around.unwrap_or_default();
         corpus
             .records
             .truncate(limit_end(&corpus.records, limit, around));
         corpus.sessions.truncate(limit);
+    }
+    // Sorting and joining compared instants; only the offset written
+    // changes.
+    for record in &mut corpus.records {
+        let head = record.head_mut();
+        head.timestamp = head.timestamp.shown_in(&shared.zone);
+    }
+    for session in &mut corpus.sessions {
+        session.mtime = session.mtime.shown_in(&shared.zone);
+        session.started_at = session.started_at.shown_in(&shared.zone);
+        session.ended_at = session.ended_at.shown_in(&shared.zone);
+        if let Some(ref mut first) = session.first_match {
+            first.timestamp = first.timestamp.shown_in(&shared.zone);
+        }
     }
     Ok(corpus)
 }
@@ -197,10 +233,11 @@ fn printed(
     })
 }
 
-/// Writes `records` in `format`, using `markdown` for Markdown and `run` in
-/// the JSON envelope.
+/// Writes `records` in `format`, with the keys `fields` keeps in JSON,
+/// using `markdown` for Markdown and `run` in the JSON envelope.
 fn write<T>(
     format: Format,
+    fields: &Fields,
     records: &[T],
     run: &Run,
     markdown: impl FnOnce(&[T]) -> Result<String, Failure>,
@@ -209,8 +246,8 @@ where
     T: Serialize,
 {
     match format {
-        Format::Json => document(FILTER_VERSION, VERSION, run, records),
-        Format::Jsonl => lines(records),
+        Format::Json => document(FILTER_VERSION, VERSION, run, records, fields),
+        Format::Jsonl => lines(records, fields),
         Format::Markdown => markdown(records),
     }
 }

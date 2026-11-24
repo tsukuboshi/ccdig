@@ -1,16 +1,77 @@
 //! The records that flow between the stages: `collect` builds them, and
-//! `render` writes them. Every key is always written, in declaration order,
-//! so consumers can rely on the keys.
+//! `render` writes them. Every key is written, in declaration order, unless
+//! `--fields` leaves it out, so consumers can rely on the keys.
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::redact::Counts;
+use crate::text::cut_text;
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
 /// The `agent` of every record.
 pub const AGENT: &str = "claude-code";
+
+/// How many characters `first_match` keeps of the line.
+pub const FIRST_MATCH_CHARS: usize = 200;
+
+/// The keys a line of `records` can have, in the order the kinds write
+/// them, for `--fields`.
+pub const RECORD_KEYS: [&str; 24] = [
+    "type",
+    "agent",
+    "session_id",
+    "session_title",
+    "project",
+    "cwd",
+    "git_branch",
+    "timestamp",
+    "tool",
+    "input",
+    "tool_use_id",
+    "is_error",
+    "text",
+    "kind",
+    "command",
+    "permission_mode",
+    "model",
+    "skill",
+    "subagent",
+    "usage",
+    "redacted",
+    "source",
+    "matched",
+    "matches",
+];
+
+/// The keys of a line of `sessions`, in order, for `--fields`.
+pub const SESSION_KEYS: [&str; 14] = [
+    "agent",
+    "session_id",
+    "title",
+    "project",
+    "cwd",
+    "git_branch",
+    "file",
+    "mtime",
+    "started_at",
+    "ended_at",
+    "prompt_count",
+    "match_count",
+    "first_match",
+    "usage",
+];
+
+/// How many characters `--max-message-chars` and `--max-tool-chars` keep of
+/// each string, `None` for all of them.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Cuts {
+    /// The text of a prompt, a reply, or a summary.
+    pub message: Option<usize>,
+    /// Each string in a tool's input, and a tool result's text.
+    pub tool: Option<usize>,
+}
 
 /// The keys every kind of record starts with.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -74,8 +135,10 @@ pub struct Search {
     /// Whether `--grep` matched the record: `false` for one `--around`
     /// adds next to a match, `true` otherwise.
     pub matched: bool,
-    /// With `--context`, the lines `--grep` matched and those around them,
-    /// in order; empty otherwise, or when no single line matched.
+    /// The lines `--grep` matched and, with `--context`, those around
+    /// them, in order: in JSON and JSON Lines whenever a pattern without a
+    /// leading `!` is given, in Markdown only with `--context`. Empty
+    /// otherwise, or when no single line matched.
     pub matches: Vec<MatchLine>,
 }
 
@@ -193,24 +256,49 @@ pub struct Session {
     pub git_branch: String,
     /// The transcript file.
     pub file: String,
-    /// The file's modification time, in UTC, for tools that assign
-    /// sessions to weeks by it.
+    /// The file's modification time, for tools that assign sessions to
+    /// weeks by it.
     pub mtime: Stamp,
     /// The first prompt's time.
     pub started_at: Stamp,
-    /// The last prompt's time.
+    /// The time of the session's last prompt, reply, tool call, or tool
+    /// result in the range, whether the filters kept it or not.
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
     /// With `--grep` or `--igrep`, how many of the session's prompts and
     /// replies they matched; `null` otherwise.
     pub match_count: Option<usize>,
+    /// With `--grep` or `--igrep`, the first prompt or reply they matched
+    /// in the session; `null` otherwise.
+    pub first_match: Option<FirstMatch>,
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
     /// What masking these keys counted, for `--mask-report`; not written.
     #[serde(skip)]
     pub masked: Counts,
+}
+
+/// The first prompt or reply a search matched in a session, so a session
+/// can be judged without reading its records.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct FirstMatch {
+    /// `prompt` or `reply`.
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    /// When it was written.
+    pub timestamp: Stamp,
+    /// The 1-based number of the line a pattern matched in its text, or
+    /// `null` when the match spans lines.
+    pub line: Option<usize>,
+    /// That line, or the whole text when no single line matched, masked,
+    /// on one line and cut to `FIRST_MATCH_CHARS` characters.
+    pub text: String,
 }
 
 /// The summary Claude Code writes when it compacts the context: a
@@ -463,6 +551,48 @@ impl Default for Search {
 }
 
 impl Turn {
+    /// Cuts the record's texts, and the lines `matches` lists of them, to
+    /// what `cuts` keeps: a prompt's, a reply's, or a summary's to
+    /// `message`, and a tool's input and output to `tool`.
+    pub fn cut(&mut self, cuts: Cuts) {
+        let (given, own_text, own_input, search) = match *self {
+            Self::Prompt(ref mut prompt) => (
+                cuts.message,
+                Some(&mut prompt.text),
+                None,
+                &mut prompt.search,
+            ),
+            Self::Reply(ref mut reply) => {
+                (cuts.message, Some(&mut reply.text), None, &mut reply.search)
+            }
+            Self::Summary(ref mut summary) => (
+                cuts.message,
+                Some(&mut summary.text),
+                None,
+                &mut summary.search,
+            ),
+            Self::Call(ref mut call) => (cuts.tool, None, Some(&mut call.input), &mut call.search),
+            Self::Result(ref mut result) => (
+                cuts.tool,
+                Some(&mut result.text),
+                Some(&mut result.input),
+                &mut result.search,
+            ),
+        };
+        let Some(limit) = given else {
+            return;
+        };
+        if let Some(text) = own_text {
+            *text = cut_text(text, limit);
+        }
+        if let Some(input) = own_input {
+            cut_strings(input, limit);
+        }
+        for line in &mut search.matches {
+            line.text = cut_text(&line.text, limit);
+        }
+    }
+
     /// The record inside.
     fn inner(&self) -> &dyn Record {
         match *self {
@@ -494,5 +624,24 @@ impl Record for Turn {
 
     fn subagent(&self) -> &str {
         self.inner().subagent()
+    }
+}
+
+/// Cuts each string in `value` longer than `limit` characters to `limit`,
+/// followed by an ellipsis and how many characters were cut.
+fn cut_strings(value: &mut Value, limit: usize) {
+    match *value {
+        Value::String(ref mut text) => *text = cut_text(text, limit),
+        Value::Array(ref mut items) => {
+            for item in items {
+                cut_strings(item, limit);
+            }
+        }
+        Value::Object(ref mut fields) => {
+            for field in fields.values_mut() {
+                cut_strings(field, limit);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }

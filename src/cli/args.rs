@@ -23,9 +23,10 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
     long_about = "ccdig pulls the logs you want to share out of Claude Code session\n\
                   transcripts, formatted and masked. Filters for time, project, session,\n\
                   branch, text, record type, tool, outcome, and skill narrow the history\n\
-                  down, and the result is Markdown to read or JSON Lines to process. Harness\n\
-                  noise is dropped, slash commands are folded back, and common secrets are\n\
-                  masked by default.",
+                  down. records and sessions write\n\
+                  JSON Lines by default, on a terminal and in a pipe alike; give\n\
+                  --format md for Markdown to read. Harness noise is dropped, slash\n\
+                  commands are folded back, and common secrets are masked by default.",
     after_help = "Examples:\n\
                   \x20 ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
@@ -97,7 +98,11 @@ pub enum Command {
         display_order = 1,
         after_help = "Without --type, a search reads prompts, replies, and tool calls, and a\n\
                       tool call's input can be long: narrow it with --type and --limit, as in\n\
-                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20"
+                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20\n\
+                      or cut the texts and leave out the keys every record of a session\n\
+                      repeats, as in\n\
+                      \x20 ccdig records --igrep deploy --max-message-chars 500 --max-tool-chars 100 \\\n\
+                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
     )]
     Records {
         /// The record types to list (comma-separated, repeatable)
@@ -124,13 +129,18 @@ pub enum Command {
         common: Common,
         /// List the lines --grep or --igrep matched in each record, with
         /// this many lines before and after each, in `matches`; Markdown
-        /// prints those lines in place of the whole text.
+        /// prints those lines in place of the whole text [default: 0 in
+        /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
-        /// In Markdown, cut each string in a tool call's input to this many
+        /// Cut the text of each prompt, reply, and summary to this many
         /// characters [default: no limit].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
-        max_input_chars: Option<i64>,
+        max_message_chars: Option<i64>,
+        /// Cut each string in a tool's input, and each tool result's
+        /// output, to this many characters [default: no limit].
+        #[arg(long, value_name = "N", help_heading = "Output", display_order = 63)]
+        max_tool_chars: Option<i64>,
         /// The output format.
         #[command(flatten)]
         output: Output,
@@ -163,6 +173,16 @@ pub enum Command {
         /// The output format.
         #[command(flatten)]
         output: Output,
+        /// The order of the sessions: by the time of their first prompt, or
+        /// by how many prompts and replies --grep or --igrep matched, most
+        /// first, then by time.
+        #[arg(
+            long,
+            default_value = "time",
+            help_heading = "Output",
+            display_order = 65
+        )]
+        sort: SessionSort,
     },
     /// Print the ccdig version.
     #[command(display_order = 4)]
@@ -198,8 +218,8 @@ pub struct Common {
     /// Last day to include, YYYY-MM-DD (record time, in --tz).
     #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 21)]
     pub until: Option<String>,
-    /// IANA time zone for --since, --until, and Markdown times [default:
-    /// Local, the system zone; set TZ to override].
+    /// IANA time zone for --since, --until, and the times in the output
+    /// [default: Local, the system zone; set TZ to override].
     #[arg(
         long,
         value_name = "ZONE",
@@ -236,7 +256,9 @@ pub struct Common {
     )]
     pub branches: Vec<String>,
     /// Keep records whose text matches this regular expression, after
-    /// masking, or with a leading !, leave them out (repeatable).
+    /// masking, or with a leading !, leave them out (repeatable); in
+    /// records, --around lists the records and --context the lines around a
+    /// match.
     #[arg(
         long = "grep",
         value_name = "REGEX",
@@ -377,6 +399,15 @@ pub enum Format {
     Markdown,
 }
 
+/// The orders of `sessions --sort`.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum SessionSort {
+    /// Most matches first, then by time.
+    Matches,
+    /// By the time of the first prompt.
+    Time,
+}
+
 /// The output formats of `version`.
 #[derive(Clone, Copy, ValueEnum)]
 pub enum VersionFormat {
@@ -386,10 +417,21 @@ pub enum VersionFormat {
     Text,
 }
 
-/// The `--format` flag.
+/// The `--format` and `--fields` flags.
 #[derive(Args)]
 pub struct Output {
-    /// Output format.
+    /// In JSON and JSON Lines, write only these keys, or with a leading !,
+    /// leave them out (comma-separated, repeatable) [default: every key].
+    #[arg(
+        long = "fields",
+        value_name = "KEY",
+        value_delimiter = ',',
+        help_heading = "Output",
+        display_order = 64
+    )]
+    pub fields: Vec<String>,
+    /// Output format: JSON Lines by default, on a terminal and in a pipe
+    /// alike; md to read.
     #[arg(
         long,
         default_value = "jsonl",
@@ -481,6 +523,15 @@ impl From<OnSkip> for config::OnSkip {
     }
 }
 
+impl From<SessionSort> for config::SessionSort {
+    fn from(sort: SessionSort) -> Self {
+        match sort {
+            SessionSort::Matches => Self::Matches,
+            SessionSort::Time => Self::Time,
+        }
+    }
+}
+
 impl From<VersionFormat> for config::VersionFormat {
     fn from(format: VersionFormat) -> Self {
         match format {
@@ -528,6 +579,12 @@ fn hint(error: &clap::Error) -> Option<String> {
         return None;
     }
     let arg = error.get(ContextKind::InvalidArg)?.to_string();
+    if arg == "--max-input-chars" {
+        return Some(
+            "it is --max-tool-chars now, which cuts the tool inputs and outputs in every format"
+                .to_owned(),
+        );
+    }
     KIND_FLAGS.contains(&arg.as_str()).then(|| {
         format!(
             "pick the record types with --type: {}",
@@ -573,10 +630,19 @@ where
         .filter_map(ValueEnum::to_possible_value)
         .map(|value| value.get_name().to_owned())
         .collect();
-    match names.split_last() {
+    listed(&names)
+}
+
+/// `names` as a list for a message: `a, b, or c`.
+pub fn listed<S>(names: &[S]) -> String
+where
+    S: AsRef<str>,
+{
+    let all: Vec<&str> = names.iter().map(AsRef::as_ref).collect();
+    match all.split_last() {
         Some((last, rest)) if rest.len() == 1 => format!("{} or {last}", rest.join(", ")),
         Some((last, rest)) if !rest.is_empty() => format!("{}, or {last}", rest.join(", ")),
-        Some((last, _)) => last.clone(),
+        Some((last, _)) => (*last).to_owned(),
         None => String::new(),
     }
 }

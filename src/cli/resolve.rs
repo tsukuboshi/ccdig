@@ -4,18 +4,21 @@
 
 use std::path::{Path, PathBuf};
 
-use super::args::{Activity, Command, Common, MaskKind, RecordType, Status, mask_kinds, on_skip};
+use super::args::{
+    Activity, Command, Common, MaskKind, RecordType, Status, listed, mask_kinds, on_skip,
+};
 use super::environment::Environment;
 use super::values::{self, Values};
 use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
-use crate::config::{Config, Format, Shared};
+use crate::config::{Config, Format, SessionSort, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, patterns};
+use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
-use crate::render::json::Run;
+use crate::render::json::{Fields, Run};
 use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
@@ -36,6 +39,11 @@ struct Narrowing {
     around: Option<usize>,
     /// `--context`: how many lines around each matched line to list.
     context: Option<usize>,
+    /// How many lines around each matched line a search lists without
+    /// `--context`: none, but the lines themselves, in JSON and JSON Lines.
+    /// Markdown prints those lines in place of the whole text, so it lists
+    /// them only when asked.
+    context_by_default: Option<usize>,
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
@@ -124,7 +132,9 @@ impl Flags {
             },
             reading: Reading {
                 around: narrowing.around,
-                excerpt: narrowing.context,
+                excerpt: narrowing
+                    .context
+                    .or_else(|| narrowing.context_by_default.filter(|_| finds)),
                 mentions: narrowing.mentions && finds,
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
@@ -307,18 +317,45 @@ fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failur
     })
 }
 
-/// Checks `--max-input-chars`, which applies to Markdown only, and converts
-/// it.
-fn input_limit(chars: Option<i64>, format: Format) -> Result<Option<usize>, Failure> {
+/// Checks the keys `--fields` names against those the command writes,
+/// `known`, and that the output is JSON, and converts them.
+fn fields(names: Vec<String>, known: &[&str], format: Format) -> Result<Fields, Failure> {
+    if names.is_empty() {
+        return Ok(Fields::default());
+    }
+    if format == Format::Markdown {
+        return Err(Failure::FieldsNeedJson);
+    }
+    let mut picked = Filter::names(names);
+    // A trailing comma, as in `text,`, names no key.
+    picked.include.retain(|name| !name.is_empty());
+    picked.exclude.retain(|name| !name.is_empty());
+    if let Some(unknown) = picked
+        .include
+        .iter()
+        .chain(&picked.exclude)
+        .find(|name| !known.contains(&name.as_str()))
+    {
+        return Err(Failure::UnknownField {
+            known: listed(known),
+            name: unknown.clone(),
+        });
+    }
+    Ok(Fields {
+        exclude: picked.exclude,
+        include: picked.include,
+    })
+}
+
+/// Checks a limit of characters that `flag` gave, which must be positive,
+/// and converts it.
+fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, Failure> {
     let Some(given) = chars else {
         return Ok(None);
     };
-    if format != Format::Markdown {
-        return Err(Failure::InputLimitNeedsMarkdown);
-    }
     match usize::try_from(given) {
         Ok(limit) if limit > 0 => Ok(Some(limit)),
-        Ok(_) | Err(_) => Err(Failure::InputLimitNotPositive),
+        Ok(_) | Err(_) => Err(Failure::CharLimitNotPositive(flag)),
     }
 }
 
@@ -385,7 +422,8 @@ pub fn resolve(
             around,
             common: later,
             context,
-            max_input_chars,
+            max_message_chars,
+            max_tool_chars,
             output,
             statuses,
             tools,
@@ -399,18 +437,24 @@ pub fn resolve(
             );
             check_kinds(kinds, &activity, !tools.is_empty(), !statuses.is_empty())?;
             let format = output.format.into();
-            let input_chars = input_limit(max_input_chars, format)?;
+            let fields = fields(output.fields, &RECORD_KEYS, format)?;
+            let cuts = Cuts {
+                message: char_limit(max_message_chars, "--max-message-chars")?,
+                tool: char_limit(max_tool_chars, "--max-tool-chars")?,
+            };
             let narrowing = Narrowing {
                 around,
                 context,
                 is_error: status_filter(&statuses),
+                context_by_default: (format != Format::Markdown).then_some(0),
                 tools,
                 ..activity.into()
             };
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             Ok(Config::Records {
+                cuts,
+                fields,
                 format,
-                input_chars,
                 kinds,
                 shared: Box::new(flags.shared(narrowing, environment)?),
             })
@@ -418,6 +462,7 @@ pub fn resolve(
         Command::Sessions {
             common: later,
             output,
+            sort,
         } => {
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             let narrowing = Narrowing {
@@ -425,9 +470,18 @@ pub fn resolve(
                 usage: true,
                 ..Narrowing::default()
             };
+            let format = output.format.into();
+            let picked = fields(output.fields, &SESSION_KEYS, format)?;
+            let shared = flags.shared(narrowing, environment)?;
+            let order = sort.into();
+            if order == SessionSort::Matches && !shared.reading.mentions {
+                return Err(Failure::SortNeedsGrep);
+            }
             Ok(Config::Sessions {
-                format: output.format.into(),
-                shared: Box::new(flags.shared(narrowing, environment)?),
+                fields: picked,
+                format,
+                shared: Box::new(shared),
+                sort: order,
             })
         }
         Command::Version {

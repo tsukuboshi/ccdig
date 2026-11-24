@@ -95,6 +95,55 @@ fn context_lists_the_matched_lines_of_a_reply_with_the_lines_around_them() -> Te
 }
 
 #[test]
+fn a_search_without_context_lists_the_matched_lines_alone() -> TestResult {
+    let history = history_with_long_records()?;
+    let args = [
+        "records",
+        "--session",
+        "eeee",
+        "--type",
+        "reply",
+        "--igrep",
+        "cloud edition",
+    ];
+    let got = records(&history, &args)?;
+    check_eq(
+        &matches(&got),
+        &vec![Value::Array(vec![
+            line("text", 3, "The Cloud edition was left out.", true),
+            line("text", 7, "The cloud edition uses zip.", true),
+        ])],
+        "jsonl",
+    )?;
+    let mut markdown = args.to_vec();
+    markdown.extend(["--format", "md"]);
+    let ran = history.run_week(&markdown);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(&ran.out.contains("line one\nline two\n"), &true, &ran.out)?;
+    check_eq(&ran.out.contains("- Line"), &false, &ran.out)?;
+    Ok(())
+}
+
+#[test]
+fn a_search_that_only_leaves_records_out_lists_no_lines() -> TestResult {
+    let history = history_with_long_records()?;
+    let got = records(
+        &history,
+        &[
+            "records",
+            "--session",
+            "eeee",
+            "--type",
+            "reply",
+            "--grep",
+            "!WIP",
+        ],
+    )?;
+    check_eq(&matches(&got), &vec![json!([])], "matches")?;
+    Ok(())
+}
+
+#[test]
 fn context_without_a_pattern_to_find_is_an_error() -> TestResult {
     let history = history_with_long_records()?;
     for extra in [&[][..], &["--grep", "!WIP"][..]] {
@@ -209,7 +258,7 @@ fn a_match_no_single_line_holds_lists_no_lines_and_prints_the_whole_text() -> Te
 }
 
 #[test]
-fn max_input_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
+fn max_tool_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
     let history = history_with_long_records()?;
     let ran = history.run_week(&[
         "records",
@@ -221,7 +270,7 @@ fn max_input_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
         "cloud edition",
         "--context",
         "0",
-        "--max-input-chars",
+        "--max-tool-chars",
         "9",
         "--format",
         "md",
