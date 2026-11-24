@@ -279,7 +279,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   それ以外のレコードでは `true` です。
 - `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
   行とその前後の行を順に並べます。`field` はその行がある文字列で、呼び出し
-  以外は `text`、呼び出しでは入力の中の場所（`input.command` など）です。
+  以外は `text`、呼び出しでは入力の中の場所（`input.command` や
+  `input.edits[0].new_string` など）です。英数字・`_`・`-` 以外を含むキーは
+  `input["a.b"]` のように引用します。
   `line` はその文字列での 1 始まりの行番号、`text` はマスク後の行、`hit` は
   パターンに一致した行かどうかです。パターンは 1 行ずつ試すので、`^` と
   `$` は各行の先頭と末尾に一致します。また、行をまたぐ一致、呼び出しの

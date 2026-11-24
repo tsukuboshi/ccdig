@@ -588,8 +588,9 @@ fn selected(turn: &Turn) -> &dyn Select {
 }
 
 /// Adds each string in `value`, at `path`, to `fields` with its path, in
-/// the order the input has them: `.key` for a key of an object and `[n]`
-/// for an item of an array.
+/// the order the input has them: `.key` for a key of an object, `["key"]`
+/// for one that could read as more of a path, and `[n]` for an item of an
+/// array.
 fn strings_in<'value>(
     value: &'value Value,
     path: String,
@@ -604,7 +605,16 @@ fn strings_in<'value>(
         }
         Value::Object(ref keys) => {
             for (key, item) in keys {
-                strings_in(item, format!("{path}.{key}"), fields);
+                let plain = !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-');
+                let step = if plain {
+                    format!("{path}.{key}")
+                } else {
+                    format!("{path}[{}]", Value::String(key.clone()))
+                };
+                strings_in(item, step, fields);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}

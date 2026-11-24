@@ -301,3 +301,39 @@ fn a_secret_in_a_key_of_a_call_s_input_is_masked_in_the_input_and_the_lines() ->
     }
     Ok(())
 }
+
+#[test]
+fn a_key_that_could_read_as_a_path_is_quoted_in_the_field() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/xxxx.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"x-1","sessionId":"xxxx","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_x1","name":"Edit","input":{"a.b":{"c[0]":"deploy"},"a":{"b":{"c":["deploy"]}},"new_string":"deploy"}}]}}"#,
+        ],
+    )?;
+    let got = records(
+        &history,
+        &[
+            "records",
+            "--session",
+            "xxxx",
+            "--type",
+            "call",
+            "--grep",
+            "deploy",
+            "--context",
+            "0",
+        ],
+    )?;
+    check_eq(
+        &matches(&got),
+        &vec![Value::Array(vec![
+            line(r#"input["a.b"]["c[0]"]"#, 1, "deploy", true),
+            line("input.a.b.c[0]", 1, "deploy", true),
+            line("input.new_string", 1, "deploy", true),
+        ])],
+        "matches",
+    )?;
+    Ok(())
+}

@@ -279,7 +279,9 @@ Every key is always present. The `kind` of a prompt is how it was typed,
 - `matches` lists, with `--context`, the lines `--grep` or `--igrep`
   matched and those around them, in order: `field` is the text the line is
   in, `text` for every kind but a call, and for a call where the string is
-  in its input, such as `input.command`; `line` is the line's 1-based
+  in its input, such as `input.command` or `input.edits[0].new_string`,
+  with a key other than letters, digits, `_`, and `-` quoted, as in
+  `input["a.b"]`; `line` is the line's 1-based
   number in that text, `text` the line, masked, and `hit` whether a
   pattern matched it. Each pattern is tried on each line alone, so `^` and
   `$` match at the start and end of each line, and a match that spans
