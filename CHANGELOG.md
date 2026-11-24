@@ -26,6 +26,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The JSON schema is 4: a session has `first_match`, and `ended_at`, the
+  times' offsets, and `matches` without `--context` mean what follows.
 - `records --max-input-chars` is now `--max-tool-chars`. It cuts each
   tool result's output as well as each string in a tool's input, and works
   in JSON and JSON Lines too. The old name fails with a pointer to the new
