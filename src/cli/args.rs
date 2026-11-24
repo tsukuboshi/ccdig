@@ -23,9 +23,10 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
     long_about = "ccdig pulls the logs you want to share out of Claude Code session\n\
                   transcripts, formatted and masked. Filters for time, project, session,\n\
                   branch, text, record type, tool, outcome, and skill narrow the history\n\
-                  down, and the result is Markdown to read or JSON Lines to process. Harness\n\
-                  noise is dropped, slash commands are folded back, and common secrets are\n\
-                  masked by default.",
+                  down. records and sessions write\n\
+                  JSON Lines by default, on a terminal and in a pipe alike; give\n\
+                  --format md for Markdown to read. Harness noise is dropped, slash\n\
+                  commands are folded back, and common secrets are masked by default.",
     after_help = "Examples:\n\
                   \x20 ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
@@ -255,7 +256,9 @@ pub struct Common {
     )]
     pub branches: Vec<String>,
     /// Keep records whose text matches this regular expression, after
-    /// masking, or with a leading !, leave them out (repeatable).
+    /// masking, or with a leading !, leave them out (repeatable); in
+    /// records, --around lists the records and --context the lines around a
+    /// match.
     #[arg(
         long = "grep",
         value_name = "REGEX",
@@ -427,7 +430,8 @@ pub struct Output {
         display_order = 64
     )]
     pub fields: Vec<String>,
-    /// Output format.
+    /// Output format: JSON Lines by default, on a terminal and in a pipe
+    /// alike; md to read.
     #[arg(
         long,
         default_value = "jsonl",

@@ -40,6 +40,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - JSON and JSON Lines write `timestamp`, `started_at`, `ended_at`, and
   `mtime` with the offset of the zone `--tz` names, as Markdown shows
   them, so the times read in the zone the days were cut in.
+- The help and the README say that `records` and `sessions` write JSON
+  Lines by default, on a terminal and in a pipe alike, and that
+  `--format md` gives Markdown to read. The help of `--grep` points at
+  `--around` and `--context`, which list what is around a match.
 
 ## [0.0.2] - 2026-11-24
 

@@ -696,6 +696,18 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     let top = history.run(&["--help"]).out;
     check_eq(&top.contains("kind of record"), &false, &top)?;
     check_eq(&top.contains("record type"), &true, &top)?;
+    check_eq(
+        &top.contains("JSON Lines by default, on a terminal and in a pipe alike"),
+        &true,
+        &top,
+    )?;
+    let long = history.run(&["records", "--help"]).out;
+    for part in [
+        "JSON Lines by default, on a terminal and in a pipe alike; md to read",
+        "--around lists the records and --context the lines around a match",
+    ] {
+        check_eq(&long.contains(part), &true, &long)?;
+    }
     Ok(())
 }
 

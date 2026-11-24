@@ -5,8 +5,9 @@
 Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
 取り出す CLI です。
 期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
-成否・スキルを組み合わせて必要な部分に絞り込み、読みやすい Markdown か、
-加工しやすい JSON Lines で出力します。
+成否・スキルを組み合わせて必要な部分に絞り込みます。`records` と `sessions` は、
+端末でもパイプでも既定で加工しやすい JSON Lines を出し、`--format md` を
+付けると読みやすい Markdown を出します。
 よくある秘密情報は既定でマスクし、メールアドレス・IP アドレス・ユーザー名・
 指定した値も追加でマスクできます。
 
@@ -81,7 +82,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |

@@ -5,10 +5,11 @@
 Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
 session, branch, text, record type, tool, outcome, and skill to narrow
-the history down to the part that matters, and write it as Markdown to
-read or JSON Lines to process. Common secrets are masked by default, and
-email addresses, IP addresses, your user name, and values you list can be
-masked too.
+the history down to the part that matters. `records` and `sessions`
+write JSON Lines to process by default, on a terminal and in a pipe
+alike; give `--format md` for Markdown to read. Common secrets are
+masked by default, and email addresses, IP addresses, your user name,
+and values you list can be masked too.
 
 [日本語](README.ja.md)
 
@@ -80,7 +81,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
