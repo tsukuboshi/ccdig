@@ -274,7 +274,15 @@ fn current_session(sessions: &[String], environment: &Environment) -> Result<Vec
                 .session_id
                 .as_deref()
                 .ok_or(Failure::NoCurrentSession)?;
-            Ok(format!("{bang}{}", id.to_string_lossy()))
+            // `Filter::names` reads a leading `!` as leaving out, so an ID
+            // that starts with one is escaped to stay an ID.
+            let shown = id.to_string_lossy();
+            let escape = if bang.is_empty() && shown.starts_with('!') {
+                "\\"
+            } else {
+                ""
+            };
+            Ok(format!("{bang}{escape}{shown}"))
         })
         .collect()
 }

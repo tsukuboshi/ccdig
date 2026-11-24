@@ -1850,6 +1850,32 @@ fn session_current_is_the_session_ccdig_runs_in() -> TestResult {
 }
 
 #[test]
+fn session_current_takes_the_variable_as_an_id_even_with_a_leading_bang() -> TestResult {
+    let history = History::new("root")?;
+    let odd = Environment {
+        session_id: Some("!aaaaaaaa".into()),
+        ..environment()
+    };
+    for (session, listed) in [
+        ("current", vec![]),
+        (
+            "!current",
+            vec![
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_owned(),
+            ],
+        ),
+    ] {
+        let mut args = vec!["sessions", "--session", session];
+        args.extend(WEEK);
+        let ran = history.run_in(&odd, &args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&session_ids(&ran.out)?, &listed, session)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn session_current_outside_claude_code_is_an_error() -> TestResult {
     let history = History::new("root")?;
     for session in ["current", "!current"] {
