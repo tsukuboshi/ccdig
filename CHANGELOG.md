@@ -14,6 +14,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
   so a search no longer lists the session doing it.
 
+### Changed
+
+- In Markdown, a sub-agent's record names the sub-agent at the end of its
+  own heading, not only once under the heading of its file, so a reader
+  can tell it from the session's own records.
+
 ### Fixed
 
 - A Japanese name for a credential, such as the word for password, now has

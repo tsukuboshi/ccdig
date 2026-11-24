@@ -301,6 +301,12 @@ A script can check `schema` and `filter` with
 
 ### Markdown
 
+`records --format md` puts the records of each transcript file under one
+heading with the project and session, and each record under a heading
+with its time and kind. A sub-agent's record names the sub-agent at the
+end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
+`agent-1` ``, so it stands apart from the session's own records.
+
 Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened
 to one line, titles escape inline Markdown and HTML, and digest prompts sit

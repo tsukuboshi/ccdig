@@ -42,7 +42,8 @@ pub fn records(
 
 /// Groups `records` under one heading per transcript file, with times shown
 /// in `zone`, each record's heading followed by its `label` when that is
-/// not empty, and each record's body written by `body`. Records of a file
+/// not empty and by its sub-agent when it has one, and each record's body
+/// written by `body`. Records of a file
 /// must be adjacent. Two files that share a session ID, such as a resumed
 /// copy, get two headings.
 fn sections<T>(
@@ -77,6 +78,11 @@ where
             let name = label(record);
             if !name.is_empty() {
                 out.extend([" - ", name]);
+            }
+            // A record of a sub-agent names it in its own heading too, as a
+            // reader searching the records may see this heading alone.
+            if !record.subagent().is_empty() {
+                out.extend([" - ", &code_span(record.subagent())]);
             }
             out.extend(["\n\n", &body(record)?]);
         }

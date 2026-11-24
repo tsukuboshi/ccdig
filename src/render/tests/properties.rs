@@ -4,8 +4,8 @@ use proptest::collection::vec;
 use proptest::strategy::Strategy;
 use serde_json::Value;
 
-use super::{at, bare_prompt, sample_session, tokyo};
-use crate::record::{AGENT, Head, Prompt, Session, Turn};
+use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
+use crate::record::{AGENT, Head, Prompt, Reply, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Run, document, lines};
@@ -193,6 +193,42 @@ fn record_markdown_has_only_the_headings_the_writer_puts() -> TestResult {
             &(1_usize.saturating_add(groups.len()).saturating_add(count)),
             &out,
         )?;
+        Ok(())
+    })
+}
+
+#[test]
+fn a_sub_agent_name_adds_no_heading() -> TestResult {
+    for_all(&vec(hostile_text(), 1..5), |names| {
+        let turns: Vec<Turn> = names
+            .iter()
+            .map(|name| {
+                blog_head("2026-10-13T01:24:00Z").map(|head| {
+                    Turn::Reply(Reply {
+                        usage: None,
+                        masked: Counts::default(),
+                        head,
+                        text: "Drafted the report.".to_owned(),
+                        model: String::new(),
+                        skill: String::new(),
+                        subagent: name.clone(),
+                        redacted: false,
+                        source: source(BLOG_FILE, 1, "a-1"),
+                    })
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        let out = markdown::records(&turns, &tokyo()?, None)?;
+        let headings: Vec<&str> = outside_fences(&out)
+            .into_iter()
+            .filter(|line| line.trim_start().starts_with('#'))
+            .collect();
+        check_eq(&headings.len(), &names.len().saturating_add(2), &out)?;
+        let named = headings
+            .iter()
+            .filter(|line| line.starts_with("### ") && line.contains(" - Reply"))
+            .count();
+        check_eq(&named, &names.len(), &out)?;
         Ok(())
     })
 }
