@@ -80,6 +80,13 @@ where
                     .filter(|key| key.0.is_empty() || mentioned.insert(key.clone()))
                     .count();
                 if count == 0 {
+                    // A resumed copy repeats these responses, and must not
+                    // count them as its own.
+                    for response in &session.usage {
+                        if !response.0.is_empty() {
+                            priced.insert(response.0.clone());
+                        }
+                    }
                     continue;
                 }
                 Some(count)

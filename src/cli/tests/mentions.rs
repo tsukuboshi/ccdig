@@ -195,3 +195,76 @@ fn the_digest_still_greps_the_prompts_only() -> TestResult {
     check_eq(&ran.out.contains("is the site up?"), &false, &ran.out)?;
     Ok(())
 }
+
+#[test]
+fn a_session_a_search_skips_leaves_its_tokens_out_of_a_resumed_copy() -> TestResult {
+    let history = History::new("root")?;
+    let line = |uuid: &str, session: &str, at: &str, role: &str, text: &str, id: &str| {
+        if role == "user" {
+            format!(
+                r#"{{"type":"user","uuid":"{uuid}","sessionId":"{session}","timestamp":"{at}","message":{{"role":"user","content":"{text}"}}}}"#
+            )
+        } else {
+            format!(
+                r#"{{"type":"assistant","uuid":"{uuid}","sessionId":"{session}","timestamp":"{at}","message":{{"id":"{id}","content":[{{"type":"text","text":"{text}"}}],"usage":{{"input_tokens":10,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}}}"#
+            )
+        }
+    };
+    let original = [
+        line("o-1", "oooo", "2026-10-15T00:00:00Z", "user", "hello", ""),
+        line(
+            "o-2",
+            "oooo",
+            "2026-10-15T00:00:10Z",
+            "assistant",
+            "hi",
+            "msg_o",
+        ),
+    ];
+    let mut copy = original.to_vec();
+    copy.extend([
+        line(
+            "p-1",
+            "pppp",
+            "2026-10-15T01:00:00Z",
+            "user",
+            "deploy now",
+            "",
+        ),
+        line(
+            "p-2",
+            "pppp",
+            "2026-10-15T01:00:10Z",
+            "assistant",
+            "ok",
+            "msg_p",
+        ),
+    ]);
+    for (file, lines) in [("oooo", original.to_vec()), ("pppp", copy)] {
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        history.write(
+            &format!("-Users-alice-blog/{file}.jsonl"),
+            fixture_time()?,
+            &refs,
+        )?;
+    }
+    let input = |args: &[&str]| -> Result<Option<u64>, Box<dyn Error>> {
+        let ran = history.run_week(args);
+        for row in ran.out.lines() {
+            let session: Value = serde_json::from_str(row)?;
+            if session.get("session_id").and_then(Value::as_str) == Some("pppp") {
+                return Ok(session
+                    .get("usage")
+                    .and_then(|usage| usage.get("input"))
+                    .and_then(Value::as_u64));
+            }
+        }
+        Ok(None)
+    };
+    let both = ["sessions", "--session", "oooo", "--session", "pppp"];
+    check_eq(&input(&both)?, &Some(10), "without --grep")?;
+    let mut search = both.to_vec();
+    search.extend(["--igrep", "deploy"]);
+    check_eq(&input(&search)?, &Some(10), "with --grep")?;
+    Ok(())
+}
