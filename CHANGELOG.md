@@ -19,6 +19,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   record `--grep` matched, such as the prompt a matched reply answered,
   with a new `matched` key false, and `(context)` in Markdown. `--limit`
   then counts the matches.
+- `sessions --grep` and `--igrep` read the replies too, and a new
+  `match_count` key, with a `Matches` column in Markdown, says how many
+  prompts and replies matched in each session.
 - `--session current` keeps the session Claude Code runs ccdig in, read
   from `CLAUDE_CODE_SESSION_ID`, and `--session '!current'` leaves it out,
   so a search no longer lists the session doing it.
@@ -30,7 +33,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The JSON schema is 3: every record ends with `matched` and `matches`.
+- The JSON schema is 3: every record ends with `matched` and `matches`,
+  and a session has `match_count`.
+- With `--grep` or `--igrep`, a `sessions` record now counts and spans
+  every prompt the other filters keep, not only those that matched, and
+  a session whose replies alone match is listed too.
 - In Markdown, a sub-agent's record names the sub-agent at the end of its
   own heading, not only once under the heading of its file, so a reader
   can tell it from the session's own records.

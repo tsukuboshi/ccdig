@@ -16,6 +16,9 @@ use crate::when::Stamp;
 pub struct FileRecords<'file, T> {
     /// The transcript file.
     pub file: &'file SessionFile,
+    /// With `Reading::mentions`, the prompts and replies the including
+    /// patterns matched, by line ID and block.
+    pub mentions: Option<Vec<(String, usize)>>,
     /// When the file was last written to.
     pub modified: Stamp,
     /// The records, each with its block's index in the line.
@@ -35,6 +38,9 @@ where
     // The responses already added to a session, which a resumed copy
     // repeats.
     let mut priced: HashSet<String> = HashSet::new();
+    // The matched prompts and replies already counted, which a resumed copy
+    // repeats.
+    let mut mentioned: HashSet<(String, usize)> = HashSet::new();
     let mut corpus = Corpus {
         records: Vec::new(),
         sessions: Vec::new(),
@@ -52,6 +58,19 @@ where
             .collect();
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
+        };
+        let match_count = match session.mentions {
+            Some(found) => {
+                let count = found
+                    .into_iter()
+                    .filter(|key| key.0.is_empty() || mentioned.insert(key.clone()))
+                    .count();
+                if count == 0 {
+                    continue;
+                }
+                Some(count)
+            }
+            None => None,
         };
         let mut usage = Usage::default();
         for (id, tokens) in session.usage {
@@ -75,6 +94,7 @@ where
             started_at: head.timestamp,
             ended_at: last.head().timestamp,
             prompt_count: kept.len(),
+            match_count,
             usage,
             masked,
         });

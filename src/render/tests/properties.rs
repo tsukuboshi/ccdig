@@ -279,25 +279,28 @@ fn matched_lines_add_no_heading() -> TestResult {
 }
 
 #[test]
-fn every_session_row_has_four_cells() -> TestResult {
-    for_all(&vec((hostile_text(), hostile_text()), 0..4), |rows| {
-        let sessions: Vec<Session> = rows
-            .iter()
-            .map(|row| {
-                sample_session().map(|session| Session {
-                    title: row.0.clone(),
-                    project: row.1.clone(),
-                    ..session
+fn every_session_row_has_four_cells_or_five_with_matches() -> TestResult {
+    for_all(
+        &(vec((hostile_text(), hostile_text()), 0..4), ANY),
+        |(rows, matches)| {
+            let sessions: Vec<Session> = rows
+                .iter()
+                .map(|row| {
+                    sample_session().map(|session| Session {
+                        title: row.0.clone(),
+                        project: row.1.clone(),
+                        ..session
+                    })
                 })
-            })
-            .collect::<Result<_, _>>()?;
-        let out = markdown::sessions(&sessions, &tokyo()?)?;
-        let table: Vec<&str> = out.lines().filter(|line| line.starts_with('|')).collect();
-        check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
-        for row in table {
-            let cells = row.replace("\\|", "").matches('|').count();
-            check_eq(&cells, &5, row)?;
-        }
-        Ok(())
-    })
+                .collect::<Result<_, _>>()?;
+            let out = markdown::sessions(&sessions, &tokyo()?, matches)?;
+            let table: Vec<&str> = out.lines().filter(|line| line.starts_with('|')).collect();
+            check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
+            for row in table {
+                let cells = row.replace("\\|", "").matches('|').count();
+                check_eq(&cells, &(if matches { 6 } else { 5 }), row)?;
+            }
+            Ok(())
+        },
+    )
 }

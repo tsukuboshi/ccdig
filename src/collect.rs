@@ -45,6 +45,10 @@ pub struct Reading {
     /// With `--context`, how many lines around each line `--grep` matched
     /// to list in a record's `matches`.
     pub excerpt: Option<usize>,
+    /// For `sessions --grep`: whether to keep every prompt the other
+    /// filters let through and count the prompts and replies the including
+    /// patterns match, rather than keep only the prompts they match.
+    pub mentions: bool,
     /// Whether to read sub-agent transcripts too.
     pub subagents: bool,
     /// Whether to add up the tokens of each session's responses in the
@@ -228,6 +232,7 @@ where
                     sessions.push(FileRecords {
                         file,
                         modified,
+                        mentions: read.mentions,
                         records: read.records,
                         usage: read.usage,
                     });

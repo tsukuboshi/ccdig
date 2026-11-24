@@ -39,6 +39,9 @@ struct Narrowing {
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
+    /// For `sessions`: whether a search counts the prompts and replies it
+    /// matches.
+    mentions: bool,
     /// `--skill`.
     skills: Vec<String>,
     /// `--subagents`.
@@ -65,6 +68,7 @@ impl Flags {
     fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
         let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
         let grep = patterns(&self.common.grep, &self.common.igrep)?;
+        let finds = !grep.include.is_empty();
         if narrowing.around.is_some() && grep.include.is_empty() {
             return Err(Failure::AroundNeedsGrep);
         }
@@ -121,6 +125,7 @@ impl Flags {
             reading: Reading {
                 around: narrowing.around,
                 excerpt: narrowing.context,
+                mentions: narrowing.mentions && finds,
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
             },
@@ -408,6 +413,7 @@ pub fn resolve(
         } => {
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             let narrowing = Narrowing {
+                mentions: true,
                 usage: true,
                 ..Narrowing::default()
             };

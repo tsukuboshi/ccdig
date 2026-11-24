@@ -66,7 +66,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
         Config::Sessions { format, shared } => {
             let corpus = gather(&shared, || Prompts)?;
             let out = write(format, &corpus.sessions, &shared.run, |sessions| {
-                markdown::sessions(sessions, &shared.zone)
+                markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
             })?;
             printed(
                 &shared,

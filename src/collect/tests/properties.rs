@@ -1,14 +1,15 @@
 //! Properties of collecting records that hold for any masked values.
 
+use proptest::bool::ANY;
 use proptest::collection::vec;
 use proptest::sample::select;
 use serde_json::{Value, json};
 
 use super::{ALL, Root, masking};
-use crate::collect::kinds::Records;
+use crate::collect::kinds::{Prompts, Records};
 use crate::collect::{Reading, collect};
 use crate::filter::{Query, patterns};
-use crate::record::{Record as _, Turn};
+use crate::record::{Record as _, Session, Turn};
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
 
 /// Transcripts tried; each writes files and compiles the masking rules.
@@ -98,6 +99,7 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                     Reading {
                         around: None,
                         excerpt,
+                        mentions: false,
                         subagents: false,
                         usage: true,
                     },
@@ -225,6 +227,98 @@ fn around_adds_only_context_and_lists_each_record_once() -> TestResult {
         if around == 0 {
             check_eq(&context.len(), &0, "no context without a window")?;
         }
+        Ok(())
+    })
+}
+
+#[test]
+fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestResult {
+    let typed_or_not = (ANY, select(&["cloud", "sky", "Cloud nine"][..]));
+    let histories = vec(vec(typed_or_not, 1..6), 1..4);
+    for_all_cases(FILE_CASES, &histories, |sessions| {
+        let root = Root::new()?;
+        for (index, turns) in sessions.iter().enumerate() {
+            let lines: Vec<String> = turns
+                .iter()
+                .enumerate()
+                .map(|(at, &(typed, text))| {
+                    let (kind, message) = if typed {
+                        ("user", json!({"role": "user", "content": text}))
+                    } else {
+                        (
+                            "assistant",
+                            json!({"content": [{"type": "text", "text": text}]}),
+                        )
+                    };
+                    json!({
+                        "type": kind,
+                        "uuid": format!("u-{index}-{at}"),
+                        "sessionId": format!("s-{index}"),
+                        "timestamp": format!("2026-10-15T0{index}:00:{at:02}Z"),
+                        "message": message,
+                    })
+                    .to_string()
+                })
+                .collect();
+            let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+            root.write(
+                &format!("-Users-alice-app/s-{index}.jsonl"),
+                "2026-10-15T09:00:00Z",
+                &refs,
+            )?;
+        }
+        let mask = masking(&[])?;
+        let plain = collect(
+            root.path(),
+            Reading::default(),
+            &Query::default(),
+            &mask,
+            || Prompts,
+        )?;
+        let searched = collect(
+            root.path(),
+            Reading {
+                mentions: true,
+                ..Reading::default()
+            },
+            &Query {
+                grep: patterns(&["cloud"], &[])?,
+                ..Query::default()
+            },
+            &mask,
+            || Prompts,
+        )?;
+        for session in &searched.sessions {
+            let index: usize = session.id.trim_start_matches("s-").parse()?;
+            let want = sessions.get(index).map_or(0, |turns| {
+                turns.iter().filter(|said| said.1.contains("cloud")).count()
+            });
+            check_eq(&session.match_count, &Some(want), &session.id)?;
+            let same = plain
+                .sessions
+                .iter()
+                .find(|row| row.id == session.id)
+                .ok_or("a row the plain list lacks")?;
+            check_eq(
+                &Session {
+                    match_count: None,
+                    ..session.clone()
+                },
+                same,
+                &session.id,
+            )?;
+        }
+        let listed = sessions
+            .iter()
+            .filter(|turns| {
+                turns.iter().any(|said| said.0) && turns.iter().any(|said| said.1.contains("cloud"))
+            })
+            .count();
+        check_eq(
+            &searched.sessions.len(),
+            &listed,
+            "the sessions that mention it",
+        )?;
         Ok(())
     })
 }

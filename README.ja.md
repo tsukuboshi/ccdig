@@ -142,6 +142,14 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 選ばれた依頼文を含むセッション 1 つにつき 1 レコードを出します。絞り込みは
 依頼文に適用されます。`--format` は `jsonl`（既定）・`json`・`md` を取ります。
 
+- `--grep` と `--igrep` は、依頼文か返答が一致したセッションを選び、
+  `match_count` にそれぞれで一致した件数を入れます。ある語に最も多く触れた
+  セッションから読めます。ほかのキーは、`--grep` が無いときと同じく、
+  ほかの絞り込みで残ったすべての依頼文から作ります。Markdown には
+  `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
+  `match_count` は `null` です。
+- `prompt_count`・`started_at`・`ended_at` は、選ばれた依頼文の件数と期間です。
+
 ### digest
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは

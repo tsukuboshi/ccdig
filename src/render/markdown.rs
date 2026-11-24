@@ -94,15 +94,18 @@ where
     Ok(out)
 }
 
-/// Sessions as a table.
+/// Sessions as a table, with how many prompts and replies a search
+/// matched in each when `matches` is set.
 ///
 /// # Errors
 ///
 /// When a time cannot be shown in `zone`.
-pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure> {
-    let mut out = String::from(
-        "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n",
-    );
+pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<String, Failure> {
+    let mut out = String::from(if matches {
+        "# Sessions\n\n| Started | Project | Prompts | Matches | Title |\n| --- | --- | ---: | ---: | --- |\n"
+    } else {
+        "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n"
+    });
     for session in records {
         out.extend([
             "| ",
@@ -112,9 +115,11 @@ pub fn sessions(records: &[Session], zone: &TimeZone) -> Result<String, Failure>
             " | ",
             &session.prompt_count.to_string(),
             " | ",
-            &heading_text(&session.title),
-            " |\n",
         ]);
+        if matches {
+            out.extend([&session.match_count.unwrap_or_default().to_string(), " | "]);
+        }
+        out.extend([&heading_text(&session.title), " |\n"]);
     }
     Ok(out)
 }

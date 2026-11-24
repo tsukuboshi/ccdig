@@ -112,6 +112,7 @@ fn sample_session() -> Result<Session, String> {
         started_at: at("2026-10-13T01:23:45.678Z")?,
         ended_at: at("2026-10-13T01:30:00Z")?,
         prompt_count: 2,
+        match_count: None,
     })
 }
 
@@ -191,7 +192,7 @@ fn sessions_as_json_lines() -> TestResult {
 fn sessions_as_a_markdown_table() -> TestResult {
     golden(
         "render/sessions.md.golden",
-        &markdown::sessions(&[sample_session()?], &tokyo()?)?,
+        &markdown::sessions(&[sample_session()?], &tokyo()?, false)?,
     )
 }
 

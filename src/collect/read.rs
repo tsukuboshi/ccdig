@@ -8,16 +8,20 @@ use core::mem;
 use std::collections::HashSet;
 
 use super::excerpt::excerpt;
+use super::kinds::Replies;
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Reading, Select, Spot};
 use crate::filter::{Facts, Query, Verdict};
 use crate::redact::Counts;
-use crate::transcript::entry::{Role, Usage};
+use crate::transcript::entry::{Entry, Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;
 
 /// What a transcript file yielded.
 pub struct Read<T> {
+    /// With `Reading::mentions`, the prompts and replies the including
+    /// patterns matched, by line ID and block.
+    pub mentions: Option<Vec<(String, usize)>>,
     /// The selected records, in file order, each with its block's index in
     /// the line.
     pub records: Vec<(usize, T)>,
@@ -51,6 +55,21 @@ struct Response {
     tokens: Usage,
 }
 
+impl Response {
+    /// The response the line `entry`, at `line`, is part of, or `None`
+    /// when the line has no tokens.
+    fn of(entry: &Entry, line: usize) -> Option<Self> {
+        entry.usage.map(|tokens| Self {
+            key: if entry.message_id.is_empty() {
+                format!("\0{line}")
+            } else {
+                entry.message_id.clone()
+            },
+            tokens,
+        })
+    }
+}
+
 /// With `--around`, the records waiting to be kept as context before the
 /// next match, and how many more to keep after the last one.
 struct Window<T> {
@@ -60,6 +79,10 @@ struct Window<T> {
     around: usize,
     /// Up to `around` records since the last one kept, the latest last.
     before: VecDeque<(usize, Draft<T>, Option<Response>)>,
+    /// With `Reading::mentions`, the records the including patterns
+    /// matched, by line ID and block; every record the other filters let
+    /// through is then kept.
+    mentions: Option<Vec<(String, usize)>>,
 }
 
 /// Lines skipped across files, for the summary warning.
@@ -122,6 +145,15 @@ where
         query: &Query,
         lines: Option<usize>,
     ) {
+        if let Some(ref mut found) = self.mentions {
+            if verdict == Verdict::Hit {
+                found.push((draft.record().source().uuid.clone(), block));
+            }
+            if verdict != Verdict::Out {
+                kept.push(block, draft, response);
+            }
+            return;
+        }
         match verdict {
             Verdict::Hit => {
                 for (earlier, context, of) in mem::take(&mut self.before) {
@@ -148,6 +180,36 @@ where
             }
             Verdict::Near | Verdict::Out => {}
         }
+    }
+}
+
+/// The replies of the assistant line `entry` that the including patterns
+/// of `query` match and the other filters let through, by line ID and
+/// block. They are counted, not kept.
+fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<(String, usize)> {
+    Replies
+        .pick(spot, entry)
+        .into_iter()
+        .filter(|pair| verdict(query, &pair.1) == Verdict::Hit)
+        .map(|(block, _)| (entry.uuid.clone(), block))
+        .collect()
+}
+
+/// Adds the tokens of the assistant line `entry` to `used` when it is in
+/// the range of `query` and the first line of its response, by
+/// `responses`; a line without a response ID is a response of its own.
+fn tally(
+    entry: &Entry,
+    query: &Query,
+    responses: &mut HashSet<String>,
+    used: &mut Vec<(String, Usage)>,
+) {
+    if entry.role == Role::Assistant
+        && let (Some(tokens), Some(timestamp)) = (entry.usage, entry.timestamp)
+        && query.range.contains(timestamp.instant())
+        && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
+    {
+        used.push((entry.message_id.clone(), tokens));
     }
 }
 
@@ -194,10 +256,9 @@ pub fn read_file<P>(
 where
     P: Pick,
 {
-    let usage = reading.usage;
     let wanted = picker.roles();
     let roles = Roles {
-        assistant: wanted.assistant || usage,
+        assistant: wanted.assistant || reading.usage || reading.mentions,
         user: wanted.user,
     };
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
@@ -211,6 +272,7 @@ where
         after: 0,
         around: reading.around.unwrap_or_default(),
         before: VecDeque::new(),
+        mentions: reading.mentions.then(Vec::new),
     };
     let mut untimed = 0_usize;
     let mut used = Vec::new();
@@ -224,13 +286,23 @@ where
             }
             continue;
         }
-        if usage
+        if reading.usage {
+            tally(&entry, query, &mut responses, &mut used);
+        }
+        if let Some(ref mut found) = window.mentions
             && entry.role == Role::Assistant
-            && let (Some(tokens), Some(timestamp)) = (entry.usage, entry.timestamp)
-            && query.range.contains(timestamp.instant())
-            && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
+            && let Some(timestamp) = entry.timestamp
         {
-            used.push((entry.message_id.clone(), tokens));
+            found.extend(mentioned_replies(
+                &Spot {
+                    file,
+                    line,
+                    mask,
+                    timestamp,
+                },
+                &entry,
+                query,
+            ));
         }
         if !wanted.assistant && entry.role == Role::Assistant {
             continue;
@@ -248,14 +320,7 @@ where
             mask,
             timestamp,
         };
-        let response = entry.usage.map(|tokens| Response {
-            key: if entry.message_id.is_empty() {
-                format!("\0{line}")
-            } else {
-                entry.message_id.clone()
-            },
-            tokens,
-        });
+        let response = Response::of(&entry, line);
         for drafted in picker.pick(&spot, &entry) {
             let found = verdict(query, &drafted.1);
             window.offer(
@@ -283,6 +348,7 @@ where
         .collect();
     let stats = lines.stats();
     Ok(Read {
+        mentions: window.mentions,
         records,
         skipped: Skipped {
             oversized: stats.oversized,

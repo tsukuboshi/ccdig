@@ -193,6 +193,9 @@ pub struct Session {
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
+    /// With `--grep` or `--igrep`, how many of the session's prompts and
+    /// replies they matched; `null` otherwise.
+    pub match_count: Option<usize>,
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
