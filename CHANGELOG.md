@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-11-24
+
 ### Added
 
 - `records --context N` lists the lines `--grep` or `--igrep` matched in
@@ -150,5 +152,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Slack workflow and trigger webhook URLs longer than 56 characters are
   masked to the end.
 
-[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/tsukuboshi/ccdig/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/tsukuboshi/ccdig/releases/tag/v0.0.1

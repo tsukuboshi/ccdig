@@ -168,7 +168,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.1","schema":3,"filter":"strict-v2"}
+{"version":"0.0.2","schema":3,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -326,7 +326,7 @@ Every key is always present. The `kind` of a prompt is how it was typed,
 run:
 
 ```json
-{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.2",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
