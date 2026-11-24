@@ -342,3 +342,30 @@ fn context_keeps_each_field_apart_and_lists_nothing_without_a_pattern_to_find() 
     )?;
     Ok(())
 }
+
+#[test]
+fn a_line_without_a_response_id_is_a_response_of_its_own() -> TestResult {
+    let root = Root::new()?;
+    root.write(
+        "-Users-alice-blog/vvvv.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"v-1","sessionId":"vvvv","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"text","text":"Counting."},{"type":"tool_use","id":"toolu_v1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+            r#"{"type":"assistant","uuid":"v-2","sessionId":"vvvv","timestamp":"2026-10-15T00:00:20Z","message":{"content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":2,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+        ],
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading::default(),
+        &Query::default(),
+        &masking(&[])?,
+        || Records::new(ALL),
+    )?;
+    let inputs: Vec<Option<u64>> = corpus
+        .records
+        .iter()
+        .map(|record| usage(record).map(|tokens| tokens.input))
+        .collect();
+    check_eq(&inputs, &vec![Some(1), None, Some(2)], "tokens")?;
+    Ok(())
+}

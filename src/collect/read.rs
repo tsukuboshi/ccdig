@@ -29,6 +29,25 @@ pub struct Read<T> {
     pub usage: Vec<(String, Usage)>,
 }
 
+/// The records kept from a file so far, in file order, and the responses
+/// whose tokens one of them carries.
+struct Kept<T> {
+    /// The records, each with its block's index in the line.
+    drafts: Vec<(usize, Draft<T>)>,
+    /// The keys of the responses whose tokens a kept record carries.
+    priced: HashSet<String>,
+}
+
+/// The tokens of the response a line is part of, and what tells that
+/// response from the others in the file.
+struct Response {
+    /// The response's ID, or for a line without one, which is a response
+    /// of its own, the line's number after a NUL, which no ID has.
+    key: String,
+    /// The tokens.
+    tokens: Usage,
+}
+
 /// Lines skipped across files, for the summary warning.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Skipped {
@@ -52,6 +71,23 @@ impl Skipped {
     /// Whether nothing was skipped.
     pub const fn is_empty(&self) -> bool {
         self.oversized == 0 && self.untimed == 0 && self.undecodable == 0
+    }
+}
+
+impl<T> Kept<T>
+where
+    T: Select,
+{
+    /// Keeps `draft`. A response's lines repeat its tokens, so only the
+    /// first record kept from it that carries tokens gets them.
+    fn push(&mut self, block: usize, mut draft: Draft<T>, response: Option<&Response>) {
+        if let Some(of) = response
+            && let Some(slot) = draft.usage_mut()
+            && self.priced.insert(of.key.clone())
+        {
+            *slot = Some(of.tokens);
+        }
+        self.drafts.push((block, draft));
     }
 }
 
@@ -107,11 +143,13 @@ where
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
         .map_err(|error| format!("open transcript: {error}"))?;
     let mut title = String::new();
-    let mut drafts: Vec<(usize, Draft<P::Record>)> = Vec::new();
+    let mut kept = Kept {
+        drafts: Vec::new(),
+        priced: HashSet::new(),
+    };
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
-    let mut priced = HashSet::new();
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
@@ -145,30 +183,23 @@ where
             mask,
             timestamp,
         };
-        let first_new = drafts.len();
-        drafts.extend(
-            picker
-                .pick(&spot, &entry)
-                .into_iter()
-                .filter(|pair| passes(query, &pair.1))
-                .map(|(block, mut draft)| {
-                    if let Some(context) = reading.excerpt {
-                        let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
-                        *draft.matches_mut() = found;
-                    }
-                    (block, draft)
-                }),
-        );
-        // A response's lines repeat its tokens, so only the first record
-        // printed from it carries them; a line without an ID is a response
-        // of its own.
-        if let Some(tokens) = entry.usage
-            && let Some(slot) = drafts
-                .get_mut(first_new..)
-                .and_then(|fresh| fresh.iter_mut().find_map(|pair| pair.1.usage_mut()))
-            && (entry.message_id.is_empty() || priced.insert(entry.message_id.clone()))
-        {
-            *slot = Some(tokens);
+        let response = entry.usage.map(|tokens| Response {
+            key: if entry.message_id.is_empty() {
+                format!("\0{line}")
+            } else {
+                entry.message_id.clone()
+            },
+            tokens,
+        });
+        for (block, mut draft) in picker.pick(&spot, &entry) {
+            if !passes(query, &draft) {
+                continue;
+            }
+            if let Some(context) = reading.excerpt {
+                let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
+                *draft.matches_mut() = found;
+            }
+            kept.push(block, draft, response.as_ref());
         }
     }
     // Titles are generated from the conversation, so a pasted secret can
@@ -179,7 +210,8 @@ where
         masked: file.parent.is_none().then_some(&title_masked),
         text: &masked_title,
     };
-    let records = drafts
+    let records = kept
+        .drafts
         .into_iter()
         .map(|(block, draft)| (block, mask.seal(draft, &sealing)))
         .collect();
