@@ -158,7 +158,7 @@ fn sessions_without_grep_have_no_match_count_and_the_same_rows() -> TestResult {
     excluding.extend(["--grep", "!typo"]);
     check_eq(
         &rows(&history, &excluding)?,
-        &plain.get(..2).map(<[Value]>::to_vec).unwrap_or_default(),
+        &plain.get(..2).map_or_default(<[Value]>::to_vec),
         "a pattern with a leading ! still leaves out the prompts it matches",
     )?;
     Ok(())

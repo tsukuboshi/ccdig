@@ -111,7 +111,7 @@ impl Flags {
             limit: common.limit,
             mask,
             mask_report: common.mask_report.map(Into::into),
-            on_skip: common.on_skip.map(Into::into).unwrap_or_default(),
+            on_skip: common.on_skip.map_or_default(Into::into),
             query: Query {
                 branches: Filter::names(common.branches),
                 grep,

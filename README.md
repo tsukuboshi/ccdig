@@ -31,7 +31,7 @@ install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
 ~/.local/bin/ccdig version
 ```
 
-On other platforms, build it with Rust 1.99.1 or later:
+On other platforms, build it with Rust 1.100.0 or later:
 
 ```sh
 cargo install --locked --git https://github.com/tsukuboshi/ccdig
@@ -168,7 +168,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.1","schema":3,"filter":"strict-v2"}
+{"version":"0.0.2","schema":3,"filter":"strict-v2"}
 ```
 
 ## Shared options
@@ -326,7 +326,7 @@ Every key is always present. The `kind` of a prompt is how it was typed,
 run:
 
 ```json
-{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.2",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

@@ -32,7 +32,7 @@ install ccdig-aarch64-apple-darwin/ccdig ~/.local/bin/
 ~/.local/bin/ccdig version
 ```
 
-ほかのプラットフォームでは、Rust 1.99.1 以降でビルドします。
+ほかのプラットフォームでは、Rust 1.100.0 以降でビルドします。
 
 ```sh
 cargo install --locked --git https://github.com/tsukuboshi/ccdig
@@ -168,7 +168,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.1","schema":3,"filter":"strict-v2"}
+{"version":"0.0.2","schema":3,"filter":"strict-v2"}
 ```
 
 ## 共通オプション
@@ -325,7 +325,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":3,"filter":"strict-v2","ccdig":"0.0.1",
+{"schema":3,"filter":"strict-v2","ccdig":"0.0.2",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

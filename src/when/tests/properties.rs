@@ -79,7 +79,7 @@ fn a_day_range_holds_exactly_the_instants_whose_local_day_is_inside() -> TestRes
     );
     for_all(&cases, |(since, until, name, nudge, second)| {
         let zone = zone(name)?;
-        let text = |bound: Option<Date>| bound.map(|day| day.to_string()).unwrap_or_default();
+        let text = |bound: Option<Date>| bound.map_or_default(|day| day.to_string());
         let parsed = DayRange::parse(&text(since), &text(until), &zone);
         let in_order = since.zip(until).is_none_or(|(first, last)| first <= last);
         check_eq(&parsed.is_ok(), &in_order, "accepted")?;
