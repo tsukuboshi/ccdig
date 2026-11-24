@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use super::mask::Mask;
 use super::{Corpus, Select};
-use crate::record::{AGENT, Session};
+use crate::record::{AGENT, Record, Session};
 use crate::redact::Counts;
 use crate::transcript::entry::Usage;
 use crate::transcript::walk::SessionFile;
@@ -29,8 +29,15 @@ pub struct FileRecords<'file, T> {
 
 /// Keeps each record once across sessions, in session order, and builds
 /// the session records. A resumed or forked session starts with a copy of
-/// earlier entries, IDs included; the first session in order wins.
-pub fn gather<T>(sessions: Vec<FileRecords<'_, T>>, warnings: Vec<String>, mask: &Mask) -> Corpus<T>
+/// earlier entries, IDs included; the first session in order wins. A
+/// record `--around` kept as context goes too when no match it is within
+/// `around` records of is left in its file.
+pub fn gather<T>(
+    sessions: Vec<FileRecords<'_, T>>,
+    warnings: Vec<String>,
+    mask: &Mask,
+    around: usize,
+) -> Corpus<T>
 where
     T: Select,
 {
@@ -47,14 +54,21 @@ where
         warnings,
     };
     for session in sessions {
-        let kept: Vec<T> = session
+        let fresh: Vec<bool> = session
             .records
-            .into_iter()
-            .filter(|&(block, ref record)| {
+            .iter()
+            .map(|&(block, ref record)| {
                 let uuid = &record.source().uuid;
                 uuid.is_empty() || seen.insert((uuid.clone(), block))
             })
-            .map(|(_, record)| record)
+            .collect();
+        let near = near_a_match(&session.records, &fresh, around);
+        let kept: Vec<T> = session
+            .records
+            .into_iter()
+            .zip(fresh.iter().zip(near))
+            .filter(|&(ref pair, (&is_fresh, is_near))| is_fresh && (pair.1.matched() || is_near))
+            .map(|((_, record), _)| record)
             .collect();
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
@@ -101,6 +115,41 @@ where
         corpus.records.extend(kept);
     }
     corpus
+}
+
+/// For each of `records`, whether a match that is `fresh` is at most
+/// `around` records away, looking both ways in one pass each.
+fn near_a_match<T>(records: &[(usize, T)], fresh: &[bool], around: usize) -> Vec<bool>
+where
+    T: Record,
+{
+    let hits: Vec<bool> = records
+        .iter()
+        .zip(fresh)
+        .map(|(pair, &is_fresh)| is_fresh && pair.1.matched())
+        .collect();
+    let mut near = vec![false; hits.len()];
+    for forward in [true, false] {
+        let mut since: Option<usize> = None;
+        let order: Vec<usize> = if forward {
+            (0..hits.len()).collect()
+        } else {
+            (0..hits.len()).rev().collect()
+        };
+        for index in order {
+            if hits.get(index).copied().unwrap_or_default() {
+                since = Some(0);
+            } else {
+                since = since.map(|count| count.saturating_add(1));
+            }
+            if since.is_some_and(|count| count <= around)
+                && let Some(slot) = near.get_mut(index)
+            {
+                *slot = true;
+            }
+        }
+    }
+    near
 }
 
 /// Gives the records of a sub-agent's transcript the title of its session,

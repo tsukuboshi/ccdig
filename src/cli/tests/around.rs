@@ -195,3 +195,80 @@ fn markdown_marks_a_record_of_context() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn a_response_s_tokens_stay_on_the_match_when_around_adds_its_context() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/nnnn.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"n-1","sessionId":"nnnn","timestamp":"2026-10-15T00:00:10Z","message":{"id":"m-1","content":[{"type":"text","text":"let me look"}],"usage":{"input_tokens":7,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+            r#"{"type":"assistant","uuid":"n-2","sessionId":"nnnn","timestamp":"2026-10-15T00:00:11Z","message":{"id":"m-1","content":[{"type":"tool_use","id":"toolu_n1","name":"Bash","input":{"command":"./deploy.sh"}}],"usage":{"input_tokens":7,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#,
+        ],
+    )?;
+    for extra in [&[][..], &["--around", "1"][..]] {
+        let mut args = vec![
+            "records",
+            "--session",
+            "nnnn",
+            "--type",
+            "reply,call",
+            "--igrep",
+            "deploy",
+        ];
+        args.extend_from_slice(extra);
+        let ran = history.run_week(&args);
+        let carriers: Vec<String> = ran
+            .out
+            .lines()
+            .map(serde_json::from_str::<Value>)
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .filter(|record| record.get("usage").is_some_and(|usage| !usage.is_null()))
+            .filter_map(|record| {
+                record
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .collect();
+        check_eq(&carriers, &vec!["call".to_owned()], &args.join(" "))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_resumed_copy_lists_no_context_whose_match_its_original_listed() -> TestResult {
+    let history = History::new("root")?;
+    let shared = [
+        r#"{"type":"user","uuid":"r-1","sessionId":"rrrr","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"please ship it"}}"#,
+        r#"{"type":"assistant","uuid":"r-2","sessionId":"rrrr","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"text","text":"deploy done"}]}}"#,
+    ];
+    history.write("-Users-alice-blog/rrrr.jsonl", fixture_time()?, &shared)?;
+    let mut resumed = shared.to_vec();
+    resumed.extend([
+        r#"{"type":"user","uuid":"r-3","sessionId":"ssss","timestamp":"2026-10-15T01:00:00Z","message":{"role":"user","content":"thanks"}}"#,
+        r#"{"type":"assistant","uuid":"r-4","sessionId":"ssss","timestamp":"2026-10-15T01:00:10Z","message":{"content":[{"type":"text","text":"you are welcome"}]}}"#,
+    ]);
+    history.write("-Users-alice-blog/ssss.jsonl", fixture_time()?, &resumed)?;
+    check_eq(
+        &listed(
+            &history,
+            &[
+                "records",
+                "--project",
+                "blog",
+                "--type",
+                "prompt,reply",
+                "--igrep",
+                "deploy",
+                "--around",
+                "1",
+            ],
+        )?,
+        &pairs(&[("r-1", false), ("r-2", true)]),
+        "records",
+    )?;
+    Ok(())
+}

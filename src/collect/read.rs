@@ -115,16 +115,26 @@ impl<T> Kept<T>
 where
     T: Select,
 {
-    /// Keeps `draft`. A response's lines repeat its tokens, so only the
-    /// first record kept from it that carries tokens gets them.
-    fn push(&mut self, block: usize, mut draft: Draft<T>, response: Option<&Response>) {
+    /// Keeps `draft` at `at` in file order, the end when `None`. A
+    /// response's lines repeat its tokens, so only the first record kept
+    /// from it that carries tokens gets them; a match is kept before the
+    /// context `--around` puts ahead of it, so it gets them first.
+    fn keep(
+        &mut self,
+        at: Option<usize>,
+        (block, mut draft): (usize, Draft<T>),
+        response: Option<&Response>,
+    ) {
         if let Some(of) = response
             && let Some(slot) = draft.usage_mut()
             && self.priced.insert(of.key.clone())
         {
             *slot = Some(of.tokens);
         }
-        self.drafts.push((block, draft));
+        match at {
+            Some(index) => self.drafts.insert(index, (block, draft)),
+            None => self.drafts.push((block, draft)),
+        }
     }
 }
 
@@ -150,26 +160,33 @@ where
                 found.push((draft.record().source().uuid.clone(), block));
             }
             if verdict != Verdict::Out {
-                kept.push(block, draft, response);
+                kept.keep(None, (block, draft), response);
             }
             return;
         }
         match verdict {
             Verdict::Hit => {
-                for (earlier, context, of) in mem::take(&mut self.before) {
-                    kept.push(earlier, context, of.as_ref());
-                }
                 if let Some(context) = lines {
                     let found = excerpt(&draft.record().grep_fields(), &query.grep, context);
                     *draft.matches_mut() = found;
                 }
-                kept.push(block, draft, response);
+                let at = kept.drafts.len();
+                kept.keep(None, (block, draft), response);
+                for (offset, (earlier, context, of)) in
+                    mem::take(&mut self.before).into_iter().enumerate()
+                {
+                    kept.keep(
+                        Some(at.saturating_add(offset)),
+                        (earlier, context),
+                        of.as_ref(),
+                    );
+                }
                 self.after = self.around;
             }
             Verdict::Near if self.after > 0 => {
                 self.after = self.after.saturating_sub(1);
                 draft.mark_context();
-                kept.push(block, draft, response);
+                kept.keep(None, (block, draft), response);
             }
             Verdict::Near if self.around > 0 => {
                 draft.mark_context();

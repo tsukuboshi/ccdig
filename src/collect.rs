@@ -273,7 +273,12 @@ where
         .iter()
         .map(|warning| mask.meta(warning, &mut Counts::default()))
         .collect();
-    Ok(gather(sessions, shown, mask))
+    Ok(gather(
+        sessions,
+        shown,
+        mask,
+        reading.around.unwrap_or_default(),
+    ))
 }
 
 /// A warning about `path`. Control characters are neutralized because the
