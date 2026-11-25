@@ -14,8 +14,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Format, lint, and test
+  cargo-fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: cargo fmt --all --check
+
+  cargo-clippy:
+    name: cargo clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -25,13 +35,21 @@ jobs:
       # action picks, so CI lints with the same clippy as local runs.
       - run: rustup toolchain install
       - run: rustup show active-toolchain
-      - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
+
+  cargo-test-linux:
+    name: cargo test (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
       - run: cargo test --locked
 
   # Releases are built on macOS, so a failure there shows up before a tag.
-  test-macos:
-    name: Test on macOS
+  cargo-test-macos:
+    name: cargo test (macos)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -40,8 +58,8 @@ jobs:
       - run: rustup toolchain install
       - run: cargo test --locked
 
-  deny:
-    name: cargo-deny
+  cargo-deny:
+    name: cargo deny
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -53,10 +71,10 @@ jobs:
           tool: cargo-deny@0.21.0
       - run: cargo deny check
 
-  # Apart from the check job: the instrumented build is slower, and its
+  # Apart from cargo test: the instrumented build is slower, and its
   # test results should not stand in for the plain ones.
-  coverage:
-    name: Coverage
+  cargo-llvm-cov:
+    name: cargo llvm-cov
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -72,16 +90,15 @@ jobs:
       - run: .github/scripts/coverage.sh
 
   # The module order and where I/O may happen, as ARCHITECTURE.md describes.
-  # clippy.toml checks the I/O in the check job; ast-grep checks the order,
+  # clippy.toml checks the I/O in cargo clippy; ast-grep checks the order,
   # and check-architecture.sh that ARCHITECTURE.md matches the rules.
-  architecture:
-    name: Module structure
+  ast-grep:
+    name: ast-grep
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - run: .github/scripts/check-architecture.sh
       # ast-grep/action runs only `ast-grep scan`, so install the CLI to run
       # the rule tests too. Building it takes minutes, so take the release
       # binary, checked against the SHA-256 the release lists. To bump it,
@@ -100,8 +117,17 @@ jobs:
       - run: ast-grep test
       - run: ast-grep scan --error=unused-suppression --error=no-suppress-all
 
-  readme:
-    name: README translation
+  check-architecture:
+    name: check-architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/check-architecture.sh
+
+  check-readme-sync:
+    name: check-readme-sync
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
