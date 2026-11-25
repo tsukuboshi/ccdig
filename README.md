@@ -267,7 +267,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.3","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":5,"filter":"strict-v3"}
 ```
 
 ## Shared options
@@ -486,7 +486,7 @@ a tool call down; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.3",
+{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
