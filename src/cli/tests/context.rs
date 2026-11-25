@@ -5,7 +5,7 @@ use core::error::Error;
 
 use serde_json::{Value, json};
 
-use super::{History, fixture_time};
+use super::{History, fixture_time, json_lines};
 use crate::testing::{TestResult, check_eq, golden};
 
 /// A history with a session `eeee` that mentions the cloud edition in a
@@ -28,15 +28,7 @@ fn history_with_long_records() -> Result<History, Box<dyn Error>> {
 
 /// The JSON Lines `args` print in the week of the history, parsed.
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
-    let ran = history.run_week(args);
-    if ran.code != 0 {
-        return Err(ran.err.into());
-    }
-    Ok(ran
-        .out
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<_, _>>()?)
+    json_lines(history.run_week(args))
 }
 
 /// The `matches` of each record.

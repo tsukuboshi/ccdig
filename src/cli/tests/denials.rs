@@ -5,7 +5,7 @@ use core::error::Error;
 
 use serde_json::{Value, json};
 
-use super::{History, fixture_time};
+use super::{History, fixture_time, json_lines, strings};
 use crate::testing::{TestResult, check_eq};
 
 /// The text Claude Code returns when the user turns a call down with a
@@ -16,15 +16,7 @@ const SAID: &str = r"The user doesn't want to proceed with this tool use. The to
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
     let mut full = args.to_vec();
     full.extend(["--session", "dddd"]);
-    let ran = history.run(&full);
-    if ran.code != 0 {
-        return Err(ran.err.into());
-    }
-    Ok(ran
-        .out
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<_, _>>()?)
+    json_lines(history.run(&full))
 }
 
 /// A history with the session `dddd` holding `lines`.
@@ -67,19 +59,6 @@ fn history_with_denials() -> Result<History, Box<dyn Error>> {
         r#"{"type":"user","uuid":"d-5","sessionId":"dddd","timestamp":"2026-10-15T00:01:11Z","toolDenialKind":"permission-rule","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_r","is_error":true,"content":"Permission to use Bash has been denied."}]}}"#,
         r#"{"type":"user","uuid":"d-6","sessionId":"dddd","timestamp":"2026-10-15T00:01:12Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_ok","content":"a"}]}}"#,
     ])
-}
-
-/// The string at `key` of each record.
-fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str> {
-    records
-        .iter()
-        .map(|record| {
-            record
-                .get(key)
-                .and_then(Value::as_str)
-                .unwrap_or("<missing>")
-        })
-        .collect()
 }
 
 #[test]

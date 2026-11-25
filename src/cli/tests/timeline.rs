@@ -5,22 +5,14 @@ use core::error::Error;
 
 use serde_json::Value;
 
-use super::{History, fixture_time};
+use super::{History, fixture_time, json_lines};
 use crate::testing::{TestResult, check_eq};
 
 /// The JSON Lines `args` print for the session `eeee`, parsed.
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
     let mut full = args.to_vec();
     full.extend(["--session", "eeee", "--since", "2026-10-13", "--tz", "UTC"]);
-    let ran = history.run(&full);
-    if ran.code != 0 {
-        return Err(ran.err.into());
-    }
-    Ok(ran
-        .out
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<_, _>>()?)
+    json_lines(history.run(&full))
 }
 
 /// The boolean at `key` of each record.

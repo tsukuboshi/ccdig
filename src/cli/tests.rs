@@ -129,6 +129,31 @@ impl History {
     }
 }
 
+/// The JSON Lines `ran` printed, parsed, or its stderr when it failed.
+fn json_lines(ran: Ran) -> Result<Vec<Value>, Box<dyn Error>> {
+    if ran.code != 0 {
+        return Err(ran.err.into());
+    }
+    Ok(ran
+        .out
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?)
+}
+
+/// The string at `key` of each record, or `<missing>`.
+fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str> {
+    records
+        .iter()
+        .map(|record| {
+            record
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or("<missing>")
+        })
+        .collect()
+}
+
 /// Copies the tree at `from` to `to`, setting every file's mtime to `mtime`.
 fn copy_tree(from: &Path, to: &Path, mtime: SystemTime) -> TestResult {
     fs::create_dir_all(to)?;

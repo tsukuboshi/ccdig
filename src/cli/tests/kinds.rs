@@ -5,33 +5,12 @@ use core::error::Error;
 
 use serde_json::Value;
 
-use super::History;
+use super::{History, json_lines, strings};
 use crate::testing::{TestResult, check_eq};
 
 /// The JSON Lines `args` print, parsed.
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
-    let ran = history.run(args);
-    if ran.code != 0 {
-        return Err(ran.err.into());
-    }
-    Ok(ran
-        .out
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<_, _>>()?)
-}
-
-/// The string at `key` of each record.
-fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str> {
-    records
-        .iter()
-        .map(|record| {
-            record
-                .get(key)
-                .and_then(Value::as_str)
-                .unwrap_or("<missing>")
-        })
-        .collect()
+    json_lines(history.run(args))
 }
 
 #[test]
