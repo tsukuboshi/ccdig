@@ -625,7 +625,7 @@ comma-separated or repeated, as in `--mask email,user`:
 
 These masks and `--mask-values` also apply to the fields that are not
 text: `project`, `cwd`, `git_branch`, file paths, `tool`, `model`,
-`subagent`, `command`, the keys of a tool's input, and the warnings on
+`skill`, `subagent`, `command`, the keys of a tool's input, and the warnings on
 stderr. The keys of a tool's input get the built-in rules too, so a
 secret used as a key, such as a token, is masked there.
 

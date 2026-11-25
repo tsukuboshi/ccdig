@@ -622,7 +622,7 @@ thinking ブロックは決して出力しません。
 
 これらのマスクと `--mask-values` は、本文でないフィールド、つまり
 `project`・`cwd`・`git_branch`・ファイルのパス・`tool`・`model`・
-`subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
+`skill`・`subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
 ツールの入力のキーには組み込みのルールもかけるので、トークンのような秘密が
 キーになっていてもマスクされます。
 

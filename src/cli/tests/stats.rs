@@ -25,7 +25,7 @@ fn plans() -> Result<History, Box<dyn Error>> {
                 r#"{{"type":"user","uuid":"p-1","sessionId":"{FIRST}","timestamp":"2026-10-15T00:00:00Z","gitBranch":"main","message":{{"role":"user","content":"plan the cart"}}}}"#
             ),
             &format!(
-                r#"{{"type":"assistant","uuid":"p-2","sessionId":"{FIRST}","timestamp":"2026-10-15T00:00:10Z","gitBranch":"main","message":{{"id":"msg_p1","model":"opus","content":[{{"type":"text","text":"Here is the plan."}},{{"type":"tool_use","id":"x-1","name":"ExitPlanMode","input":{{"plan":"A"}}}}],"usage":{{"input_tokens":10,"output_tokens":100,"cache_read_input_tokens":1000,"cache_creation_input_tokens":0}}}}}}"#
+                r#"{{"type":"assistant","uuid":"p-2","sessionId":"{FIRST}","timestamp":"2026-10-15T00:00:10Z","gitBranch":"main","attributionSkill":"acme-plan","message":{{"id":"msg_p1","model":"opus","content":[{{"type":"text","text":"Here is the plan."}},{{"type":"tool_use","id":"x-1","name":"ExitPlanMode","input":{{"plan":"A"}}}}],"usage":{{"input_tokens":10,"output_tokens":100,"cache_read_input_tokens":1000,"cache_creation_input_tokens":0}}}}}}"#
             ),
             &format!(
                 r#"{{"type":"user","uuid":"p-3","sessionId":"{FIRST}","timestamp":"2026-10-15T00:01:00Z","gitBranch":"main","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"x-1","is_error":true,"content":"rejected"}}]}}}}"#
@@ -342,6 +342,30 @@ fn stats_rejects_what_would_change_what_it_counts() -> TestResult {
             &format!("{args:?}: {}", ran.err),
         )?;
         check_eq(&ran.out, &String::new(), "nothing on stdout")?;
+    }
+    Ok(())
+}
+
+#[test]
+fn mask_values_mask_the_skill_that_skill_still_matches_unmasked() -> TestResult {
+    let history = plans()?;
+    for command in ["stats", "records"] {
+        let mut args = vec![command, "--session", FIRST, "--type", "reply,call"];
+        args.extend([
+            "--skill",
+            "acme-plan",
+            "--mask-values",
+            r#"{"org": ["acme-plan"]}"#,
+        ]);
+        if command == "stats" {
+            args.extend(["--by", "skill"]);
+        }
+        let lines = json_lines(history.run_week(&args))?;
+        check_eq(
+            &pick(&lines, &["skill"]),
+            &vec![json!(["\u{FF3B}org1\u{FF3D}"]); if command == "stats" { 1 } else { 2 }],
+            command,
+        )?;
     }
     Ok(())
 }

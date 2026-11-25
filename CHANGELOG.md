@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `--mask` and `--mask-values` mask `skill` too, as they do `tool` and
+  `model`. `--skill` still matches the name before masking.
 - `records` with none of `--type`, `--tool`, `--status`, `--denial`, and
   `--skill` lists prompts and replies, no longer tool calls: give
   `--type prompt,reply,call` for the old output. Those four still pick the
