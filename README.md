@@ -91,7 +91,7 @@ Every command also takes the options under Shared options.
 ### records
 
 `--type` picks the kinds of record, comma-separated or repeated, and
-defaults to `prompt,reply,call`:
+defaults to `prompt,reply`:
 
 | Type | Record |
 | --- | --- |
@@ -122,13 +122,17 @@ Five options apply to some kinds only:
   `--tool`, `--status`, `--denial`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
 - Each of the five needs a `--type` it applies to, or the command fails.
-- A search without `--type` reads the tool calls too, and a call's input
-  can be long: give `--type prompt,reply` and `--limit` to keep the output
-  small, or cut the texts with `--max-message-chars` and `--max-tool-chars`
-  and leave keys out with `--fields`.
+- A search with none of `--type`, `--tool`, `--status`, `--denial`, and
+  `--skill` reads prompts and replies only: give
+  `--type prompt,reply,call` to read the tool calls too. A call's input
+  can be long, so keep the output small with `--limit`, or cut the texts
+  with `--max-message-chars` and `--max-tool-chars` and leave keys out
+  with `--fields`.
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
-  is never listed; its replies, calls, and results are.
+  is never listed; its replies, calls, and results are, of the types
+  `--type` picks. `--subagents` alone lists their replies: give
+  `--type prompt,reply,call` to read their calls too.
 - `--around N` also lists the N records before and after each record
   `--grep` or `--igrep` matched, such as the prompt a matched reply
   answered: records of the types `--type` picks that pass every other
@@ -631,7 +635,7 @@ ccdig: masked 3 by github-token, 2 by values/repo, 1 by email
   or a value that looks like a `snake_case` identifier.
 - Tool results hold whatever the tool read: file contents, environment
   variables, command output.
-- Tool inputs, which `records` prints by default, hold what was written,
+- Tool inputs, which `records` prints in calls and results, hold what was written,
   such as the content of a `Write` call.
 
 Treat masking as a safety net and check the output yourself before you

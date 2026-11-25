@@ -92,7 +92,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ### records
 
 `--type` はレコードの種類を選び、カンマ区切りでも繰り返しでも指定できます。
-既定は `prompt,reply,call` です。
+既定は `prompt,reply` です。
 
 | 種類 | レコード |
 | --- | --- |
@@ -122,13 +122,17 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
 - この 5 つのフラグは、効く種類が `--type` に無いとエラーになります。
-- `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
-  入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
-  出力を小さく保てます。`--max-message-chars` と `--max-tool-chars` で
-  本文を切り、`--fields` でキーを省くこともできます。
+- `--type`・`--tool`・`--status`・`--denial`・`--skill` のどれも付けずに
+  検索すると、依頼文と返答だけが対象になります。
+  ツールの呼び出しも読むなら `--type prompt,reply,call` を付けます。
+  呼び出しの入力は長くなりがちなので、`--limit` で出力を小さく保てます。
+  `--max-message-chars` と `--max-tool-chars` で本文を切り、`--fields` で
+  キーを省くこともできます。
 - サブエージェントの履歴は、`--subagents` を付けない限り読みません。
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
-  されません。出力されるのは、その返答・呼び出し・結果です。
+  されません。出力されるのは、その返答・呼び出し・結果のうち `--type` で
+  選んだ種類です。`--subagents` だけなら返答が出ます。呼び出しも読むなら
+  `--type prompt,reply,call` を付けます。
 - `--around N` は、`--grep` か `--igrep` に一致した各レコードの前後 N 件の
   レコードも出します。一致した返答が答えた依頼文などです。対象は、
   `--type` で選んだ種類のうち、ほかの絞り込みをすべて通る、同じファイルの
@@ -630,7 +634,7 @@ ccdig: masked 3 by github-token, 2 by values/repo, 1 by email
   `--password value` や、`snake_case` の識別子のように見える値です。
 - ツールの結果には、ツールが読んだもの、つまりファイルの中身・環境変数・
   コマンドの出力がそのまま入ります。
-- `records` が既定で出すツールの入力には、`Write` の呼び出しの中身のように、
+- `records` が呼び出しと結果に出すツールの入力には、`Write` の呼び出しの中身のように、
   書いたものが入ります。
 
 マスクは安全網として扱い、出力を共有する前に自分で中身を確かめてください。

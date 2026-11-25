@@ -377,6 +377,8 @@ fn mask_values_are_masked_in_the_metadata_too() -> TestResult {
             "records",
             "--project",
             "corp-hidden",
+            "--type",
+            "prompt,reply,call",
             "--mask-values",
             "{}",
             "--format",
@@ -469,12 +471,12 @@ fn types(out: &str) -> Vec<&str> {
 }
 
 #[test]
-fn records_list_prompts_replies_and_calls_in_order_by_default() -> TestResult {
+fn records_list_prompts_and_replies_in_order_by_default() -> TestResult {
     let ran = history_with_a_conversation()?.run_week(&["records", "--session", "cccc"]);
     check_eq(&ran.code, &0, "exit")?;
     check_eq(
         &types(&ran.out),
-        &vec!["prompt", "reply", "call", "prompt"],
+        &vec!["prompt", "reply", "prompt"],
         "order",
     )?;
     check_eq(&ran.out.contains("private musing"), &false, "thinking")?;
@@ -523,7 +525,15 @@ fn type_picks_the_kinds_of_record() -> TestResult {
 #[test]
 fn records_in_markdown_read_as_one_thread() -> TestResult {
     let out = history_with_a_conversation()?
-        .run_week(&["records", "--session", "cccc", "--format", "md"])
+        .run_week(&[
+            "records",
+            "--session",
+            "cccc",
+            "--type",
+            "prompt,reply,call",
+            "--format",
+            "md",
+        ])
         .out;
     let positions: Vec<Option<usize>> = [
         "# Records",
@@ -714,8 +724,9 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     }
     let records = history.run(&["records", "--help"]).out;
     for part in [
-        "Without --type, a search reads prompts, replies, and tool calls",
-        "narrow it with --type and --limit",
+        "Without --type, --tool, --status, --denial, or --skill, a search reads\nprompts and replies",
+        "add the tool calls with --type prompt,reply,call.\nA tool call's input can be long",
+        "ccdig records --type prompt,reply,call --igrep deploy \\\n    --max-message-chars 500",
         "Also read sub-agent transcripts, which are left out by default",
     ] {
         check_eq(&records.contains(part), &true, &records)?;

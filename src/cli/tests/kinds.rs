@@ -352,6 +352,17 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
 fn kind_filters_without_type_list_the_kinds_they_apply_to() -> TestResult {
     let history = History::new("kinds/root")?;
     for (args, want) in [
+        // With none of them, prompts and replies; --max-tool-chars and
+        // --subagents pick no kinds of their own.
+        (&["records"][..], vec!["prompt", "reply", "reply"]),
+        (
+            &["records", "--max-tool-chars", "5"][..],
+            vec!["prompt", "reply", "reply"],
+        ),
+        (
+            &["records", "--subagents"][..],
+            vec!["prompt", "reply", "reply", "reply"],
+        ),
         (&["records", "--tool", "Bash"][..], vec!["call", "result"]),
         (&["records", "--status", "error"][..], vec!["result"]),
         (
