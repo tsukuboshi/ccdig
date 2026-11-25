@@ -27,6 +27,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The filter is `strict-v3`: a tool result's line that carries the
   user's comment on a turned-down call is kept as a prompt.
+- `--session` opens only the transcripts named after a session it picks,
+  and their sub-agents', so reading one session no longer reads every
+  transcript. A line is kept only when both its transcript's name and its
+  `sessionId` start with a value.
 - A comment on a turned-down call counts as a prompt in `sessions`
   (`prompt_count`, `started_at`) and in `digest`, where it is marked
   `(rejection)`; `records --format md` heads it `Rejection`.

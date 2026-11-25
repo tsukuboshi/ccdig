@@ -188,6 +188,21 @@ impl Query {
             .allows(|filter| project.contains(filter.as_str()) || cwd.contains(filter.as_str()))
     }
 
+    /// Whether a transcript of the session `id` can hold a record
+    /// `--session` lets through, so a file of another session need not be
+    /// opened. Claude Code names a transcript after its session and writes
+    /// that ID on each of its lines, including the lines it copies into a
+    /// resumed session. A value with a leading `!` cannot rule a file out,
+    /// as other files are still read.
+    pub fn may_hold_session(&self, id: &str) -> bool {
+        self.sessions.include.is_empty()
+            || self
+                .sessions
+                .include
+                .iter()
+                .any(|want| id.starts_with(want.as_str()))
+    }
+
     /// What the filters make of a record with `facts`.
     pub fn verdict(&self, facts: &Facts<'_>) -> Verdict {
         if !self.admits(facts) || self.grep.excludes(facts.text) {

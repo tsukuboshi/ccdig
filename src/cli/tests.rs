@@ -877,6 +877,56 @@ fn files_last_written_before_the_range_are_not_opened() -> TestResult {
 }
 
 #[test]
+fn files_of_other_sessions_are_not_opened() -> TestResult {
+    let history = History::new("root")?;
+    let other = history.write(
+        "-Users-alice-blog/ffff.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"user","uuid":"f-1","sessionId":"ffff","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"other"}}"#],
+    )?;
+    history.write(
+        "-Users-alice-blog/gggg.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"user","uuid":"g-1","sessionId":"gggg","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"mine"}}"#],
+    )?;
+    history.write(
+        "-Users-alice-blog/gggg/subagents/agent-1.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"assistant","uuid":"g-2","sessionId":"gggg","isSidechain":true,"timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"text","text":"from the sub-agent"}]}}"#],
+    )?;
+    if lock(&other)?.is_none() {
+        return Ok(());
+    }
+    let picked = history.run_week(&[
+        "records",
+        "--type",
+        "prompt,reply",
+        "--subagents",
+        "--session",
+        "gggg",
+    ]);
+    let excluded = history.run_week(&["records", "--type", "prompt", "--session", "!gggg"]);
+    fs::set_permissions(&other, fs::Permissions::from_mode(0o600))?;
+    check_eq(&picked.code, &0, "exit")?;
+    check_eq(picked.err.as_str(), "", "stderr")?;
+    check_eq(
+        &(
+            picked.out.contains("mine"),
+            picked.out.contains("from the sub-agent"),
+        ),
+        &(true, true),
+        "the session and its sub-agent",
+    )?;
+    // Leaving a session out still reads every other file.
+    check_eq(
+        &excluded.err.contains("ffff.jsonl"),
+        &true,
+        "excluding opens the rest",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn session_titles_are_masked() -> TestResult {
     let history = History::new("root")?;
     let key_id = format!("AKIA{}", "Q".repeat(16));

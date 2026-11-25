@@ -331,18 +331,23 @@ fn calls_results_and_summaries_can_be_context_too() -> TestResult {
 #[test]
 fn context_a_copy_dropped_still_comes_back_for_a_later_match() -> TestResult {
     let history = History::new("root")?;
-    let prompt = |uuid: &str, at: &str, text: &str| {
+    // Claude Code writes the ID of the session a line is copied into, as
+    // the file is named.
+    let prompt = |session: &str, uuid: &str, at: &str, text: &str| {
         format!(
-            r#"{{"type":"user","uuid":"{uuid}","sessionId":"cdf","timestamp":"{at}","message":{{"role":"user","content":"{text}"}}}}"#
+            r#"{{"type":"user","uuid":"{uuid}","sessionId":"{session}","timestamp":"{at}","message":{{"role":"user","content":"{text}"}}}}"#
         )
     };
-    let first = prompt("q1", "2026-10-15T00:00:00Z", "deploy one");
-    let second = prompt("q2", "2026-10-15T01:00:00Z", "plain");
-    let third = prompt("q3", "2026-10-15T02:00:00Z", "deploy two");
+    let first = |session| prompt(session, "q1", "2026-10-15T00:00:00Z", "deploy one");
+    let second = |session| prompt(session, "q2", "2026-10-15T01:00:00Z", "plain");
+    let third = |session| prompt(session, "q3", "2026-10-15T02:00:00Z", "deploy two");
     for (file, lines) in [
-        ("cccc-c", vec![first.clone()]),
-        ("cccc-d", vec![first.clone(), second.clone()]),
-        ("cccc-f", vec![first, second, third]),
+        ("cdf-c", vec![first("cdf-c")]),
+        ("cdf-d", vec![first("cdf-d"), second("cdf-d")]),
+        (
+            "cdf-f",
+            vec![first("cdf-f"), second("cdf-f"), third("cdf-f")],
+        ),
     ] {
         let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
         history.write(

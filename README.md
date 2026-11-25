@@ -237,6 +237,12 @@ of a repeatable flag on both sides add up.
   `CLAUDE_CODE_SESSION_ID`, so `--session '!current'` leaves out the
   session that is doing the search. Outside Claude Code, `current` is an
   error.
+- Give the whole ID to pick one session, as an ID that starts another
+  matches it too. Claude Code names each transcript after its session, so
+  `--session` opens only the transcripts whose name starts with a value
+  given, and their sub-agents', and one session reads fast. A line is kept
+  only when both the name of its transcript and its `sessionId` start with
+  a value. With only values that start with `!`, every transcript is read.
 - `--grep` searches the text as it will be printed: after masking, so a
   secret cannot be found by its value. It reads the prompt or reply text,
   a call's input as compact JSON, or a result's text.
@@ -473,7 +479,9 @@ Code wrote `origin` skip rule 2. Thinking blocks are never printed.
   with `--subagents` also `<root>/<project>/<session>/subagents/*.jsonl`.
 - Symlinks are not followed.
 - A resumed session repeats earlier entries; each entry (by `uuid` and
-  position in the line) is listed once, in the original session.
+  position in the line) is listed once, in the original session, when the
+  run reads both transcripts. Claude Code writes the new session's ID on
+  the copies, so `--session` with the new ID lists them too.
 
 ### Skipped lines
 

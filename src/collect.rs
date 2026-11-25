@@ -237,6 +237,11 @@ where
             // Last written before the first day: nothing to find.
             continue;
         }
+        // A sub-agent's transcript belongs to its parent's session.
+        let session = file.parent.as_deref().unwrap_or(&file.path).file_stem();
+        if !session.is_none_or(|id| query.may_hold_session(&id.to_string_lossy())) {
+            continue;
+        }
         match read_file(file, query, mask, new_picker(), reading) {
             Ok(read) => {
                 if file.parent.is_some() {

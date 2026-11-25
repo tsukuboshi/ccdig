@@ -236,6 +236,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   指し、`CLAUDE_CODE_SESSION_ID` から読みます。`--session '!current'` で、
   検索している当のセッションを除けます。Claude Code の外では `current` は
   エラーになります。
+- 1 つのセッションに絞るときは ID 全体を渡してください。ID が別の ID の
+  先頭と同じなら、そちらにも一致します。Claude Code は transcript を
+  セッションの ID で名付けるので、`--session` は名前が値で始まる
+  transcript とそのサブエージェントの transcript だけを開き、1 セッションを
+  速く読めます。行を残すのは、その transcript の名前と行の `sessionId` が
+  どちらも値で始まるときだけです。`!` で始まる値だけなら、すべての
+  transcript を読みます。
 - `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを
   検索します。そのため、秘密情報をその値で探し当てることはできません。
   対象は、依頼文や返答のテキスト、呼び出しの入力を詰めた JSON、結果の
@@ -470,8 +477,10 @@ thinking ブロックは決して出力しません。
   `--subagents` を付けたときは `<root>/<project>/<session>/subagents/*.jsonl`
   も読みます。
 - シンボリックリンクはたどりません。
-- 再開したセッションは以前のエントリを繰り返しますが、各エントリ（`uuid` と
-  行内の位置で識別）は元のセッションで 1 回だけ出力されます。
+- 再開したセッションは以前のエントリを繰り返しますが、両方の transcript を
+  同じ実行で読めば、各エントリ（`uuid` と行内の位置で識別）は元の
+  セッションで 1 回だけ出力されます。Claude Code はコピーに新しい
+  セッションの ID を書くので、新しい ID の `--session` ではコピーも出ます。
 
 ### 読み飛ばす行
 
