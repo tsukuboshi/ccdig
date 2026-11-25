@@ -30,6 +30,7 @@ those before it.
 | `classify` | Whether a user line is something a person typed, folding slash commands back, and why a tool call did not run. |
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
+| `stats` | Grouping records into the lines of `ccdig stats`: the keys `--by` takes, and what each group counts and adds up. |
 | `filter` | Tester: the filters, as `Query`. |
 | `collect` | The stages joined: `read` picks one file's records as `Draft`s and filters them, `mask::Mask::seal` masks their metadata, and `gather` joins the files. `kinds` holds one picker per kind of record, and `excerpt` the lines `--context` lists. |
 | `render` | Consumer: JSON Lines, JSON, Markdown, and the digest. It uses only `record`, `text`, `when`, and `failure`. |
@@ -88,7 +89,8 @@ files below are the ones there are.
   `classify/denial/tests/properties.rs`,
   `classify/human/tests/properties.rs`,
   `classify/slash/tests/properties.rs`, `redact/tests/properties.rs`,
-  `filter/tests/properties.rs`, `collect/tests/properties.rs`,
+  `stats/tests/properties.rs`, `filter/tests/properties.rs`,
+  `collect/tests/properties.rs`,
   `render/tests/properties.rs`, and `cli/tests/properties.rs`. Each test
   there runs through `testing::for_all` (`property-test-calls-for-all`),
   which writes no failing input to disk, as one can look like a secret.

@@ -16,6 +16,7 @@ use crate::redact::Counts;
 use crate::render::digest::digest;
 use crate::render::json::{Fields, Run, document, lines, version};
 use crate::render::markdown;
+use crate::stats::{columns, tally};
 
 /// The version of this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -84,6 +85,26 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                 out,
                 corpus.warnings,
                 corpus.sessions.iter().map(|session| session.masked.clone()),
+            )
+        }
+        Config::Stats {
+            fields,
+            format,
+            grouping,
+            kinds,
+            shared,
+        } => {
+            let corpus = gather(&shared, SessionSort::Time, || Records::new(kinds))?;
+            let groups = tally(&corpus.records, &grouping, &shared.zone)?;
+            let keys = columns(&grouping.by);
+            let out = write(format, &fields, &groups, &shared.run, |lines| {
+                markdown::stats(lines, &keys, &shared.zone)
+            })?;
+            printed(
+                &shared,
+                out,
+                corpus.warnings,
+                corpus.records.iter().map(Record::masked),
             )
         }
         Config::Version { format } => Ok(Printed {

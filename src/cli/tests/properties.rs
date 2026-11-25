@@ -79,7 +79,7 @@ fn any_command_line_exits_0_or_1_and_writes_no_terminal_controls_to_stderr() -> 
         tz: Some("UTC".into()),
         ..environment()
     };
-    let commands = select(&["records", "prompts", "sessions", "digest"][..]);
+    let commands = select(&["records", "prompts", "sessions", "stats", "digest"][..]);
     for_all_cases(
         RUN_CASES,
         &(commands, vec(option(), 0..5)),

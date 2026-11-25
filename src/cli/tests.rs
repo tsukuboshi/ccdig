@@ -12,6 +12,7 @@ mod fields;
 mod kinds;
 mod mentions;
 mod properties;
+mod stats;
 mod timeline;
 
 use core::error::Error;
@@ -762,7 +763,13 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
     check_eq(
         &in_order(
             &top,
-            &["  records ", "  sessions ", "  digest ", "  version "],
+            &[
+                "  records ",
+                "  sessions ",
+                "  stats ",
+                "  digest ",
+                "  version ",
+            ],
         ),
         &true,
         &top,

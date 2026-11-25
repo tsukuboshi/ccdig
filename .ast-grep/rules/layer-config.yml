@@ -3,7 +3,7 @@
 id: layer-config
 language: rust
 severity: error
-message: "config may use only failure, text, when, transcript, classify, redact, record, filter, collect, render"
+message: "config may use only failure, text, when, transcript, classify, redact, record, stats, filter, collect, render"
 note: |
   A module uses only those before it in the module table of
   ARCHITECTURE.md, or the ones its row names after "uses only".

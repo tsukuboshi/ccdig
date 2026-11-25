@@ -5,7 +5,8 @@
 Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
 取り出す CLI です。
 期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
-成否・スキルを組み合わせて必要な部分に絞り込みます。`records` と `sessions` は、
+成否・スキルを組み合わせて必要な部分に絞り込み、残ったものを `stats` で
+集計できます。`records`・`sessions`・`stats` は、
 端末でもパイプでも既定で加工しやすい JSON Lines を出し、`--format md` を
 付けると読みやすい Markdown を出します。
 よくある秘密情報は既定でマスクし、メールアドレス・IP アドレス・ユーザー名・
@@ -69,6 +70,9 @@ ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 # 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# プランの承認を 2 回以上求めたセッション
+ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
+
 # LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
@@ -84,6 +88,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- | --- |
 | `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
+| `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
 
@@ -191,6 +196,56 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | 上のとおり |
 | `usage` | トークン数。「トークン数」の節を参照 |
 
+### stats
+
+`records` が出すレコードを `--by` で指定したキーでまとめ、グループ 1 つに
+つき 1 レコードを出します。`--type`・`--tool`・`--status`・`--denial`・
+`--skill`・`--subagents` と絞り込みは `records` と同じくレコードを選ぶので、
+ここでも `--type` の既定は `prompt,reply` です。`--format` は
+`jsonl`（既定）・`json`・表になる `md` を取ります。
+
+```sh
+# 1 週間のツールの呼び出しを、ツールごとに入力の長さと合わせて数える
+ccdig stats --by tool --type call --since 2026-11-16 --until 2026-11-22
+
+# スキルごとの出力トークン数を、多い順に出す
+ccdig stats --by skill --type reply,call --since 2026-11-01 --sort output
+
+# ユーザーが差し戻したプランの数を、週ごとに出す
+ccdig stats --by week --type result --tool ExitPlanMode --status error
+```
+
+| フラグ | 働き |
+| --- | --- |
+| `--by KEY` | これらのキーで、指定した順にまとめる（カンマ区切りか繰り返しで指定）。キーは `session`・`project`・`branch`・`type`・`tool`・`skill`・`subagent`・`model`・`kind`・`day`・`week`・`month`。省くと全レコードで 1 グループで、レコードが無ければ何も出さない |
+| `--min-count N` | レコードが N 件未満のグループを出さない |
+| `--sort SORT` | `count`（既定）・`chars`・`output`・`cache_read` は多い順、`key` はキーの値の順。同じ値のグループはキーの順に並ぶ |
+| `--limit N` | 並べ替えた後の先頭 N グループを残す |
+
+- `day` は `2026-11-25`、`week` は月曜始まりの ISO 8601 週で `2026-W48`、
+  `month` は `2026-11` の形で書き、どれも `--tz` のタイムゾーンで決めます。
+- `kind` は `kind` キーと同じく依頼文の打ち方で、`model` は返答かツールの
+  呼び出しのモデルです。`--by tool` での依頼文のようにキーを持たない
+  レコードと、`--by skill` でのスキル外の返答のようにキーが空のレコードは、
+  値が `null` のグループに入り、`--sort key` ではほかのグループの後に並びます。
+- キーはマスク後の値なので、`--mask-values` を使うとプロジェクトはラベルで
+  まとまります。
+- `--around`・`--context`・`--max-message-chars`・`--max-tool-chars` は、
+  数える対象が変わってしまうのでエラーです。`--subagents` の無い
+  `--by subagent` も、サブエージェントのレコードがすべて外れるのでエラーです。
+
+レコードは次のキーをこの順に持ちます。
+
+| キー | 中身 |
+| --- | --- |
+| `--by` のキー | その値。`--by` で指定した順に並ぶ。値が無ければ `null` |
+| `session_title`, `project`, `file` | `--by session` のときだけ、セッションの最後のタイトル・プロジェクト・transcript のファイル。空なら `null`。`records --session` にそのまま渡せる |
+| `count` | レコードの件数 |
+| `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--max-tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
+| `sessions` | レコードを含むセッションの数。`--by session` のときは書かない |
+| `first`, `last` | 最初と最後のレコードの時刻。`timestamp` と同じ形で書く |
+| `usage` | トークン数。「トークン数」の節を参照 |
+
 ### digest
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
@@ -275,9 +330,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 `--limit N` は先頭 N 件のレコードを出します。`--around` を付けたときは、
 一致したレコードを N 件数え、最後に一致したレコードの後ろの文脈も残します。
+`stats` では先頭 N グループを残します。
 `--format` はコマンドごとに違います。「コマンド」の節を参照してください。
 
-`records` と `sessions` は `--fields` も受け付けます。JSON と JSON Lines
+`records`・`sessions`・`stats` は `--fields` も受け付けます。JSON と JSON Lines
 で、指定したキーだけを、レコードが書く順に出します（カンマ区切りか
 繰り返しで指定）。絞り込みと同じく先頭に `!` を付けたキーは逆に除くので、
 `--fields '!agent,!session_title,!project,!cwd,!git_branch'` は同じ
@@ -413,6 +469,12 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - `sessions` のレコードは最後に、範囲内のセッションの応答を 1 回ずつ足した
   同じ 4 つのキーを `usage` に持ちます。そのため `sessions` は assistant の
   行も読みます。
+- `stats` のレコードの `usage` は、そのレコードが運ぶトークン数の合計です。
+  1 回の応答は 1 回だけ数え、記録が 1 件でも残った応答だけが入るので、
+  `sessions` の合計とは一致しません。`--by tool`・`type`・`kind` では 1 回の
+  応答の記録が別々のグループに入るので `usage` は `null` で、
+  `--sort output` と `--sort cache_read` はエラーです。`--type prompt` の
+  ようにトークン数を運ぶ記録が無いときも `null` です。
 
 ### JSON の包み
 
@@ -560,7 +622,7 @@ thinking ブロックは決して出力しません。
 
 これらのマスクと `--mask-values` は、本文でないフィールド、つまり
 `project`・`cwd`・`git_branch`・ファイルのパス・`tool`・`model`・
-`subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
+`skill`・`subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
 ツールの入力のキーには組み込みのルールもかけるので、トークンのような秘密が
 キーになっていてもマスクされます。
 

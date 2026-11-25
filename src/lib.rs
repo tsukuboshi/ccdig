@@ -13,6 +13,7 @@ mod pipeline;
 mod record;
 mod redact;
 mod render;
+mod stats;
 #[cfg(test)]
 mod testing;
 mod text;

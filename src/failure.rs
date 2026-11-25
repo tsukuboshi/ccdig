@@ -8,6 +8,10 @@ pub enum Failure {
     /// `--around` is given without a pattern for it to find.
     #[error("--around needs --grep or --igrep with a pattern that does not start with !")]
     AroundNeedsGrep,
+    /// `stats --by subagent` is given without `--subagents`, so no record
+    /// has a sub-agent.
+    #[error("--by subagent needs --subagents")]
+    ByNeedsSubagents,
     /// `--max-message-chars` or `--max-tool-chars` is not positive.
     #[error("{0} must be positive")]
     CharLimitNotPositive(&'static str),
@@ -102,6 +106,14 @@ pub enum Failure {
     /// `sessions --sort matches` is given without a pattern to count.
     #[error("--sort matches needs --grep or --igrep with a pattern that does not start with !")]
     SortNeedsGrep,
+    /// `stats --sort` orders by tokens that a `--by` key leaves `null`.
+    #[error("--sort {sort} cannot be used with --by {by}, which leaves usage null")]
+    SortWithoutUsage {
+        /// The `--by` key.
+        by: &'static str,
+        /// The `--sort` order.
+        sort: &'static str,
+    },
     /// A time cannot be formatted, such as one outside the supported years.
     #[error("format time: {0}")]
     TimeFormat(#[source] jiff::Error),

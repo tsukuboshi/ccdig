@@ -4,7 +4,9 @@
 use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
-use crate::record::{Kind, MatchLine, Record, Session, ToolCall, ToolResult, Turn};
+use serde_json::Value;
+
+use crate::record::{Group, Kind, MatchLine, Record, Session, ToolCall, ToolResult, Turn};
 use crate::text::{
     clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
 };
@@ -128,6 +130,93 @@ pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<S
         out.extend([&heading_text(&session.title), " |\n"]);
     }
     Ok(out)
+}
+
+/// The lines of `ccdig stats` as a table: a column for each of `columns`,
+/// the keys before `count`, then the counts, the times in `zone`, and the
+/// tokens. A key without a value, and tokens that are `null`, leave the
+/// cell empty.
+///
+/// # Errors
+///
+/// When a time cannot be shown in `zone`.
+pub fn stats(groups: &[Group], columns: &[&str], zone: &TimeZone) -> Result<String, Failure> {
+    let sessions = Group::writes_sessions(columns);
+    let mut names: Vec<&str> = columns.to_vec();
+    names.extend(["count", "chars"]);
+    if sessions {
+        names.push("sessions");
+    }
+    names.extend([
+        "first",
+        "last",
+        "input",
+        "output",
+        "cache_read",
+        "cache_creation",
+    ]);
+    let mut out = String::from("# Stats\n\n|");
+    for name in &names {
+        out.extend([" ", &column_label(name), " |"]);
+    }
+    out.push_str("\n|");
+    for name in &names {
+        out.push_str(
+            if columns.contains(name) || matches!(*name, "first" | "last") {
+                " --- |"
+            } else {
+                " ---: |"
+            },
+        );
+    }
+    out.push('\n');
+    for group in groups {
+        let mut cells: Vec<String> = columns
+            .iter()
+            .map(|name| {
+                let value = group.keys.get(*name).and_then(Value::as_str);
+                if *name == "session_title" {
+                    return heading_text(value.unwrap_or_default());
+                }
+                value.map_or_else(String::new, |text| escape_pipes(&code_span(text)))
+            })
+            .collect();
+        cells.extend([group.count.to_string(), group.chars.to_string()]);
+        if sessions {
+            cells.push(group.sessions.unwrap_or_default().to_string());
+        }
+        cells.extend([
+            group.first.minute_label(zone)?,
+            group.last.minute_label(zone)?,
+        ]);
+        match group.usage {
+            Some(tokens) => cells.extend(
+                [
+                    tokens.input,
+                    tokens.output,
+                    tokens.cache_read,
+                    tokens.cache_creation,
+                ]
+                .map(|count| count.to_string()),
+            ),
+            None => cells.extend([const { String::new() }; 4]),
+        }
+        out.push('|');
+        for cell in &cells {
+            out.extend([" ", cell, " |"]);
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// The heading of the column of `key`: `session_title` as `Session title`.
+fn column_label(key: &str) -> String {
+    let words = key.replace('_', " ");
+    let mut chars = words.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// A tool result's body: the calling tool's name, whether it failed, why

@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use super::args::{
-    Activity, Command, Common, MaskKind, RecordType, Status, listed, mask_kinds, on_skip,
+    Activity, Command, Common, MaskKind, Output, RecordType, Selection, Status, listed, mask_kinds,
+    on_skip,
 };
 use super::environment::Environment;
 use super::values::{self, Values};
@@ -15,10 +16,11 @@ use crate::collect::mask::Mask;
 use crate::config::{Config, Format, SessionSort, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, patterns};
-use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS};
+use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS, STATS_KEYS};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
+use crate::stats::{By, Grouping, Sort};
 use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
@@ -69,6 +71,24 @@ struct Narrowing {
     tools: Vec<String>,
     /// Whether to add up each session's tokens, for `sessions`.
     usage: bool,
+}
+
+/// What `ccdig stats` was given, its shared flags merged.
+struct StatsFlags {
+    /// `--skill` and `--subagents`.
+    activity: Activity,
+    /// `--by`.
+    by: Vec<By>,
+    /// The shared flags, given before and after the subcommand.
+    common: Common,
+    /// `--min-count`.
+    min_count: Option<usize>,
+    /// `--format` and `--fields`.
+    output: Output,
+    /// `--type`, `--tool`, `--status`, and `--denial`.
+    selection: Selection,
+    /// `--sort`.
+    sort: Sort,
 }
 
 impl ResultFlags {
@@ -289,6 +309,56 @@ fn check_kinds(
     Ok(())
 }
 
+/// The kinds `selection` and `activity` pick, after checking that each
+/// kind-specific flag given applies to one of them, and the filters they
+/// ask for.
+fn picked(selection: Selection, activity: Activity) -> Result<(Types, Narrowing), Failure> {
+    let Selection {
+        denials,
+        statuses,
+        tools,
+        types,
+    } = selection;
+    let results_only = ResultFlags {
+        denial: !denials.is_empty(),
+        status: !statuses.is_empty(),
+    };
+    let kinds = record_types(
+        &types,
+        !tools.is_empty(),
+        results_only.any(),
+        !activity.skills.is_empty(),
+    );
+    check_kinds(kinds, &activity, !tools.is_empty(), results_only)?;
+    let narrowing = Narrowing {
+        is_error: status_filter(&statuses),
+        denials,
+        tools,
+        ..activity.into()
+    };
+    Ok((kinds, narrowing))
+}
+
+/// The keys `--by` names, each once, in the order first given, after
+/// checking that `sort` has tokens to sort by with them.
+fn grouping_keys(given: Vec<By>, sort: Sort) -> Result<Vec<By>, Failure> {
+    let mut keys: Vec<By> = Vec::new();
+    for key in given {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    if let Some(tokens) = sort.tokens()
+        && let Some(key) = keys.iter().find(|key| key.splits_responses())
+    {
+        return Err(Failure::SortWithoutUsage {
+            by: key.name(),
+            sort: tokens,
+        });
+    }
+    Ok(keys)
+}
+
 /// The `--session` values with `current`, alone or after `!`, replaced by
 /// the ID of the session ccdig runs in.
 ///
@@ -447,25 +517,12 @@ pub fn resolve(
             around,
             common: later,
             context,
-            denials,
             max_message_chars,
             max_tool_chars,
             output,
-            statuses,
-            tools,
-            types,
+            selection,
         } => {
-            let results_only = ResultFlags {
-                denial: !denials.is_empty(),
-                status: !statuses.is_empty(),
-            };
-            let kinds = record_types(
-                &types,
-                !tools.is_empty(),
-                results_only.any(),
-                !activity.skills.is_empty(),
-            );
-            check_kinds(kinds, &activity, !tools.is_empty(), results_only)?;
+            let (kinds, picks) = picked(selection, activity)?;
             let format = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS, format)?;
             let cuts = Cuts {
@@ -475,11 +532,8 @@ pub fn resolve(
             let narrowing = Narrowing {
                 around,
                 context,
-                is_error: status_filter(&statuses),
                 context_by_default: (format != Format::Markdown).then_some(0),
-                denials,
-                tools,
-                ..activity.into()
+                ..picks
             };
             let flags = Flags::with_env(earlier.merged(later), environment)?;
             Ok(Config::Records {
@@ -515,6 +569,26 @@ pub fn resolve(
                 sort: order,
             })
         }
+        Command::Stats {
+            activity,
+            by,
+            common: later,
+            min_count,
+            output,
+            selection,
+            sort,
+        } => stats_config(
+            StatsFlags {
+                activity,
+                by: by.into_iter().map(Into::into).collect(),
+                common: earlier.merged(later),
+                min_count,
+                output,
+                selection,
+                sort: sort.into(),
+            },
+            environment,
+        ),
         Command::Version {
             common: _ignored,
             format,
@@ -522,6 +596,35 @@ pub fn resolve(
             format: format.into(),
         }),
     }
+}
+
+/// Resolves `stats`, with `--limit` taken out of the shared flags to count
+/// groups, so every record is read.
+fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, Failure> {
+    let subagents = given.activity.subagents;
+    let (kinds, narrowing) = picked(given.selection, given.activity)?;
+    let format = given.output.format.into();
+    let picked_fields = fields(given.output.fields, &STATS_KEYS, format)?;
+    let keys = grouping_keys(given.by, given.sort)?;
+    // Without the sub-agent transcripts, every record has no sub-agent.
+    if keys.contains(&By::Subagent) && !subagents {
+        return Err(Failure::ByNeedsSubagents);
+    }
+    let flags = Flags::with_env(given.common, environment)?;
+    let mut shared = flags.shared(narrowing, environment)?;
+    let limit = shared.limit.take();
+    Ok(Config::Stats {
+        fields: picked_fields,
+        format,
+        grouping: Grouping {
+            by: keys,
+            limit,
+            min_count: given.min_count.unwrap_or_default(),
+            sort: given.sort,
+        },
+        kinds,
+        shared: Box::new(shared),
+    })
 }
 
 /// What `--status` keeps: only failed results, only the others, or

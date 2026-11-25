@@ -409,6 +409,7 @@ impl Pick for Tools {
                     redacted,
                     source,
                     search: Search::default(),
+                    model: entry.model.clone(),
                     masked,
                 })
             }
@@ -487,7 +488,7 @@ impl Select for Reply {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.model, &mut self.subagent]
+        vec![&mut self.model, &mut self.skill, &mut self.subagent]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
@@ -570,7 +571,12 @@ impl Select for ToolCall {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.tool, &mut self.subagent]
+        vec![
+            &mut self.tool,
+            &mut self.model,
+            &mut self.skill,
+            &mut self.subagent,
+        ]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
@@ -651,7 +657,12 @@ impl Select for ToolResult {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.tool, &mut self.denial, &mut self.subagent]
+        vec![
+            &mut self.tool,
+            &mut self.denial,
+            &mut self.skill,
+            &mut self.subagent,
+        ]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
