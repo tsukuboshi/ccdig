@@ -10,6 +10,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stats` groups the records `records` would list by the keys `--by`
+  names, such as `session`, `tool`, or `week`, and writes how many there
+  are, how many characters of text they have, how many sessions they are
+  in, their first and last times, and their tokens, each response once.
+  `--min-count`, `--sort`, and `--limit` pick and order the groups.
 - A comment the user typed when they turned a tool call down, such as a
   plan they sent back with `ExitPlanMode`, is a prompt of kind
   `rejection`, so the prompts show every condition the user added.

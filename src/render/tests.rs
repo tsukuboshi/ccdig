@@ -12,10 +12,11 @@ use super::digest::{Limits, digest};
 use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
-    AGENT, Head, Kind, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, Search, Session, Source, Summary,
-    ToolCall, ToolResult, Turn,
+    AGENT, Group, Head, Kind, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS, Search,
+    Session, Source, Summary, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
+use crate::stats::{By, Grouping, columns, tally};
 use crate::testing::{TestResult, check_eq, golden, zone};
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
@@ -125,6 +126,44 @@ fn sample_session() -> Result<Session, String> {
     })
 }
 
+/// Two lines of `ccdig stats --by session`: one with tokens, and one
+/// without a title or any.
+fn sample_groups() -> Result<Vec<Group>, Box<dyn Error>> {
+    let keys = |session: &str, title: Option<&str>| {
+        serde_json::from_value(json!({
+            "session": session,
+            "session_title": title,
+            "project": "-Users-alice-blog",
+            "file": format!("/home/alice/.claude/projects/-Users-alice-blog/{session}.jsonl"),
+        }))
+    };
+    Ok(vec![
+        Group {
+            keys: keys(BLOG_SESSION, Some("Weekly report | draft"))?,
+            count: 12,
+            chars: 3_456,
+            sessions: None,
+            first: at("2026-10-13T01:23:45.678Z")?,
+            last: at("2026-10-13T02:00:00Z")?,
+            usage: Some(Usage {
+                input: 10,
+                output: 2_000,
+                cache_read: 30_000,
+                cache_creation: 400,
+            }),
+        },
+        Group {
+            keys: keys("22222222-2222-4222-8222-222222222222", None)?,
+            count: 1,
+            chars: 0,
+            sessions: None,
+            first: at("2026-10-14T00:05:00Z")?,
+            last: at("2026-10-14T00:05:00Z")?,
+            usage: None,
+        },
+    ])
+}
+
 /// `prompts` as the records `ccdig records --type prompt` writes.
 fn prompt_turns(prompts: Vec<Prompt>) -> Vec<Turn> {
     prompts.into_iter().map(Turn::Prompt).collect()
@@ -209,6 +248,32 @@ fn sessions_as_a_markdown_table() -> TestResult {
     golden(
         "render/sessions.md.golden",
         &markdown::sessions(&[sample_session()?], &tokyo()?, false)?,
+    )
+}
+
+#[test]
+fn stats_as_json_lines_and_a_markdown_table() -> TestResult {
+    let groups = sample_groups()?;
+    golden(
+        "render/stats.jsonl.golden",
+        &lines(&groups, &Fields::default())?,
+    )?;
+    golden(
+        "render/stats.md.golden",
+        &markdown::stats(&groups, &columns(&[By::Session]), &tokyo()?)?,
+    )
+}
+
+#[test]
+fn stats_by_a_key_without_a_value_leaves_the_cell_empty_and_counts_sessions() -> TestResult {
+    let group = Group {
+        keys: serde_json::from_value(json!({"tool": null}))?,
+        sessions: Some(2),
+        ..sample_groups()?.swap_remove(1)
+    };
+    golden(
+        "render/stats-tool.md.golden",
+        &markdown::stats(&[group], &columns(&[By::Tool]), &TimeZone::UTC)?,
     )
 }
 
@@ -299,6 +364,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         search: Search::default(),
     };
     let call = ToolCall {
+        model: String::new(),
         usage: None,
         masked: Counts::default(),
         head: blog_head("2026-10-13T01:25:00Z")?,
@@ -403,6 +469,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         masked: Counts::default(),
     };
     let call = ToolCall {
+        model: String::new(),
         head: head.clone(),
         tool: "Bash".to_owned(),
         input: json!({}),
@@ -469,5 +536,53 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         &SESSION_KEYS.map(str::to_owned).to_vec(),
         "session keys",
     )?;
+    Ok(())
+}
+
+#[test]
+fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
+    let records = prompt_turns(sample_prompts()?);
+    let every = [
+        By::Session,
+        By::Project,
+        By::Branch,
+        By::Type,
+        By::Tool,
+        By::Skill,
+        By::Subagent,
+        By::Model,
+        By::Kind,
+        By::Day,
+        By::Week,
+        By::Month,
+    ];
+    let every_but_sessions: Vec<&str> = STATS_KEYS
+        .into_iter()
+        .filter(|key| *key != "sessions")
+        .collect();
+    for (keys, want) in [
+        (&every[..], every_but_sessions),
+        (
+            &[][..],
+            vec!["count", "chars", "sessions", "first", "last", "usage"],
+        ),
+    ] {
+        let grouping = Grouping {
+            by: keys.to_vec(),
+            ..Grouping::default()
+        };
+        let groups = tally(&records, &grouping, &TimeZone::UTC)?;
+        let got = json_keys(groups.first().ok_or("no group")?)?;
+        check_eq(
+            &got,
+            &want.iter().map(|key| (*key).to_owned()).collect(),
+            &format!("{} keys", keys.len()),
+        )?;
+        check_eq(
+            &columns(keys),
+            &want.get(..columns(keys).len()).unwrap_or_default().to_vec(),
+            "columns names the keys before count",
+        )?;
+    }
     Ok(())
 }

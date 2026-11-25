@@ -18,14 +18,14 @@ rule:
     # crate::module::item for a module this one may not use, in a use or
     # a path
     - kind: scoped_identifier
-      regex: ^crate::(redact|record|filter|collect|render|config|pipeline|cli)$
+      regex: ^crate::(redact|record|stats|filter|collect|render|config|pipeline|cli)$
     # use crate::{module, module::item, module::{..}, module as x}
     - any:
         - kind: identifier
         - kind: scoped_identifier
         - kind: scoped_use_list
         - kind: use_as_clause
-      regex: ^(redact|record|filter|collect|render|config|pipeline|cli)\b
+      regex: ^(redact|record|stats|filter|collect|render|config|pipeline|cli)\b
       inside:
         kind: use_list
         inside:
@@ -36,7 +36,7 @@ rule:
     # crate::module in a macro call or an attribute, which ast-grep sees
     # as tokens
     - kind: identifier
-      regex: ^(redact|record|filter|collect|render|config|pipeline|cli)$
+      regex: ^(redact|record|stats|filter|collect|render|config|pipeline|cli)$
       inside:
         kind: token_tree
       follows:

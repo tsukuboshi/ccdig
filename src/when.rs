@@ -105,6 +105,11 @@ impl Stamp {
         strtime::format("%Y-%m-%d %H:%M %Z", &self.in_zone(zone)).map_err(Failure::TimeFormat)
     }
 
+    /// Formats the month in `zone` as `2006-01`, for `stats --by month`.
+    pub fn month_label(&self, zone: &TimeZone) -> Result<String, Failure> {
+        strtime::format("%Y-%m", &self.in_zone(zone)).map_err(Failure::TimeFormat)
+    }
+
     /// Parses the strict RFC 3339 form: `YYYY-MM-DDTHH:MM:SS`, an optional
     /// `.` and digits, then `Z` or `±HH:MM`. Looser forms (a one-digit hour,
     /// a comma before the fraction) are rejected; Claude Code writes
@@ -177,6 +182,13 @@ impl Stamp {
             instant: self.instant,
             offset: zone.to_offset(self.instant),
         }
+    }
+
+    /// Formats the ISO 8601 week in `zone` as `2006-W01`, for `stats --by
+    /// week`. Weeks start on Monday, and the year is the week's, which
+    /// differs from the calendar year around New Year.
+    pub fn week_label(&self, zone: &TimeZone) -> Result<String, Failure> {
+        strtime::format("%G-W%V", &self.in_zone(zone)).map_err(Failure::TimeFormat)
     }
 }
 

@@ -3,7 +3,7 @@
 id: layer-pipeline
 language: rust
 severity: error
-message: "pipeline may use only failure, text, when, transcript, classify, redact, record, filter, collect, render, config"
+message: "pipeline may use only failure, text, when, transcript, classify, redact, record, stats, filter, collect, render, config"
 note: |
   A module uses only those before it in the module table of
   ARCHITECTURE.md, or the ones its row names after "uses only".

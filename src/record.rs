@@ -3,7 +3,7 @@
 //! `--fields` leaves it out, so consumers can rely on the keys.
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::redact::Counts;
 use crate::text::cut_text;
@@ -63,6 +63,31 @@ pub const SESSION_KEYS: [&str; 14] = [
     "prompt_count",
     "match_count",
     "first_match",
+    "usage",
+];
+
+/// The keys a line of `stats` can have, for `--fields`: the `--by` keys,
+/// in the order `--by` names them, then the rest in this order.
+pub const STATS_KEYS: [&str; 20] = [
+    "session",
+    "project",
+    "branch",
+    "type",
+    "tool",
+    "skill",
+    "subagent",
+    "model",
+    "kind",
+    "day",
+    "week",
+    "month",
+    "session_title",
+    "file",
+    "count",
+    "chars",
+    "sessions",
+    "first",
+    "last",
     "usage",
 ];
 
@@ -322,6 +347,38 @@ pub struct FirstMatch {
     pub text: String,
 }
 
+/// The records that share the values of the `--by` keys: a line of
+/// `ccdig stats`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Group {
+    /// The `--by` keys and their values, in the order `--by` names them,
+    /// `null` for records without the key; with `--by session`, then the
+    /// session's `session_title`, `project`, and `file`.
+    #[serde(flatten)]
+    pub keys: Map<String, Value>,
+    /// How many records.
+    pub count: usize,
+    /// How many characters of text the records have, masked: a tool call's
+    /// input as compact JSON, and the text of the other kinds.
+    pub chars: usize,
+    /// How many sessions the records are in; not written with
+    /// `--by session`, where it is always 1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sessions: Option<usize>,
+    /// The time of the first record.
+    pub first: Stamp,
+    /// The time of the last record.
+    pub last: Stamp,
+    /// The tokens of the responses the records carry, each response once;
+    /// `null` when none carries any, and with a `--by` key that splits a
+    /// response, such as `tool`.
+    pub usage: Option<Usage>,
+}
+
 /// The summary Claude Code writes when it compacts the context: a
 /// `summary` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -388,6 +445,9 @@ pub struct ToolCall {
     /// What the search made of the record.
     #[serde(flatten)]
     pub search: Search,
+    /// The model that made the call, for `stats --by model`; not written.
+    #[serde(skip)]
+    pub model: String,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -452,6 +512,25 @@ pub enum Turn {
     Result(ToolResult),
     /// A compaction summary.
     Summary(Summary),
+}
+
+impl Group {
+    /// Whether the lines whose keys before `count` are `columns` write
+    /// `sessions`: not with `session`, where it is always 1.
+    pub fn writes_sessions(columns: &[&str]) -> bool {
+        !columns.contains(&"session")
+    }
+}
+
+impl Kind {
+    /// The name the `kind` key writes.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Rejection => "rejection",
+            Self::Slash => "slash",
+            Self::Text => "text",
+        }
+    }
 }
 
 impl Record for Prompt {
@@ -625,6 +704,17 @@ impl Turn {
             Self::Call(ref call) => call,
             Self::Result(ref result) => result,
             Self::Summary(ref summary) => summary,
+        }
+    }
+
+    /// The name the `type` key writes.
+    pub const fn type_name(&self) -> &'static str {
+        match *self {
+            Self::Call(_) => "call",
+            Self::Prompt(_) => "prompt",
+            Self::Reply(_) => "reply",
+            Self::Result(_) => "result",
+            Self::Summary(_) => "summary",
         }
     }
 }

@@ -254,6 +254,41 @@ fn date_label_is_the_local_day() -> TestResult {
 }
 
 #[test]
+fn week_label_is_the_iso_week_that_starts_on_monday_in_the_zone() -> TestResult {
+    for (input, name, want) in [
+        ("2026-11-25T03:00:00Z", "UTC", "2026-W48"),
+        // 2026 starts on a Thursday, so it has 53 weeks and its first
+        // week starts in 2025.
+        ("2025-12-29T03:00:00Z", "UTC", "2026-W01"),
+        ("2027-01-01T03:00:00Z", "UTC", "2026-W53"),
+        ("2027-01-04T03:00:00Z", "UTC", "2027-W01"),
+        // Sunday in UTC, Monday in Tokyo.
+        ("2026-12-27T15:00:00Z", "UTC", "2026-W52"),
+        ("2026-12-27T15:00:00Z", "Asia/Tokyo", "2026-W53"),
+    ] {
+        let stamp = Stamp::parse_rfc3339(input).ok_or(input)?;
+        check_eq(
+            stamp.week_label(&zone(name)?)?.as_str(),
+            want,
+            &format!("{input} in {name}"),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn month_label_is_the_local_month() -> TestResult {
+    let stamp = Stamp::parse_rfc3339("2026-11-30T15:00:00Z").ok_or("fixture")?;
+    check_eq(stamp.month_label(&tokyo()?)?.as_str(), "2026-12", "Tokyo")?;
+    check_eq(
+        stamp.month_label(&TimeZone::UTC)?.as_str(),
+        "2026-11",
+        "UTC",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn from_system_time_is_utc_with_nanoseconds() -> TestResult {
     let time = SystemTime::UNIX_EPOCH
         .checked_add(Duration::from_millis(1_500))

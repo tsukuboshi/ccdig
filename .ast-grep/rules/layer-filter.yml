@@ -3,7 +3,7 @@
 id: layer-filter
 language: rust
 severity: error
-message: "filter may use only failure, text, when, transcript, classify, redact, record"
+message: "filter may use only failure, text, when, transcript, classify, redact, record, stats"
 note: |
   A module uses only those before it in the module table of
   ARCHITECTURE.md, or the ones its row names after "uses only".

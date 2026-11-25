@@ -12,6 +12,7 @@ use crate::filter::Query;
 use crate::record::Cuts;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
+use crate::stats::Grouping;
 
 /// A subcommand with everything it needs.
 pub enum Config {
@@ -46,6 +47,20 @@ pub enum Config {
         /// The order of the sessions.
         sort: SessionSort,
     },
+    /// `stats`.
+    Stats {
+        /// The keys to write in JSON and JSON Lines.
+        fields: Fields,
+        /// The output format.
+        format: Format,
+        /// How to group the records, and which groups to keep, with
+        /// `--limit`, which counts groups here.
+        grouping: Grouping,
+        /// The kinds of record to pick.
+        kinds: Types,
+        /// What to read and how to report it, without `--limit`.
+        shared: Box<Shared>,
+    },
     /// `version`.
     Version {
         /// The output format.
@@ -53,7 +68,7 @@ pub enum Config {
     },
 }
 
-/// The output formats of `records` and `sessions`.
+/// The output formats of `records`, `sessions`, and `stats`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Format {
     /// One indented JSON document.

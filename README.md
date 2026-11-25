@@ -5,9 +5,10 @@
 Pull the logs you want to share out of your Claude Code session
 transcripts, formatted and masked. Combine filters for time, project,
 session, branch, text, record type, tool, outcome, and skill to narrow
-the history down to the part that matters. `records` and `sessions`
-write JSON Lines to process by default, on a terminal and in a pipe
-alike; give `--format md` for Markdown to read. Common secrets are
+the history down to the part that matters, and count what is left with
+`stats`. `records`, `sessions`, and `stats` write JSON Lines to process
+by default, on a terminal and in a pipe alike; give `--format md` for
+Markdown to read. Common secrets are
 masked by default, and email addresses, IP addresses, your user name,
 and values you list can be masked too.
 
@@ -68,6 +69,9 @@ ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 # Failed Bash calls, with sub-agents, as Markdown
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# The sessions that asked to approve a plan twice or more
+ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
+
 # A size-capped Markdown digest of the prompts to paste into an LLM
 ccdig digest --since 2026-10-05 --until 2026-10-11
 
@@ -83,6 +87,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- | --- |
 | `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
+| `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
 
@@ -192,6 +197,58 @@ A record has these keys, in this order:
 | `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | As above |
 | `usage` | The tokens; see Tokens |
 
+### stats
+
+Groups the records `records` would list by the keys `--by` names, and
+writes one record per group. `--type`, `--tool`, `--status`, `--denial`,
+`--skill`, `--subagents`, and the filters pick the records as they do for
+`records`, so `--type` defaults to `prompt,reply` here too. `--format`
+takes `jsonl` (default), `json`, or `md`, a table.
+
+```sh
+# Tool calls per tool in a week, with how long their input is
+ccdig stats --by tool --type call --since 2026-11-16 --until 2026-11-22
+
+# Output tokens per skill, most first
+ccdig stats --by skill --type reply,call --since 2026-11-01 --sort output
+
+# Plans the user turned down, per week
+ccdig stats --by week --type result --tool ExitPlanMode --status error
+```
+
+| Flag | Does |
+| --- | --- |
+| `--by KEY` | Groups by these keys, comma-separated or repeated, in that order: `session`, `project`, `branch`, `type`, `tool`, `skill`, `subagent`, `model`, `kind`, `day`, `week`, or `month`. Without it, all the records are one group, and nothing is written when there are none |
+| `--min-count N` | Leaves out the groups with fewer than N records |
+| `--sort SORT` | `count` (default), `chars`, `output`, or `cache_read`, the most first, or `key`, by the values of the keys. Groups that tie are in the order of their keys |
+| `--limit N` | Keeps the first N groups after sorting |
+
+- `day` is written as `2026-11-25`, `week` as the ISO 8601 week from
+  Monday, `2026-W48`, and `month` as `2026-11`, all in the zone `--tz`
+  names.
+- `kind` is how a prompt was typed, as in the `kind` key, and `model`
+  that of a reply or a tool call. A record without the key, such as a
+  prompt with `--by tool`, or with it empty, such as a reply outside a
+  skill with `--by skill`, is in a group whose value is `null`, after the
+  others with `--sort key`.
+- The keys hold the values after masking, so with `--mask-values` the
+  projects are grouped by their labels.
+- `--around`, `--context`, `--max-message-chars`, and `--max-tool-chars`
+  are errors, as they would change what is counted. So is `--by subagent`
+  without `--subagents`, which leaves out every sub-agent's record.
+
+A record has these keys, in this order:
+
+| Key | Holds |
+| --- | --- |
+| The `--by` keys | Their values, in the order `--by` names them, or `null` |
+| `session_title`, `project`, `file` | With `--by session`, the session's last title, project, and transcript file, each `null` when empty, so it can be passed on to `records --session` |
+| `count` | How many records |
+| `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--max-tool-chars` cuts each string in an input, so it measures something else |
+| `sessions` | How many sessions the records are in; not written with `--by session` |
+| `first`, `last` | The times of the first and the last record, written as `timestamp` is |
+| `usage` | The tokens; see Tokens |
+
 ### digest
 
 A Markdown digest of the prompts, capped in size. The filters apply to
@@ -273,12 +330,13 @@ masked; the Masking section lists the rules.
 ### Output
 
 `--limit N` prints the first N records. With `--around`, it counts the
-records that matched and keeps the context after the last of them.
+records that matched and keeps the context after the last of them. With
+`stats`, it keeps the first N groups.
 `--format` belongs to each command; see Commands.
 
-`records` and `sessions` take `--fields` too: in JSON and JSON Lines it
-writes only the keys it names, comma-separated or repeated, in the order
-the records write them. A key with a leading `!` is left out instead, as
+`records`, `sessions`, and `stats` take `--fields` too: in JSON and JSON
+Lines it writes only the keys it names, comma-separated or repeated, in
+the order the records write them. A key with a leading `!` is left out instead, as
 with the filters, so
 `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the keys
 every record of a session repeats, and `sessions --fields '!usage'` drops
@@ -415,6 +473,12 @@ a tool call down; the record type is `type`, which `--type` picks.
 - A `sessions` record ends with the same four keys in `usage`: the sum
   over the session's responses in the range, each once. For it,
   `sessions` also reads the assistant lines.
+- A `stats` record adds up in `usage` the tokens its records carry, so
+  each response counts once, and only when a record of it is kept; the
+  sum is not that of `sessions`. With `--by tool`, `type`, or `kind`, the
+  records of one response are in different groups, so `usage` is `null`,
+  and `--sort output` and `--sort cache_read` are errors. It is `null`
+  too when no record carries tokens, as with `--type prompt`.
 
 ### JSON envelope
 
