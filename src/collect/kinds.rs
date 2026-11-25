@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
-use crate::classify::denial::{Answer, denial};
+use crate::classify::denial::{Answer, comment_in, denial};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
 use crate::record::{
@@ -102,12 +102,12 @@ impl Pick for Records {
         match entry.role {
             Role::User => {
                 // With results picked too, `wants` may have accepted the line
-                // for its results only. A prompt is never on a line with a
-                // result, as `classify` turns such a line down, so the
-                // prompt's block index 0 cannot clash with a result's in the
-                // check for resumed copies.
+                // for its results only. A typed prompt is never on a line
+                // with a result, and a rejection's index comes after the
+                // line's blocks, so a prompt's index cannot clash with a
+                // result's in the check for resumed copies.
                 let reason = classify(entry);
-                if self.types.prompts && reason == Reason::Human {
+                if self.types.prompts && matches!(reason, Reason::Human | Reason::Rejection) {
                     let prompts = Prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, prompt.map(Turn::Prompt))));
                 }
@@ -164,15 +164,24 @@ impl Pick for Prompts {
     type Record = Prompt;
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Prompt>)> {
-        let (typed, kind, command) = match fold(&entry.content.text) {
-            Some(folded) => (folded.text, Kind::Slash, folded.command),
-            None => (entry.content.text.clone(), Kind::Text, String::new()),
-        };
+        // A rejection is on the line of its tool result: its index comes
+        // after the line's blocks.
+        let (index, typed, kind, command) = comment_in(entry).map_or_else(
+            || typed_prompt(entry),
+            |comment| {
+                (
+                    entry.content.blocks.len(),
+                    comment,
+                    Kind::Rejection,
+                    String::new(),
+                )
+            },
+        );
         let mut masked = Counts::default();
         let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
         let source = source(spot, entry, &mut masked);
         vec![(
-            0,
+            index,
             Draft::new(Prompt {
                 head: spot.head(entry),
                 text,
@@ -192,7 +201,7 @@ impl Pick for Prompts {
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
-        classify(entry) == Reason::Human
+        matches!(classify(entry), Reason::Human | Reason::Rejection)
     }
 }
 
@@ -278,6 +287,8 @@ impl Pick for Results {
                     input,
                     tool_use_id: result.tool_use_id.clone(),
                     is_error: result.is_error,
+                    // The line's keys speak for its one result; see
+                    // `comment_in`.
                     denial: denial(Answer {
                         denial_kind: &entry.denial_kind,
                         feedback: &entry.feedback,
@@ -611,6 +622,15 @@ where
         .enumerate()
         .filter_map(|(index, block)| make(block).map(|record| (index, Draft::new(record))))
         .collect()
+}
+
+/// A typed prompt's block index, text, kind, and command: a slash command
+/// folded back into what was typed, or the text as is.
+fn typed_prompt(entry: &Entry) -> (usize, String, Kind, String) {
+    fold(&entry.content.text).map_or_else(
+        || (0, entry.content.text.clone(), Kind::Text, String::new()),
+        |folded| (0, folded.text, Kind::Slash, folded.command),
+    )
 }
 
 /// The record inside `turn`.

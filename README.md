@@ -160,7 +160,8 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
 - `prompt_count` and `started_at` count the selected prompts and give the
   first one's time. `ended_at` is the time of the session's last prompt,
   reply, tool call, or tool result in the range, so it shows when the
-  work ended even when a session has one prompt.
+  work ended even when a session has one prompt. A comment the user typed
+  when they turned a tool call down counts as a prompt.
 - `first_match` holds the first prompt or reply a search matched in the
   session, so it can be judged without reading its records: its `type`,
   `timestamp`, the `line` a pattern matched in its text, and that line,
@@ -190,7 +191,8 @@ A record has these keys, in this order:
 ### digest
 
 A Markdown digest of the prompts, capped in size. The filters apply to
-the prompts.
+the prompts. A comment the user typed when they turned a tool call down is
+listed with `(rejection)` before it.
 
 | Flag | Default | Does |
 | --- | --- | --- |
@@ -204,7 +206,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.3","schema":4,"filter":"strict-v2"}
+{"version":"0.0.3","schema":4,"filter":"strict-v3"}
 ```
 
 ## Shared options
@@ -318,7 +320,8 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | `summary` | `text` |
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
-`slash` or `text`; the record type is `type`, which `--type` picks.
+`slash` or `text`, or `rejection` for what the user typed when they turned
+a tool call down; the record type is `type`, which `--type` picks.
 
 - `matched` is `false` for a record `--around` lists next to a match, and
   `true` for every other record.
@@ -336,6 +339,12 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
   whole. Without `--context`, JSON and JSON Lines list the matched lines
   alone, and Markdown lists none, so it prints each record whole.
   `matches` is empty without a pattern that does not start with `!`.
+- A prompt of kind `rejection` is the comment the user typed when they
+  turned a tool call down, such as a plan they sent back with
+  `ExitPlanMode`. It is on the line of the call's result, so its
+  `source.uuid` is the result's, and the result's `tool` names the tool.
+  Claude Code's own text when the user picks "clarify" in a question
+  dialog is not a comment.
 - `denial` is Claude Code's name for why a call did not run, such as
   `user-rejected`, `permission-rule`, `automode-blocked`, or `cancelled`,
   and empty when it ran. Before Claude Code recorded it, only
@@ -384,7 +393,7 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
 run:
 
 ```json
-{"schema":4,"filter":"strict-v2","ccdig":"0.0.3",
+{"schema":4,"filter":"strict-v3","ccdig":"0.0.3",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -437,7 +446,8 @@ A `user` entry is dropped, with the first matching reason, when it:
 
 1. is marked `isMeta`, `isSidechain`, or `isCompactSummary`;
 2. has an `origin.kind` other than `human`;
-3. carries a `tool_result` block;
+3. carries a `tool_result` block, unless the user turned the call down
+   with a comment: the comment is kept, as a prompt of kind `rejection`;
 4. starts with a harness tag such as `<system-reminder>`,
    `<task-notification>`, `<local-command-…>`, `<bash-input>`,
    `<bash-stdout>`, or `<user-prompt-submit-hook>`;

@@ -659,7 +659,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":4,\"filter\":\"strict-v2\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":4,\"filter\":\"strict-v3\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {

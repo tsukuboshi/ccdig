@@ -1,10 +1,11 @@
 //! Typed prompts versus harness traffic recorded under the user role.
 
+use super::denial::comment_in;
 use crate::transcript::entry::{Entry, Role};
 
 /// Names the rule set `classify` applies. It changes whenever a rule change
 /// can change which entries are kept.
-pub const FILTER_VERSION: &str = "strict-v2";
+pub const FILTER_VERSION: &str = "strict-v3";
 
 /// Tags the harness writes at the start of a body under the user role.
 /// `local-command` also covers `<local-command-caveat>` and
@@ -43,6 +44,9 @@ pub enum Reason {
     NonHumanOrigin,
     /// Not a user message.
     NotUser,
+    /// What the user typed when they turned a tool call down: the tool
+    /// result of that call carries it.
+    Rejection,
     /// A sub-agent's conversation.
     Sidechain,
     /// Tool output.
@@ -70,7 +74,11 @@ pub fn classify(entry: &Entry) -> Reason {
         return Reason::NonHumanOrigin;
     }
     if entry.content.has_tool_result {
-        return Reason::ToolResult;
+        return if comment_in(entry).is_some() {
+            Reason::Rejection
+        } else {
+            Reason::ToolResult
+        };
     }
     // Checked even for origin "human": Claude Code records a ! shell escape
     // (<bash-input>) as human although it is not a prompt.

@@ -4,7 +4,7 @@
 use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
-use crate::record::{MatchLine, Record, Session, ToolCall, ToolResult, Turn};
+use crate::record::{Kind, MatchLine, Record, Session, ToolCall, ToolResult, Turn};
 use crate::text::{
     clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
 };
@@ -21,6 +21,7 @@ pub fn records(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
         records,
         zone,
         |turn| match *turn {
+            Turn::Prompt(ref prompt) if prompt.kind == Kind::Rejection => "Rejection",
             Turn::Prompt(_) => "Prompt",
             Turn::Reply(_) => "Reply",
             Turn::Call(_) => "Tool call",

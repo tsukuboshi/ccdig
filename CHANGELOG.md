@@ -10,10 +10,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A comment the user typed when they turned a tool call down, such as a
+  plan they sent back with `ExitPlanMode`, is a prompt of kind
+  `rejection`, so the prompts show every condition the user added.
 - A result has a new `denial` key, Claude Code's name for why the call did
   not run, such as `user-rejected` or `permission-rule`, and
   `records --denial` keeps the results by it, or with a leading `!`,
   leaves them out.
+
+### Changed
+
+- The filter is `strict-v3`: a tool result's line that carries the
+  user's comment on a turned-down call is kept as a prompt.
+- A comment on a turned-down call counts as a prompt in `sessions`
+  (`prompt_count`, `started_at`) and in `digest`, where it is marked
+  `(rejection)`; `records --format md` heads it `Rejection`.
 
 ### Fixed
 

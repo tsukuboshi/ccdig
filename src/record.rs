@@ -104,6 +104,8 @@ pub struct Head {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
+    /// What the user typed when they turned a tool call down.
+    Rejection,
     /// A slash command, folded back into what was typed.
     Slash,
     /// Plain text.

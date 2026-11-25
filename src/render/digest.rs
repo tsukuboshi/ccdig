@@ -3,7 +3,7 @@
 use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
-use crate::record::{Head, Prompt};
+use crate::record::{Head, Kind, Prompt};
 use crate::text::{code_span, escape_inline, heading_text, one_line};
 
 /// The size limits of a digest. Lengths count characters, not bytes, so
@@ -107,7 +107,12 @@ fn session(
         // A code span keeps the prompt literal when the digest is
         // previewed: no rendered HTML, no ![](url) fetched from a
         // transcript.
-        out.extend(["- ", &code_span(&text), "\n"]);
+        let mark = if prompt.kind == Kind::Rejection {
+            "(rejection) "
+        } else {
+            ""
+        };
+        out.extend(["- ", mark, &code_span(&text), "\n"]);
         used = used.saturating_add(length);
     }
     Ok(())

@@ -142,7 +142,7 @@ fn prompts_as_a_json_document() -> TestResult {
     golden(
         "render/prompts.json.golden",
         &document(
-            "strict-v2",
+            "strict-v3",
             "0.1.0",
             &Run::default(),
             prompts.get(..1).ok_or("no prompts")?,
@@ -156,7 +156,7 @@ fn an_empty_json_document_has_an_empty_list() -> TestResult {
     golden(
         "render/empty.json.golden",
         &document::<Prompt>(
-            "strict-v2",
+            "strict-v3",
             "0.1.0",
             &Run::default(),
             &[],

@@ -1,6 +1,6 @@
 {
   "schema": 4,
-  "filter": "strict-v2",
+  "filter": "strict-v3",
   "ccdig": "0.1.0",
   "run": {
     "since": null,

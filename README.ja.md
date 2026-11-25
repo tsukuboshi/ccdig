@@ -160,6 +160,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - `prompt_count` と `started_at` は、選ばれた依頼文の件数と最初の時刻です。
   `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
+  ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
 - `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
@@ -189,7 +190,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ### digest
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
-依頼文に適用されます。
+依頼文に適用されます。ツールの呼び出しを却下したときに打ったコメントは、
+前に `(rejection)` を付けて並べます。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -203,7 +205,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.3","schema":4,"filter":"strict-v2"}
+{"version":"0.0.3","schema":4,"filter":"strict-v3"}
 ```
 
 ## 共通オプション
@@ -317,6 +319,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
+ツールの呼び出しを却下したときに打ったコメントなら `rejection` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、
@@ -334,6 +337,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   JSON と JSON Lines は一致した行だけを並べ、Markdown は行を並べずに
   レコードを全文で出します。`!` で始まらないパターンが無ければ
   `matches` は空です。
+- 打ち方が `rejection` の依頼文は、ユーザーがツールの呼び出しを却下した
+  ときに打ったコメントです。`ExitPlanMode` で差し戻したプランへの
+  コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は
+  結果と同じで、ツール名は結果の `tool` で分かります。質問のダイアログで
+  "clarify" を選んだときに Claude Code が書く定型文は、コメントに含めません。
 - `denial` は、呼び出しが実行されなかった理由を表す Claude Code の名前で、
   `user-rejected`・`permission-rule`・`automode-blocked`・`cancelled`
   などです。実行されたときは空です。Claude Code がこれを記録する前の
@@ -381,7 +389,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":4,"filter":"strict-v2","ccdig":"0.0.3",
+{"schema":4,"filter":"strict-v3","ccdig":"0.0.3",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -434,7 +442,8 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 
 1. `isMeta`・`isSidechain`・`isCompactSummary` のいずれかが付いている
 2. `origin.kind` が `human` 以外である
-3. `tool_result` ブロックを持つ
+3. `tool_result` ブロックを持つ。ただし、ユーザーがコメントを添えて
+   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す
 4. `<system-reminder>`、`<task-notification>`、`<local-command-…>`、
    `<bash-input>`、`<bash-stdout>`、`<user-prompt-submit-hook>` などの
    ハーネスのタグで始まる

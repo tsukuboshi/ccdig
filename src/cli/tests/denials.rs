@@ -156,6 +156,75 @@ fn markdown_names_why_a_call_did_not_run() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn a_comment_on_a_turned_down_call_is_a_prompt() -> TestResult {
+    let history = history_with_denials()?;
+    let prompts = records(&history, &["records", "--type", "prompt"])?;
+    check_eq(&strings(&prompts, "text"), &vec!["One PR, please."], "text")?;
+    check_eq(&strings(&prompts, "kind"), &vec!["rejection"], "kind")?;
+    check_eq(&strings(&prompts, "command"), &vec![""], "command")?;
+    // The result of the same line stays.
+    let both = records(&history, &["records", "--type", "prompt,result"])?;
+    check_eq(
+        &strings(&both, "type"),
+        &vec!["result", "prompt", "result", "result", "result"],
+        "prompt and result",
+    )?;
+    check_eq(
+        &both
+            .iter()
+            .take(2)
+            .map(|record| record.pointer("/source/uuid").and_then(Value::as_str))
+            .collect::<Vec<_>>(),
+        &vec![Some("d-2"), Some("d-2")],
+        "one line",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_comment_recorded_before_claude_code_named_the_denial_is_a_prompt() -> TestResult {
+    let line = format!(
+        r#"{{"type":"user","uuid":"d-2","sessionId":"dddd","timestamp":"2026-10-15T00:00:10Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"toolu_p","is_error":true,"content":"{SAID}"}}]}}}}"#
+    );
+    let history = history(&[&line])?;
+    let prompts = records(&history, &["records", "--type", "prompt"])?;
+    check_eq(&strings(&prompts, "text"), &vec!["One PR, please."], "text")?;
+    Ok(())
+}
+
+#[test]
+fn markdown_and_the_digest_tell_a_comment_on_a_turned_down_call() -> TestResult {
+    let history = history_with_denials()?;
+    let markdown = history.run(&[
+        "records",
+        "--type",
+        "prompt",
+        "--session",
+        "dddd",
+        "--format",
+        "md",
+    ]);
+    check_eq(&markdown.code, &0, "markdown exit")?;
+    check_eq(
+        &(
+            markdown.out.contains(" Rejection"),
+            markdown.out.contains(" Prompt"),
+        ),
+        &(true, false),
+        "markdown heading",
+    )?;
+    let digest = history.run_week(&["digest", "--session", "dddd"]);
+    check_eq(&digest.code, &0, "digest exit")?;
+    check_eq(
+        &digest.out.contains("- (rejection) `One PR, please.`\n"),
+        &true,
+        "digest line",
+    )?;
+    Ok(())
+}
+
 #[test]
 fn mask_values_mask_the_denial_too() -> TestResult {
     let history = history_with_denials()?;

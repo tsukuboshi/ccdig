@@ -1,6 +1,8 @@
 //! Tool calls that were turned down, and what the user said when they turned
 //! one down.
 
+use crate::transcript::entry::{Block, Entry};
+
 /// How the comment starts when the user picks "clarify" in a question
 /// dialog: Claude Code's words, not the user's.
 const CLARIFY_PREFIX: &str = "The user wants to clarify these questions.";
@@ -49,6 +51,26 @@ fn comment(answer: Answer<'_>) -> Option<String> {
     }
     .trim();
     (!said.is_empty() && !said.starts_with(CLARIFY_PREFIX)).then(|| said.to_owned())
+}
+
+/// What the user typed when they turned down a call `entry` answers: the
+/// first comment of its tool results, or `None` when it has none.
+/// `toolDenialKind` and `userFeedback` are keys of the line, not of a block:
+/// Claude Code writes each tool result on a line of its own, so they speak
+/// for the one result there.
+pub fn comment_in(entry: &Entry) -> Option<String> {
+    entry.content.blocks.iter().find_map(|block| match *block {
+        Block::ToolResult(ref result) => {
+            denial(Answer {
+                denial_kind: &entry.denial_kind,
+                feedback: &entry.feedback,
+                is_error: result.is_error,
+                text: &result.text,
+            })
+            .comment
+        }
+        Block::Other | Block::Text(_) | Block::ToolUse(_) => None,
+    })
 }
 
 /// Reads why the call `answer` answers did not run. Before Claude Code
