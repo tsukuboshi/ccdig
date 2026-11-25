@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A call's `input` keeps the keys of the `tool_use` block that the line's
+  `wireToolInputs` leaves out, so `ExitPlanMode` shows its `plan` instead
+  of `{}`.
+
 ## [0.0.3] - 2026-11-24
 
 ### Added

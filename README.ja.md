@@ -340,8 +340,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `agent-1a2b` のようなファイル名です。サブエージェントのレコードは、
   そのセッションの `session_id` と `session_title` を持ちます。セッション
   本体の transcript の最終書き込みが `--since` より前なら、タイトルは空です。
-- `input` は、Claude Code が行の `wireToolInputs` に保存していればそこに
-  ある切り詰められていない入力で、なければ `tool_use` ブロックの入力です。
+- `input` は `tool_use` ブロックの入力に、Claude Code が行の
+  `wireToolInputs` に保存した切り詰められていない値を重ねたものです。
+  そのため、`ExitPlanMode` の `plan` のようにモデルが送らなかったキーも
+  残ります。
   呼び出しが見つからなかった結果は、`tool` が空で `input` が `null` です。
 - `usage` は応答のトークン数です。「トークン数」の節を参照してください。
 - `timestamp` は、`sessions` のレコードの時刻と同じく、`--tz` のゾーンの

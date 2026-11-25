@@ -341,8 +341,10 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
   `agent-1a2b`, for a sub-agent. A sub-agent's record carries the
   `session_id` and `session_title` of its session; the title is empty when
   the session's own transcript was last written before `--since`.
-- `input` is the untruncated input from the line's `wireToolInputs` when
-  Claude Code stored one, and the `tool_use` block's otherwise. A result
+- `input` is the `tool_use` block's input with the untruncated values
+  from the line's `wireToolInputs` laid over it when Claude Code stored
+  them, so the keys the model did not send, such as the `plan` of
+  `ExitPlanMode`, stay. A result
   whose call was not found has an empty `tool` and a `null` `input`.
 - `usage` is the tokens of the response; see Tokens.
 - `timestamp`, like the times of a `sessions` record, is RFC 3339 with

@@ -430,10 +430,13 @@ fn tool_use(fields: &Map<String, Value>) -> Block {
     })
 }
 
-/// Replaces each tool call's input with the untruncated one in `wire`, when
+/// Lays the untruncated input in `wire` over each tool call's input, when
 /// `wire` is an object holding an object for the call's ID. The `tool_use`
-/// block keeps a shortened copy of long inputs. Any other shape of `wire`
-/// leaves the inputs as they are.
+/// block keeps a shortened copy of long inputs, and also keys the model did
+/// not send, such as the plan of `ExitPlanMode`, so a key of `wire` replaces
+/// the block's value and the block's other keys stay. A block input that is
+/// not an object is replaced. Any other shape of `wire` leaves the inputs as
+/// they are.
 fn use_wire_inputs(blocks: &mut [Block], wire: &RawValue) {
     if !blocks
         .iter()
@@ -446,10 +449,16 @@ fn use_wire_inputs(blocks: &mut [Block], wire: &RawValue) {
     };
     for block in blocks {
         if let Block::ToolUse(ref mut call) = *block
-            && let Some(full) = inputs.remove(&call.id)
-            && full.is_object()
+            && let Some(Value::Object(full)) = inputs.remove(&call.id)
         {
-            call.input = full;
+            match call.input {
+                Value::Object(ref mut recorded) => recorded.extend(full),
+                Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::Array(_) => call.input = Value::Object(full),
+            }
         }
     }
 }
