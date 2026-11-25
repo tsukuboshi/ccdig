@@ -364,6 +364,15 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   などです。実行されたときは空です。Claude Code がこれを記録する前の
   セッションでは、結果のテキストから `user-rejected` だけを読みます。
   どの理由でも `is_error` は `true` です。
+- 依頼文は、貼り付けたテキストを Claude Code が書いた位置に
+  `<pasted_content id="...">` タグで囲んだまま持ちます。打った文だけを
+  読むときは、jq でタグごと除きます。
+
+  ```sh
+  ccdig records --type prompt | jq '.text |= gsub(
+    "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
+  ```
+
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。

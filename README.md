@@ -366,6 +366,15 @@ a tool call down; the record type is `type`, which `--type` picks.
   and empty when it ran. Before Claude Code recorded it, only
   `user-rejected` is read, from the result's text. `is_error` is `true` for
   each of them too.
+- A prompt keeps pasted text where Claude Code put it, between
+  `<pasted_content id="...">` tags. To read the typed words alone, drop
+  the tags with jq:
+
+  ```sh
+  ccdig records --type prompt | jq '.text |= gsub(
+    "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
+  ```
+
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
