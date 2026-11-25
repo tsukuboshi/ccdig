@@ -30,6 +30,8 @@ struct Call {
 /// Picks the records of the kinds in `types`, in the order they were
 /// written.
 pub struct Records {
+    /// Notes which prompts were sent again.
+    prompts: Prompts,
     /// Pairs the results with their calls.
     results: Results,
     /// The kinds to pick.
@@ -56,7 +58,13 @@ pub struct Types {
 }
 
 /// Picks the prompts a person typed.
-pub struct Prompts;
+#[derive(Default)]
+pub struct Prompts {
+    /// The last typed prompt seen so far in the file that follows each
+    /// line, by the line's ID: a prompt sent again in place of another
+    /// follows the same line.
+    last: HashMap<String, String>,
+}
 
 /// Picks the compaction summaries.
 pub struct Summaries;
@@ -88,6 +96,7 @@ impl Records {
     /// Picks the kinds in `types`.
     pub fn new(types: Types) -> Self {
         Self {
+            prompts: Prompts::default(),
             results: Results::default(),
             types,
         }
@@ -108,7 +117,7 @@ impl Pick for Records {
                 // result's in the check for resumed copies.
                 let reason = classify(entry);
                 if self.types.prompts && matches!(reason, Reason::Human | Reason::Rejection) {
-                    let prompts = Prompts.pick(spot, entry).into_iter();
+                    let prompts = self.prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, prompt.map(Turn::Prompt))));
                 }
                 if self.types.summaries && reason == Reason::CompactSummary {
@@ -145,15 +154,20 @@ impl Pick for Records {
         }
     }
 
+    fn superseded(&self, record: &Turn) -> bool {
+        match *record {
+            Turn::Prompt(ref prompt) => self.prompts.superseded(prompt),
+            Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => false,
+        }
+    }
+
     fn wants(&mut self, entry: &Entry) -> bool {
-        // Always called, so the results see every call before its result.
+        // Always called, so the results see every call before its result,
+        // and the prompts every prompt sent again.
         let result = self.types.results && self.results.wants(entry);
+        let prompt = self.types.prompts && self.prompts.wants(entry);
         match entry.role {
-            Role::User => {
-                result
-                    || (self.types.prompts && Prompts.wants(entry))
-                    || (self.types.summaries && Summaries.wants(entry))
-            }
+            Role::User => result || prompt || (self.types.summaries && Summaries.wants(entry)),
             Role::Assistant => self.types.replies || self.types.calls,
             Role::AiTitle | Role::Other => false,
         }
@@ -188,10 +202,16 @@ impl Pick for Prompts {
                 kind,
                 command,
                 permission_mode: entry.permission_mode.clone(),
+                superseded: false,
                 redacted,
                 source,
                 search: Search::default(),
                 masked,
+                parent_uuid: if kind == Kind::Rejection {
+                    String::new()
+                } else {
+                    entry.parent_uuid.clone()
+                },
             }),
         )]
     }
@@ -200,8 +220,34 @@ impl Pick for Prompts {
         Roles::USER
     }
 
+    fn superseded(&self, record: &Prompt) -> bool {
+        !record.parent_uuid.is_empty()
+            && self
+                .last
+                .get(&record.parent_uuid)
+                .is_some_and(|last| *last != record.source.uuid)
+    }
+
     fn wants(&mut self, entry: &Entry) -> bool {
-        matches!(classify(entry), Reason::Human | Reason::Rejection)
+        match classify(entry) {
+            Reason::Human => {
+                if !entry.parent_uuid.is_empty() {
+                    self.last
+                        .insert(entry.parent_uuid.clone(), entry.uuid.clone());
+                }
+                true
+            }
+            Reason::Rejection => true,
+            Reason::CompactSummary
+            | Reason::Empty
+            | Reason::HarnessTag
+            | Reason::Interrupted
+            | Reason::Meta
+            | Reason::NonHumanOrigin
+            | Reason::NotUser
+            | Reason::Sidechain
+            | Reason::ToolResult => false,
+        }
     }
 }
 
@@ -412,6 +458,10 @@ impl Select for Prompt {
     fn search_mut(&mut self) -> &mut Search {
         &mut self.search
     }
+
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        Some(&mut self.superseded)
+    }
 }
 
 impl Select for Reply {
@@ -567,6 +617,10 @@ impl Select for Turn {
 
     fn search_mut(&mut self) -> &mut Search {
         selected_mut(self).search_mut()
+    }
+
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        selected_mut(self).superseded_mut()
     }
 
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {

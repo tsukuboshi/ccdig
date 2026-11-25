@@ -12,6 +12,7 @@ mod fields;
 mod kinds;
 mod mentions;
 mod properties;
+mod timeline;
 
 use core::error::Error;
 use std::fs::{self, File};
@@ -1746,7 +1747,7 @@ fn a_prompt_carries_the_permission_mode_recorded_on_its_line() -> TestResult {
     check_eq(&modes, &vec!["plan".to_owned(), String::new()], &ran.out)?;
     check_eq(
         &ran.out
-            .contains(r#""command":"","permission_mode":"plan","redacted""#),
+            .contains(r#""command":"","permission_mode":"plan","superseded":false,"redacted""#),
         &true,
         &ran.out,
     )?;

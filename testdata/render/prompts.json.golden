@@ -24,6 +24,7 @@
       "kind": "slash",
       "command": "/weekly-report",
       "permission_mode": "",
+      "superseded": false,
       "redacted": false,
       "source": {
         "file": "/home/alice/.claude/projects/-Users-alice-blog/1111.jsonl",

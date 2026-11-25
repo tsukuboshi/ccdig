@@ -63,6 +63,10 @@ pub struct Entry {
     /// Who produced a user line, such as `human` or `task-notification`.
     /// `None` for sessions recorded before Claude Code wrote the field.
     pub origin: Option<String>,
+    /// The ID of the line this one follows in the conversation, or empty
+    /// for the first. Two lines with the same parent are two tries at the
+    /// same turn: the user sent a prompt again in place of the first.
+    pub parent_uuid: String,
     /// The permission mode a user line was written in, such as `plan` or
     /// `auto`; empty when the line does not say.
     pub permission_mode: String,
@@ -130,6 +134,9 @@ struct RawEntry<'line> {
     message: Option<RawMessage<'line>>,
     /// `origin`.
     origin: Option<RawOrigin>,
+    /// `parentUuid`.
+    #[serde(rename = "parentUuid")]
+    parent_uuid: Option<String>,
     /// `permissionMode`, on the user lines of recent Claude Code.
     #[serde(rename = "permissionMode")]
     permission_mode: Option<String>,
@@ -296,6 +303,7 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         message_id,
         model,
         origin: raw.origin.map(|origin| origin.kind.unwrap_or_default()),
+        parent_uuid: raw.parent_uuid.unwrap_or_default(),
         permission_mode: raw.permission_mode.unwrap_or_default(),
         role: match raw.kind.as_deref() {
             Some("ai-title") => Role::AiTitle,

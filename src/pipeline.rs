@@ -40,7 +40,7 @@ pub struct Printed {
 pub fn execute(config: Config) -> Result<Printed, Failure> {
     match config {
         Config::Digest { limits, shared } => {
-            let corpus = gather(&shared, SessionSort::Time, || Prompts)?;
+            let corpus = gather(&shared, SessionSort::Time, Prompts::default)?;
             printed(
                 &shared,
                 digest(&corpus.records, &shared.zone, limits)?,
@@ -75,7 +75,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             shared,
             sort,
         } => {
-            let corpus = gather(&shared, sort, || Prompts)?;
+            let corpus = gather(&shared, sort, Prompts::default)?;
             let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
                 markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
             })?;

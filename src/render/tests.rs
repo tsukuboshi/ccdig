@@ -49,6 +49,8 @@ fn blog_head(time: &str) -> Result<Head, String> {
 fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
     Prompt {
         permission_mode: String::new(),
+        superseded: false,
+        parent_uuid: String::new(),
         masked: Counts::default(),
         head,
         text: text.to_owned(),
@@ -74,6 +76,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
     Ok(vec![
         Prompt {
             permission_mode: String::new(),
+            superseded: false,
+            parent_uuid: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:23:45.678Z")?,
             text: "/weekly-report last week".to_owned(),
@@ -85,6 +89,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
         },
         Prompt {
             permission_mode: String::new(),
+            superseded: false,
+            parent_uuid: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:30:00Z")?,
             text: "keep <b> tags & \u{65e5}\u{672c}\u{8a9e} as is\nexport AWS_SECRET_ACCESS_KEY=***REDACTED***".to_owned(),

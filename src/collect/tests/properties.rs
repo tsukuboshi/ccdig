@@ -278,7 +278,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
             },
             &Query::default(),
             &mask,
-            || Prompts,
+            Prompts::default,
         )?;
         let searched = collect(
             root.path(),
@@ -292,7 +292,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
                 ..Query::default()
             },
             &mask,
-            || Prompts,
+            Prompts::default,
         )?;
         for session in &searched.sessions {
             let index: usize = session.id.trim_start_matches("s-").parse()?;

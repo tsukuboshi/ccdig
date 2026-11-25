@@ -17,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not run, such as `user-rejected` or `permission-rule`, and
   `records --denial` keeps the results by it, or with a leading `!`,
   leaves them out.
+- A prompt has a new `superseded` key, `true` when the user sent another
+  prompt in its place: one that follows the same line, as after Esc or an
+  interrupted reply.
 
 ### Changed
 

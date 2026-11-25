@@ -18,7 +18,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 25] = [
+pub const RECORD_KEYS: [&str; 26] = [
     "type",
     "agent",
     "session_id",
@@ -36,6 +36,7 @@ pub const RECORD_KEYS: [&str; 25] = [
     "kind",
     "command",
     "permission_mode",
+    "superseded",
     "model",
     "skill",
     "subagent",
@@ -157,13 +158,18 @@ pub struct Prompt {
     pub head: Head,
     /// The prompt, trimmed and masked.
     pub text: String,
-    /// Plain text or a slash command.
+    /// Plain text, a slash command, or a comment on a tool call the user
+    /// turned down.
     pub kind: Kind,
     /// The slash command's name, or empty for plain text.
     pub command: String,
     /// The permission mode the line was written in, such as `plan` or
     /// `auto`, or empty when the line does not say, as for slash commands.
     pub permission_mode: String,
+    /// Whether the user sent another prompt in its place later in the
+    /// file: one that follows the same line, as when they press Esc and
+    /// edit the prompt, or interrupt the reply and send it again.
+    pub superseded: bool,
     /// Whether masking changed the text.
     pub redacted: bool,
     /// Where the line is.
@@ -175,6 +181,11 @@ pub struct Prompt {
     /// not written.
     #[serde(skip)]
     pub masked: Counts,
+    /// The ID of the line the prompt follows, for `superseded`; empty for
+    /// a comment on a turned-down call, which no prompt replaces; not
+    /// written.
+    #[serde(skip)]
+    pub parent_uuid: String,
 }
 
 /// What the Markdown writers need of every kind of record.

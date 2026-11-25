@@ -301,7 +301,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","redacted":false,
+ "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -342,6 +342,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は
   結果と同じで、ツール名は結果の `tool` で分かります。質問のダイアログで
   "clarify" を選んだときに Claude Code が書く定型文は、コメントに含めません。
+- `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
+  送った依頼文で `true` です。同じ行の後に続く依頼文のことで、Esc で
+  依頼文を書き直したときや、返答を中断して送り直したときに生じます。
+  `rejection` に代わりの依頼文が付くことはありません。
 - `denial` は、呼び出しが実行されなかった理由を表す Claude Code の名前で、
   `user-rejected`・`permission-rule`・`automode-blocked`・`cancelled`
   などです。実行されたときは空です。Claude Code がこれを記録する前の

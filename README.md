@@ -302,7 +302,7 @@ the tokens. A key the command does not write is an error, and so is
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","redacted":false,
+ "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -345,6 +345,10 @@ a tool call down; the record type is `type`, which `--type` picks.
   `source.uuid` is the result's, and the result's `tool` names the tool.
   Claude Code's own text when the user picks "clarify" in a question
   dialog is not a comment.
+- `superseded` is `true` for a prompt the user sent another prompt in
+  place of, later in the file: one that follows the same line, as when
+  they press Esc and edit the prompt, or interrupt the reply and send it
+  again. A `rejection` is never superseded.
 - `denial` is Claude Code's name for why a call did not run, such as
   `user-rejected`, `permission-rule`, `automode-blocked`, or `cancelled`,
   and empty when it ran. Before Claude Code recorded it, only

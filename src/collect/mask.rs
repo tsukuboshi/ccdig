@@ -49,6 +49,13 @@ where
         self.0.search_mut().matched = false;
     }
 
+    /// Marks the record as one the user sent another prompt in place of.
+    pub fn mark_superseded(&mut self) {
+        if let Some(superseded) = self.0.superseded_mut() {
+            *superseded = true;
+        }
+    }
+
     /// Where the record lists the lines `--grep` matched. They come from
     /// the text, which is already masked.
     pub fn matches_mut(&mut self) -> &mut Vec<MatchLine> {

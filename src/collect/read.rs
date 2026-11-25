@@ -386,6 +386,28 @@ fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
     }
 }
 
+/// The records of `drafts`, marked superseded where `picker`, which has now
+/// seen the whole file, says so, then masked and given the title.
+fn seal_all<P>(
+    drafts: Vec<(usize, Draft<P::Record>)>,
+    picker: &P,
+    mask: &Mask,
+    title: &Title<'_>,
+) -> Vec<(usize, P::Record)>
+where
+    P: Pick,
+{
+    drafts
+        .into_iter()
+        .map(|(block, mut draft)| {
+            if picker.superseded(draft.record()) {
+                draft.mark_superseded();
+            }
+            (block, mask.seal(draft, title))
+        })
+        .collect()
+}
+
 /// What the filters in `query` make of `draft`.
 fn verdict<T>(query: &Query, draft: &Draft<T>) -> Verdict
 where
@@ -512,11 +534,7 @@ where
         masked: file.parent.is_none().then_some(&title_masked),
         text: &masked_title,
     };
-    let records = kept
-        .drafts
-        .into_iter()
-        .map(|(block, draft)| (block, mask.seal(draft, &sealing)))
-        .collect();
+    let records = seal_all(kept.drafts, &picker, mask, &sealing);
     let stats = lines.stats();
     Ok(Read {
         last,

@@ -71,6 +71,13 @@ pub trait Pick {
     /// The entries the reader should deliver.
     fn roles(&self) -> Roles;
 
+    /// Whether the user sent another prompt in place of `record`, as only
+    /// the whole file tells: asked once every line has been seen. Only
+    /// prompts can be.
+    fn superseded(&self, _record: &Self::Record) -> bool {
+        false
+    }
+
     /// Whether `entry` holds records of this kind. It sees every delivered
     /// entry in file order, so it can also take notes.
     fn wants(&mut self, entry: &Entry) -> bool;
@@ -106,6 +113,12 @@ pub trait Select: Record {
     /// What the search made of the record, which `--around` and
     /// `--context` fill in.
     fn search_mut(&mut self) -> &mut Search;
+
+    /// Where the kind says whether the user sent another prompt in its
+    /// place, `None` for a kind that does not.
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        None
+    }
 
     /// Where the kind carries the tokens of its response, `None` for a kind
     /// that does not.

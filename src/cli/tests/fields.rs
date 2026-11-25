@@ -83,6 +83,7 @@ fn fields_with_a_leading_bang_leaves_the_keys_out() -> TestResult {
             "kind",
             "command",
             "permission_mode",
+            "superseded",
             "redacted",
             "matched",
             "matches",
