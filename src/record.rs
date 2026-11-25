@@ -18,11 +18,12 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 26] = [
+pub const RECORD_KEYS: [&str; 27] = [
     "type",
     "agent",
     "session_id",
     "session_title",
+    "session_title_then",
     "project",
     "cwd",
     "git_branch",
@@ -88,6 +89,12 @@ pub struct Head {
     pub session_id: String,
     /// The session's last title, or empty.
     pub session_title: String,
+    /// The title the session had when the line was written: the last one
+    /// Claude Code wrote before it, or empty before the first. Claude Code
+    /// writes a title after the prompt it comes from, so the prompt that
+    /// changes the title carries the one before. A sub-agent's records
+    /// carry the session's last title.
+    pub session_title_then: String,
     /// The project directory's name.
     pub project: String,
     /// The working directory.

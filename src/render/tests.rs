@@ -38,6 +38,7 @@ fn blog_head(time: &str) -> Result<Head, String> {
         agent: AGENT,
         session_id: BLOG_SESSION.to_owned(),
         session_title: "Weekly report draft".to_owned(),
+        session_title_then: "Weekly report draft".to_owned(),
         project: "-Users-alice-blog".to_owned(),
         cwd: "/Users/alice/blog".to_owned(),
         git_branch: "main".to_owned(),

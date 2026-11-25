@@ -941,6 +941,11 @@ fn a_subagent_record_carries_the_masked_title_of_its_session() -> TestResult {
         &true,
         "sub-agent title",
     )?;
+    check_eq(
+        &subagent.contains(r#""session_title_then":"Rotate ***REDACTED*** key""#),
+        &true,
+        "sub-agent title then",
+    )?;
     check_eq(&out.contains(&key_id), &false, "key shown")?;
     Ok(())
 }

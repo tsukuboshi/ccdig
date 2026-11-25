@@ -298,6 +298,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ```json
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
+ "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
@@ -337,6 +338,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   JSON と JSON Lines は一致した行だけを並べ、Markdown は行を並べずに
   レコードを全文で出します。`!` で始まらないパターンが無ければ
   `matches` は空です。
+- `session_title_then` は、その行が書かれた時点のセッションのタイトルで、
+  Claude Code が最初のタイトルを書く前は空です。Claude Code はタイトルを
+  元になった依頼文の後に書くので、タイトルを変えた依頼文には変わる前の
+  タイトルが付きます。`session_title` は最後のタイトルで、セッションの
+  すべてのレコードに付きます。
 - 打ち方が `rejection` の依頼文は、ユーザーがツールの呼び出しを却下した
   ときに打ったコメントです。`ExitPlanMode` で差し戻したプランへの
   コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は

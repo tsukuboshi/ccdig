@@ -299,6 +299,7 @@ the tokens. A key the command does not write is an error, and so is
 ```json
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
+ "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
@@ -339,6 +340,11 @@ a tool call down; the record type is `type`, which `--type` picks.
   whole. Without `--context`, JSON and JSON Lines list the matched lines
   alone, and Markdown lists none, so it prints each record whole.
   `matches` is empty without a pattern that does not start with `!`.
+- `session_title_then` is the title the session had when the line was
+  written, empty before Claude Code wrote the first. Claude Code writes a
+  title after the prompt it comes from, so the prompt that changed the
+  title carries the one before. `session_title` is the last title, on
+  every record of the session.
 - A prompt of kind `rejection` is the comment the user typed when they
   turned a tool call down, such as a plan they sent back with
   `ExitPlanMode`. It is on the line of the call's result, so its

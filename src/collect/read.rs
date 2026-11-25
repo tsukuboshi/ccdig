@@ -202,6 +202,55 @@ impl Skipped {
     }
 }
 
+/// The session title as a file is read: the last one seen, and the same
+/// masked for the records of the lines after it.
+#[derive(Default)]
+struct Titles {
+    /// The last title seen, as written.
+    last: String,
+    /// `last` masked, or empty in a sub-agent's transcript, whose records
+    /// take their session's title.
+    then: String,
+    /// What masking `then` counted.
+    then_masked: Counts,
+}
+
+impl Titles {
+    /// Notes the title of an `ai-title` line. The title is regenerated as a
+    /// session goes on and the last wins; Claude Code writes the same title
+    /// again and again, so it is masked only when it changes, and only in
+    /// the session's `own` transcript.
+    fn see(&mut self, title: String, own: bool, mask: &Mask) {
+        if title.is_empty() || title == self.last {
+            return;
+        }
+        self.last = title;
+        if own {
+            self.then_masked = Counts::default();
+            self.then = mask.text(&self.last, &mut self.then_masked).0;
+        }
+    }
+
+    /// Where line `line` of `file` is, written at `timestamp`, with the
+    /// title then.
+    fn spot<'file>(
+        &'file self,
+        file: &'file SessionFile,
+        line: usize,
+        mask: &'file Mask,
+        timestamp: Stamp,
+    ) -> Spot<'file> {
+        Spot {
+            file,
+            line,
+            mask,
+            timestamp,
+            title: &self.then,
+            title_masked: &self.then_masked,
+        }
+    }
+}
+
 impl<T> Kept<T>
 where
     T: Select,
@@ -459,7 +508,7 @@ where
     };
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
         .map_err(|error| format!("open transcript: {error}"))?;
-    let mut title = String::new();
+    let mut titles = Titles::default();
     let mut kept = Kept {
         drafts: Vec::new(),
         priced: HashSet::new(),
@@ -472,10 +521,7 @@ where
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
-            // The title is regenerated as a session goes on; the last wins.
-            if !entry.title.is_empty() {
-                title = entry.title;
-            }
+            titles.see(entry.title, file.parent.is_none(), mask);
             continue;
         }
         last = later(last, &entry, query);
@@ -487,12 +533,7 @@ where
             && let Some(timestamp) = entry.timestamp
         {
             found.extend(mentioned_replies(
-                &Spot {
-                    file,
-                    line,
-                    mask,
-                    timestamp,
-                },
+                &titles.spot(file, line, mask, timestamp),
                 &entry,
                 query,
             ));
@@ -507,12 +548,7 @@ where
             untimed = untimed.saturating_add(1);
             continue;
         };
-        let spot = Spot {
-            file,
-            line,
-            mask,
-            timestamp,
-        };
+        let spot = titles.spot(file, line, mask, timestamp);
         let response = Response::of(&entry, line);
         for drafted in picker.pick(&spot, &entry) {
             let found = verdict(query, &drafted.1);
@@ -529,7 +565,7 @@ where
     // Titles are generated from the conversation, so a pasted secret can
     // end up in one.
     let mut title_masked = Counts::default();
-    let (masked_title, _) = mask.text(&title, &mut title_masked);
+    let (masked_title, _) = mask.text(&titles.last, &mut title_masked);
     let sealing = Title {
         masked: file.parent.is_none().then_some(&title_masked),
         text: &masked_title,

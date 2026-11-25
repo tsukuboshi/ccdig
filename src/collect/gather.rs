@@ -222,6 +222,9 @@ pub fn inherit_title<T>(
         if let Some(found) = parent {
             head.session_title.clone_from(&found.0);
         }
+        // The title then is the same title, so its masks count again.
+        head.session_title_then.clone_from(&head.session_title);
+        head.masked.merge(counts);
         head.masked.merge(counts);
     }
 }

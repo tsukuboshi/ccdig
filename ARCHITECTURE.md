@@ -70,7 +70,10 @@ files below are the ones there are.
   each record as a `Draft`, with its text masked, and only `Mask::seal`,
   which masks the metadata, gives the record out, so code that skips that
   step does not compile. The lines `--context` lists are cut from the
-  masked text, after the filters.
+  masked text, after the filters. The session titles are text Claude Code
+  generates from the conversation, so they are masked as text: the title
+  then once each time it changes while the file is read, and the last
+  title once the file is read, in `Mask::seal`. No filter reads either.
 - **The machine reaches the output only through `cli/environment.rs`.**
   Nothing reads the clock; times come from the transcripts. What the
   machine decides is read there: the system zone when neither `--tz` nor

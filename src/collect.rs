@@ -150,6 +150,12 @@ pub struct Spot<'file> {
     pub mask: &'file Mask,
     /// When the line was written.
     pub timestamp: Stamp,
+    /// The session title when the line was written, masked; empty in a
+    /// sub-agent's transcript, whose records take their session's title.
+    pub title: &'file str,
+    /// What masking `title` counted, which each record of the line counts
+    /// again, as it does the last title.
+    pub title_masked: &'file Counts,
 }
 
 impl Spot<'_> {
@@ -168,11 +174,12 @@ impl Spot<'_> {
             agent: AGENT,
             session_id,
             session_title: String::new(),
+            session_title_then: self.title.to_owned(),
             project: self.file.project.clone(),
             cwd: entry.cwd.clone(),
             git_branch: entry.git_branch.clone(),
             timestamp: self.timestamp,
-            masked: Counts::default(),
+            masked: self.title_masked.clone(),
         }
     }
 
