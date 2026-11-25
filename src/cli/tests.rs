@@ -685,7 +685,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":4,\"filter\":\"strict-v3\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":5,\"filter\":\"strict-v3\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -1867,7 +1867,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(4_i32)),
+        &Some(&serde_json::json!(5_i32)),
         "schema",
     )?;
     check_eq(

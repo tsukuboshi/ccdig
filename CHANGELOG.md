@@ -25,6 +25,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The JSON schema is 5: records have `session_title_then`, prompts
+  `superseded`, results `denial`, and a prompt's `kind` can be
+  `rejection`.
 - The filter is `strict-v3`: a tool result's line that carries the
   user's comment on a turned-down call is kept as a prompt.
 - `--session` opens only the transcripts named after a session it picks,
