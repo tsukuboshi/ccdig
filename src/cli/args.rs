@@ -28,7 +28,7 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   --format md for Markdown to read. Harness noise is dropped, slash\n\
                   commands are folded back, and common secrets are masked by default.",
     after_help = "Examples:\n\
-                  \x20 ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n\
+                  \x20 ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
                   \x20 ccdig sessions --igrep deploy --format md\n\
                   \n\
@@ -96,17 +96,19 @@ pub enum Command {
     /// they were written.
     #[command(
         display_order = 1,
-        after_help = "Without --type, a search reads prompts, replies, and tool calls, and a\n\
-                      tool call's input can be long: narrow it with --type and --limit, as in\n\
-                      \x20 ccdig records --type prompt,reply --igrep deploy --limit 20\n\
+        after_help = "Without --type, --tool, --status, --denial, or --skill, a search reads\n\
+                      prompts and replies; add the tool calls with --type prompt,reply,call.\n\
+                      A tool call's input can be long: narrow it with --limit, as in\n\
+                      \x20 ccdig records --type prompt,reply,call --igrep deploy --limit 20\n\
                       or cut the texts and leave out the keys every record of a session\n\
                       repeats, as in\n\
-                      \x20 ccdig records --igrep deploy --max-message-chars 500 --max-tool-chars 100 \\\n\
+                      \x20 ccdig records --type prompt,reply,call --igrep deploy \\\n\
+                      \x20   --max-message-chars 500 --max-tool-chars 100 \\\n\
                       \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
     )]
     Records {
         /// The record types to list (comma-separated, repeatable)
-        /// [default: prompt,reply,call, or with --tool, --status,
+        /// [default: prompt,reply, or with --tool, --status,
         /// --denial, or --skill, the kinds they all apply to].
         #[arg(
             long = "type",

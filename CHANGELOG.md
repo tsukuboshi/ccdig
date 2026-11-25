@@ -25,6 +25,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `records` with none of `--type`, `--tool`, `--status`, `--denial`, and
+  `--skill` lists prompts and replies, no longer tool calls: give
+  `--type prompt,reply,call` for the old output. Those four still pick the
+  kinds they apply to. Without them, `--grep` and `--igrep` no longer
+  search a call's input, `--max-tool-chars` cuts nothing, `--around` shows
+  no calls around a match, and `--subagents` lists only the sub-agents'
+  replies.
 - The JSON schema is 5: records have `session_title_then`, prompts
   `superseded`, results `denial`, and a prompt's `kind` can be
   `rejection`.

@@ -386,12 +386,12 @@ fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, F
 
 /// The kinds `--type` picks. Without it: the kinds every one of `--tool`,
 /// `--status` or `--denial` (`status`), and `--skill` given applies to, or
-/// prompts, replies, and calls when none is.
+/// prompts and replies when none is.
 fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> Types {
     if types.is_empty() {
         if !(tool || status || skill) {
             return Types {
-                calls: true,
+                calls: false,
                 prompts: true,
                 replies: true,
                 results: false,
