@@ -78,11 +78,13 @@ fn fields_with_a_leading_bang_leaves_the_keys_out() -> TestResult {
         &Some(&owned(&[
             "type",
             "session_id",
+            "session_title_then",
             "timestamp",
             "text",
             "kind",
             "command",
             "permission_mode",
+            "superseded",
             "redacted",
             "matched",
             "matches",

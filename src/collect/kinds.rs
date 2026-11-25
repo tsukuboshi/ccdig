@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
+use crate::classify::denial::{Answer, comment_in, denial};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
 use crate::record::{
@@ -29,6 +30,8 @@ struct Call {
 /// Picks the records of the kinds in `types`, in the order they were
 /// written.
 pub struct Records {
+    /// Notes which prompts were sent again.
+    prompts: Prompts,
     /// Pairs the results with their calls.
     results: Results,
     /// The kinds to pick.
@@ -55,7 +58,13 @@ pub struct Types {
 }
 
 /// Picks the prompts a person typed.
-pub struct Prompts;
+#[derive(Default)]
+pub struct Prompts {
+    /// The last typed prompt seen so far in the file that follows each
+    /// line, by the line's ID: a prompt sent again in place of another
+    /// follows the same line.
+    last: HashMap<String, String>,
+}
 
 /// Picks the compaction summaries.
 pub struct Summaries;
@@ -87,6 +96,7 @@ impl Records {
     /// Picks the kinds in `types`.
     pub fn new(types: Types) -> Self {
         Self {
+            prompts: Prompts::default(),
             results: Results::default(),
             types,
         }
@@ -101,13 +111,13 @@ impl Pick for Records {
         match entry.role {
             Role::User => {
                 // With results picked too, `wants` may have accepted the line
-                // for its results only. A prompt is never on a line with a
-                // result, as `classify` turns such a line down, so the
-                // prompt's block index 0 cannot clash with a result's in the
-                // check for resumed copies.
+                // for its results only. A typed prompt is never on a line
+                // with a result, and a rejection's index comes after the
+                // line's blocks, so a prompt's index cannot clash with a
+                // result's in the check for resumed copies.
                 let reason = classify(entry);
-                if self.types.prompts && reason == Reason::Human {
-                    let prompts = Prompts.pick(spot, entry).into_iter();
+                if self.types.prompts && matches!(reason, Reason::Human | Reason::Rejection) {
+                    let prompts = self.prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, prompt.map(Turn::Prompt))));
                 }
                 if self.types.summaries && reason == Reason::CompactSummary {
@@ -144,15 +154,20 @@ impl Pick for Records {
         }
     }
 
+    fn superseded(&self, record: &Turn) -> bool {
+        match *record {
+            Turn::Prompt(ref prompt) => self.prompts.superseded(prompt),
+            Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => false,
+        }
+    }
+
     fn wants(&mut self, entry: &Entry) -> bool {
-        // Always called, so the results see every call before its result.
+        // Always called, so the results see every call before its result,
+        // and the prompts every prompt sent again.
         let result = self.types.results && self.results.wants(entry);
+        let prompt = self.types.prompts && self.prompts.wants(entry);
         match entry.role {
-            Role::User => {
-                result
-                    || (self.types.prompts && Prompts.wants(entry))
-                    || (self.types.summaries && Summaries.wants(entry))
-            }
+            Role::User => result || prompt || (self.types.summaries && Summaries.wants(entry)),
             Role::Assistant => self.types.replies || self.types.calls,
             Role::AiTitle | Role::Other => false,
         }
@@ -163,25 +178,40 @@ impl Pick for Prompts {
     type Record = Prompt;
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Prompt>)> {
-        let (typed, kind, command) = match fold(&entry.content.text) {
-            Some(folded) => (folded.text, Kind::Slash, folded.command),
-            None => (entry.content.text.clone(), Kind::Text, String::new()),
-        };
+        // A rejection is on the line of its tool result: its index comes
+        // after the line's blocks.
+        let (index, typed, kind, command) = comment_in(entry).map_or_else(
+            || typed_prompt(entry),
+            |comment| {
+                (
+                    entry.content.blocks.len(),
+                    comment,
+                    Kind::Rejection,
+                    String::new(),
+                )
+            },
+        );
         let mut masked = Counts::default();
         let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
         let source = source(spot, entry, &mut masked);
         vec![(
-            0,
+            index,
             Draft::new(Prompt {
                 head: spot.head(entry),
                 text,
                 kind,
                 command,
                 permission_mode: entry.permission_mode.clone(),
+                superseded: false,
                 redacted,
                 source,
                 search: Search::default(),
                 masked,
+                parent_uuid: if kind == Kind::Rejection {
+                    String::new()
+                } else {
+                    entry.parent_uuid.clone()
+                },
             }),
         )]
     }
@@ -190,8 +220,34 @@ impl Pick for Prompts {
         Roles::USER
     }
 
+    fn superseded(&self, record: &Prompt) -> bool {
+        !record.parent_uuid.is_empty()
+            && self
+                .last
+                .get(&record.parent_uuid)
+                .is_some_and(|last| *last != record.source.uuid)
+    }
+
     fn wants(&mut self, entry: &Entry) -> bool {
-        classify(entry) == Reason::Human
+        match classify(entry) {
+            Reason::Human => {
+                if !entry.parent_uuid.is_empty() {
+                    self.last
+                        .insert(entry.parent_uuid.clone(), entry.uuid.clone());
+                }
+                true
+            }
+            Reason::Rejection => true,
+            Reason::CompactSummary
+            | Reason::Empty
+            | Reason::HarnessTag
+            | Reason::Interrupted
+            | Reason::Meta
+            | Reason::NonHumanOrigin
+            | Reason::NotUser
+            | Reason::Sidechain
+            | Reason::ToolResult => false,
+        }
     }
 }
 
@@ -277,6 +333,15 @@ impl Pick for Results {
                     input,
                     tool_use_id: result.tool_use_id.clone(),
                     is_error: result.is_error,
+                    // The line's keys speak for its one result; see
+                    // `comment_in`.
+                    denial: denial(Answer {
+                        denial_kind: &entry.denial_kind,
+                        feedback: &entry.feedback,
+                        is_error: result.is_error,
+                        text: &result.text,
+                    })
+                    .kind,
                     text,
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
@@ -363,6 +428,7 @@ impl Pick for Tools {
 impl Select for Prompt {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: None,
             tool: None,
@@ -392,11 +458,16 @@ impl Select for Prompt {
     fn search_mut(&mut self) -> &mut Search {
         &mut self.search
     }
+
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        Some(&mut self.superseded)
+    }
 }
 
 impl Select for Reply {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: Some(&self.skill),
             tool: None,
@@ -435,6 +506,7 @@ impl Select for Reply {
 impl Select for Summary {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: None,
             tool: None,
@@ -469,6 +541,7 @@ impl Select for Summary {
 impl Select for ToolCall {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: Some(&self.skill),
             tool: Some(&self.tool),
@@ -546,6 +619,10 @@ impl Select for Turn {
         selected_mut(self).search_mut()
     }
 
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        selected_mut(self).superseded_mut()
+    }
+
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
         selected_mut(self).usage_mut()
     }
@@ -554,6 +631,7 @@ impl Select for Turn {
 impl Select for ToolResult {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: Some(&self.denial),
             is_error: Some(self.is_error),
             skill: Some(&self.skill),
             tool: Some(&self.tool),
@@ -573,7 +651,7 @@ impl Select for ToolResult {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.tool, &mut self.subagent]
+        vec![&mut self.tool, &mut self.denial, &mut self.subagent]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
@@ -598,6 +676,15 @@ where
         .enumerate()
         .filter_map(|(index, block)| make(block).map(|record| (index, Draft::new(record))))
         .collect()
+}
+
+/// A typed prompt's block index, text, kind, and command: a slash command
+/// folded back into what was typed, or the text as is.
+fn typed_prompt(entry: &Entry) -> (usize, String, Kind, String) {
+    fold(&entry.content.text).map_or_else(
+        || (0, entry.content.text.clone(), Kind::Text, String::new()),
+        |folded| (0, folded.text, Kind::Slash, folded.command),
+    )
 }
 
 /// The record inside `turn`.

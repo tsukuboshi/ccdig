@@ -81,7 +81,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
@@ -101,25 +101,27 @@ defaults to `prompt,reply,call`:
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
 
-Four options apply to some kinds only:
+Five options apply to some kinds only:
 
 | Flag | Applies to | Keeps |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | Calls to this tool and their results |
 | `--status` | `result` | Results with this status: `error` or `ok` |
+| `--denial` | `result` | Results of calls that did not run for this reason, such as `user-rejected` |
 | `--skill` | `reply`, `call`, `result` | Records written while the skill ran |
 | `--subagents` | `reply`, `call`, `result` | Sub-agent transcripts too |
 
-- `--tool` and `--skill` are repeatable and take a leading `!`, as the
-  shared filters do. `--status` takes a comma-separated list like `--type`.
-- `--tool`, `--status`, and `--skill` narrow only the kinds that have what
+- `--tool`, `--denial`, and `--skill` are repeatable and take a leading
+  `!`, as the shared filters do. `--status` takes a comma-separated list
+  like `--type`.
+- `--tool`, `--status`, `--denial`, and `--skill` narrow only the kinds that have what
   they test and let the other kinds through, so
   `ccdig records --type prompt,reply,call --skill tdd` keeps every prompt
   along with the replies and calls written while `tdd` ran.
 - Without `--type`, `records` lists only the kinds that every one of
-  `--tool`, `--status`, and `--skill` given applies to:
+  `--tool`, `--status`, `--denial`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
-- Each of the four needs a `--type` it applies to, or the command fails.
+- Each of the five needs a `--type` it applies to, or the command fails.
 - A search without `--type` reads the tool calls too, and a call's input
   can be long: give `--type prompt,reply` and `--limit` to keep the output
   small, or cut the texts with `--max-message-chars` and `--max-tool-chars`
@@ -158,7 +160,8 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
 - `prompt_count` and `started_at` count the selected prompts and give the
   first one's time. `ended_at` is the time of the session's last prompt,
   reply, tool call, or tool result in the range, so it shows when the
-  work ended even when a session has one prompt.
+  work ended even when a session has one prompt. A comment the user typed
+  when they turned a tool call down counts as a prompt.
 - `first_match` holds the first prompt or reply a search matched in the
   session, so it can be judged without reading its records: its `type`,
   `timestamp`, the `line` a pattern matched in its text, and that line,
@@ -188,7 +191,8 @@ A record has these keys, in this order:
 ### digest
 
 A Markdown digest of the prompts, capped in size. The filters apply to
-the prompts.
+the prompts. A comment the user typed when they turned a tool call down is
+listed with `(rejection)` before it.
 
 | Flag | Default | Does |
 | --- | --- | --- |
@@ -202,7 +206,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.3","schema":4,"filter":"strict-v2"}
+{"version":"0.0.3","schema":5,"filter":"strict-v3"}
 ```
 
 ## Shared options
@@ -233,6 +237,12 @@ of a repeatable flag on both sides add up.
   `CLAUDE_CODE_SESSION_ID`, so `--session '!current'` leaves out the
   session that is doing the search. Outside Claude Code, `current` is an
   error.
+- Give the whole ID to pick one session, as an ID that starts another
+  matches it too. Claude Code names each transcript after its session, so
+  `--session` opens only the transcripts whose name starts with a value
+  given, and their sub-agents', and one session reads fast. A line is kept
+  only when both the name of its transcript and its `sessionId` start with
+  a value. With only values that start with `!`, every transcript is read.
 - `--grep` searches the text as it will be printed: after masking, so a
   secret cannot be found by its value. It reads the prompt or reply text,
   a call's input as compact JSON, or a result's text.
@@ -295,10 +305,11 @@ the tokens. A key the command does not write is an error, and so is
 ```json
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
+ "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","redacted":false,
+ "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -312,11 +323,12 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
-`slash` or `text`; the record type is `type`, which `--type` picks.
+`slash` or `text`, or `rejection` for what the user typed when they turned
+a tool call down; the record type is `type`, which `--type` picks.
 
 - `matched` is `false` for a record `--around` lists next to a match, and
   `true` for every other record.
@@ -334,6 +346,35 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
   whole. Without `--context`, JSON and JSON Lines list the matched lines
   alone, and Markdown lists none, so it prints each record whole.
   `matches` is empty without a pattern that does not start with `!`.
+- `session_title_then` is the title the session had when the line was
+  written, empty before Claude Code wrote the first. Claude Code writes a
+  title after the prompt it comes from, so the prompt that changed the
+  title carries the one before. `session_title` is the last title, on
+  every record of the session.
+- A prompt of kind `rejection` is the comment the user typed when they
+  turned a tool call down, such as a plan they sent back with
+  `ExitPlanMode`. It is on the line of the call's result, so its
+  `source.uuid` is the result's, and the result's `tool` names the tool.
+  Claude Code's own text when the user picks "clarify" in a question
+  dialog is not a comment.
+- `superseded` is `true` for a prompt the user sent another prompt in
+  place of, later in the file: one that follows the same line, as when
+  they press Esc and edit the prompt, or interrupt the reply and send it
+  again. A `rejection` is never superseded.
+- `denial` is Claude Code's name for why a call did not run, such as
+  `user-rejected`, `permission-rule`, `automode-blocked`, or `cancelled`,
+  and empty when it ran. Before Claude Code recorded it, only
+  `user-rejected` is read, from the result's text. `is_error` is `true` for
+  each of them too.
+- A prompt keeps pasted text where Claude Code put it, between
+  `<pasted_content id="...">` tags. To read the typed words alone, drop
+  the tags with jq:
+
+  ```sh
+  ccdig records --type prompt | jq '.text |= gsub(
+    "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
+  ```
+
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
@@ -341,8 +382,10 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
   `agent-1a2b`, for a sub-agent. A sub-agent's record carries the
   `session_id` and `session_title` of its session; the title is empty when
   the session's own transcript was last written before `--since`.
-- `input` is the untruncated input from the line's `wireToolInputs` when
-  Claude Code stored one, and the `tool_use` block's otherwise. A result
+- `input` is the `tool_use` block's input with the untruncated values
+  from the line's `wireToolInputs` laid over it when Claude Code stored
+  them, so the keys the model did not send, such as the `plan` of
+  `ExitPlanMode`, stay. A result
   whose call was not found has an empty `tool` and a `null` `input`.
 - `usage` is the tokens of the response; see Tokens.
 - `timestamp`, like the times of a `sessions` record, is RFC 3339 with
@@ -375,7 +418,7 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
 run:
 
 ```json
-{"schema":4,"filter":"strict-v2","ccdig":"0.0.3",
+{"schema":5,"filter":"strict-v3","ccdig":"0.0.3",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -428,7 +471,8 @@ A `user` entry is dropped, with the first matching reason, when it:
 
 1. is marked `isMeta`, `isSidechain`, or `isCompactSummary`;
 2. has an `origin.kind` other than `human`;
-3. carries a `tool_result` block;
+3. carries a `tool_result` block, unless the user turned the call down
+   with a comment: the comment is kept, as a prompt of kind `rejection`;
 4. starts with a harness tag such as `<system-reminder>`,
    `<task-notification>`, `<local-command-…>`, `<bash-input>`,
    `<bash-stdout>`, or `<user-prompt-submit-hook>`;
@@ -444,7 +488,9 @@ Code wrote `origin` skip rule 2. Thinking blocks are never printed.
   with `--subagents` also `<root>/<project>/<session>/subagents/*.jsonl`.
 - Symlinks are not followed.
 - A resumed session repeats earlier entries; each entry (by `uuid` and
-  position in the line) is listed once, in the original session.
+  position in the line) is listed once, in the original session, when the
+  run reads both transcripts. Claude Code writes the new session's ID on
+  the copies, so `--session` with the new ID lists them too.
 
 ### Skipped lines
 

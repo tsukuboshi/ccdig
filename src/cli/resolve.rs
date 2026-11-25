@@ -32,6 +32,15 @@ struct Flags {
     values: Values,
 }
 
+/// Which of the flags that apply to tool results alone are given.
+#[derive(Clone, Copy, Debug)]
+struct ResultFlags {
+    /// `--denial`.
+    denial: bool,
+    /// `--status`.
+    status: bool,
+}
+
 /// The kind-specific filters, empty for `sessions` and `digest`.
 #[derive(Default)]
 struct Narrowing {
@@ -44,6 +53,8 @@ struct Narrowing {
     /// Markdown prints those lines in place of the whole text, so it lists
     /// them only when asked.
     context_by_default: Option<usize>,
+    /// `--denial`.
+    denials: Vec<String>,
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
@@ -58,6 +69,13 @@ struct Narrowing {
     tools: Vec<String>,
     /// Whether to add up each session's tokens, for `sessions`.
     usage: bool,
+}
+
+impl ResultFlags {
+    /// Whether any of them is given.
+    const fn any(self) -> bool {
+        self.denial || self.status
+    }
 }
 
 impl Flags {
@@ -122,6 +140,7 @@ impl Flags {
             on_skip: common.on_skip.map_or_default(Into::into),
             query: Query {
                 branches: Filter::names(common.branches),
+                denials: Filter::names(narrowing.denials),
                 grep,
                 is_error: narrowing.is_error,
                 projects: Filter::names(common.projects),
@@ -229,9 +248,14 @@ impl From<Activity> for Narrowing {
 }
 
 /// Checks that each kind-specific flag given has a kind in `kinds` it
-/// applies to: `tool` and `status` say whether `--tool` and `--status` are
-/// given.
-fn check_kinds(kinds: Types, activity: &Activity, tool: bool, status: bool) -> Result<(), Failure> {
+/// applies to: `tool` says whether `--tool` is given, and `results` which
+/// of the flags for results alone are.
+fn check_kinds(
+    kinds: Types,
+    activity: &Activity,
+    tool: bool,
+    results: ResultFlags,
+) -> Result<(), Failure> {
     let assistant = kinds.reads_assistant();
     for (given, applies, flag, needed) in [
         (
@@ -240,7 +264,8 @@ fn check_kinds(kinds: Types, activity: &Activity, tool: bool, status: bool) -> R
             "--tool",
             "call or result",
         ),
-        (status, kinds.results, "--status", "result"),
+        (results.status, kinds.results, "--status", "result"),
+        (results.denial, kinds.results, "--denial", "result"),
         (
             !activity.skills.is_empty(),
             assistant,
@@ -360,8 +385,8 @@ fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, F
 }
 
 /// The kinds `--type` picks. Without it: the kinds every one of `--tool`,
-/// `--status`, and `--skill` given applies to, or prompts, replies, and
-/// calls when none is.
+/// `--status` or `--denial` (`status`), and `--skill` given applies to, or
+/// prompts, replies, and calls when none is.
 fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> Types {
     if types.is_empty() {
         if !(tool || status || skill) {
@@ -422,6 +447,7 @@ pub fn resolve(
             around,
             common: later,
             context,
+            denials,
             max_message_chars,
             max_tool_chars,
             output,
@@ -429,13 +455,17 @@ pub fn resolve(
             tools,
             types,
         } => {
+            let results_only = ResultFlags {
+                denial: !denials.is_empty(),
+                status: !statuses.is_empty(),
+            };
             let kinds = record_types(
                 &types,
                 !tools.is_empty(),
-                !statuses.is_empty(),
+                results_only.any(),
                 !activity.skills.is_empty(),
             );
-            check_kinds(kinds, &activity, !tools.is_empty(), !statuses.is_empty())?;
+            check_kinds(kinds, &activity, !tools.is_empty(), results_only)?;
             let format = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS, format)?;
             let cuts = Cuts {
@@ -447,6 +477,7 @@ pub fn resolve(
                 context,
                 is_error: status_filter(&statuses),
                 context_by_default: (format != Format::Markdown).then_some(0),
+                denials,
                 tools,
                 ..activity.into()
             };

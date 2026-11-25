@@ -71,6 +71,13 @@ pub trait Pick {
     /// The entries the reader should deliver.
     fn roles(&self) -> Roles;
 
+    /// Whether the user sent another prompt in place of `record`, as only
+    /// the whole file tells: asked once every line has been seen. Only
+    /// prompts can be.
+    fn superseded(&self, _record: &Self::Record) -> bool {
+        false
+    }
+
     /// Whether `entry` holds records of this kind. It sees every delivered
     /// entry in file order, so it can also take notes.
     fn wants(&mut self, entry: &Entry) -> bool;
@@ -107,6 +114,12 @@ pub trait Select: Record {
     /// `--context` fill in.
     fn search_mut(&mut self) -> &mut Search;
 
+    /// Where the kind says whether the user sent another prompt in its
+    /// place, `None` for a kind that does not.
+    fn superseded_mut(&mut self) -> Option<&mut bool> {
+        None
+    }
+
     /// Where the kind carries the tokens of its response, `None` for a kind
     /// that does not.
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
@@ -117,6 +130,8 @@ pub trait Select: Record {
 /// The facts the filters see that only some kinds have, `None` for a kind
 /// without them.
 pub struct Extra<'record> {
+    /// Why a tool call did not run, empty when it ran.
+    pub denial: Option<&'record str>,
     /// Whether a tool reported a failure.
     pub is_error: Option<bool>,
     /// The skill running at the time.
@@ -135,6 +150,12 @@ pub struct Spot<'file> {
     pub mask: &'file Mask,
     /// When the line was written.
     pub timestamp: Stamp,
+    /// The session title when the line was written, masked; empty in a
+    /// sub-agent's transcript, whose records take their session's title.
+    pub title: &'file str,
+    /// What masking `title` counted, which each record of the line counts
+    /// again, as it does the last title.
+    pub title_masked: &'file Counts,
 }
 
 impl Spot<'_> {
@@ -153,11 +174,12 @@ impl Spot<'_> {
             agent: AGENT,
             session_id,
             session_title: String::new(),
+            session_title_then: self.title.to_owned(),
             project: self.file.project.clone(),
             cwd: entry.cwd.clone(),
             git_branch: entry.git_branch.clone(),
             timestamp: self.timestamp,
-            masked: Counts::default(),
+            masked: self.title_masked.clone(),
         }
     }
 
@@ -213,6 +235,11 @@ where
         };
         if query.range.starts_after(modified.instant()) {
             // Last written before the first day: nothing to find.
+            continue;
+        }
+        // A sub-agent's transcript belongs to its parent's session.
+        let session = file.parent.as_deref().unwrap_or(&file.path).file_stem();
+        if !session.is_none_or(|id| query.may_hold_session(&id.to_string_lossy())) {
             continue;
         }
         match read_file(file, query, mask, new_picker(), reading) {

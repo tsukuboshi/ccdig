@@ -27,7 +27,7 @@ those before it.
 | `text` | Sanitizing text for the terminal and Markdown. |
 | `when` | Timestamps, day ranges, and named time zones. |
 | `transcript` | Producer: `walk` lists the files, `reader` streams their lines, `entry` decodes one line. |
-| `classify` | Whether a user line is something a person typed, and folding slash commands back. |
+| `classify` | Whether a user line is something a person typed, folding slash commands back, and why a tool call did not run. |
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
 | `filter` | Tester: the filters, as `Query`. |
@@ -70,7 +70,10 @@ files below are the ones there are.
   each record as a `Draft`, with its text masked, and only `Mask::seal`,
   which masks the metadata, gives the record out, so code that skips that
   step does not compile. The lines `--context` lists are cut from the
-  masked text, after the filters.
+  masked text, after the filters. The session titles are text Claude Code
+  generates from the conversation, so they are masked as text: the title
+  then once each time it changes while the file is read, and the last
+  title once the file is read, in `Mask::seal`. No filter reads either.
 - **The machine reaches the output only through `cli/environment.rs`.**
   Nothing reads the clock; times come from the transcripts. What the
   machine decides is read there: the system zone when neither `--tz` nor
@@ -82,6 +85,7 @@ files below are the ones there are.
   `text/tests/properties.rs`, `when/tests/properties.rs`,
   `transcript/entry/tests/properties.rs`,
   `transcript/reader/tests/properties.rs`,
+  `classify/denial/tests/properties.rs`,
   `classify/human/tests/properties.rs`,
   `classify/slash/tests/properties.rs`, `redact/tests/properties.rs`,
   `filter/tests/properties.rs`, `collect/tests/properties.rs`,

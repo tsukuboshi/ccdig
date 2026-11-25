@@ -8,6 +8,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A comment the user typed when they turned a tool call down, such as a
+  plan they sent back with `ExitPlanMode`, is a prompt of kind
+  `rejection`, so the prompts show every condition the user added.
+- A result has a new `denial` key, Claude Code's name for why the call did
+  not run, such as `user-rejected` or `permission-rule`, and
+  `records --denial` keeps the results by it, or with a leading `!`,
+  leaves them out.
+- A prompt has a new `superseded` key, `true` when the user sent another
+  prompt in its place: one that follows the same line, as after Esc or an
+  interrupted reply.
+- Every record has a new `session_title_then` key, the title the session
+  had when the line was written.
+
+### Changed
+
+- The JSON schema is 5: records have `session_title_then`, prompts
+  `superseded`, results `denial`, and a prompt's `kind` can be
+  `rejection`.
+- The filter is `strict-v3`: a tool result's line that carries the
+  user's comment on a turned-down call is kept as a prompt.
+- `--session` opens only the transcripts named after a session it picks,
+  and their sub-agents', so reading one session no longer reads every
+  transcript. A line is kept only when both its transcript's name and its
+  `sessionId` start with a value.
+- A comment on a turned-down call counts as a prompt in `sessions`
+  (`prompt_count`, `started_at`) and in `digest`, where it is marked
+  `(rejection)`; `records --format md` heads it `Rejection`.
+
+### Fixed
+
+- A call's `input` keeps the keys of the `tool_use` block that the line's
+  `wireToolInputs` leaves out, so `ExitPlanMode` shows its `plan` instead
+  of `{}`.
+
 ## [0.0.3] - 2026-11-24
 
 ### Added

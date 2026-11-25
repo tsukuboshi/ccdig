@@ -7,10 +7,12 @@
 
 mod around;
 mod context;
+mod denials;
 mod fields;
 mod kinds;
 mod mentions;
 mod properties;
+mod timeline;
 
 use core::error::Error;
 use std::fs::{self, File};
@@ -125,6 +127,31 @@ impl History {
         write_transcript(&path, mtime, lines)?;
         Ok(path)
     }
+}
+
+/// The JSON Lines `ran` printed, parsed, or its stderr when it failed.
+fn json_lines(ran: Ran) -> Result<Vec<Value>, Box<dyn Error>> {
+    if ran.code != 0 {
+        return Err(ran.err.into());
+    }
+    Ok(ran
+        .out
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?)
+}
+
+/// The string at `key` of each record, or `<missing>`.
+fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str> {
+    records
+        .iter()
+        .map(|record| {
+            record
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or("<missing>")
+        })
+        .collect()
 }
 
 /// Copies the tree at `from` to `to`, setting every file's mtime to `mtime`.
@@ -658,7 +685,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":4,\"filter\":\"strict-v2\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":5,\"filter\":\"strict-v3\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -747,6 +774,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--igrep <REGEX>",
                 "--tool <NAME>",
                 "--status <STATUS>",
+                "--denial <KIND>",
                 "--skill <NAME>",
                 "Input:\n",
                 "--root <DIR>",
@@ -874,6 +902,56 @@ fn files_last_written_before_the_range_are_not_opened() -> TestResult {
 }
 
 #[test]
+fn files_of_other_sessions_are_not_opened() -> TestResult {
+    let history = History::new("root")?;
+    let other = history.write(
+        "-Users-alice-blog/ffff.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"user","uuid":"f-1","sessionId":"ffff","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"other"}}"#],
+    )?;
+    history.write(
+        "-Users-alice-blog/gggg.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"user","uuid":"g-1","sessionId":"gggg","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"mine"}}"#],
+    )?;
+    history.write(
+        "-Users-alice-blog/gggg/subagents/agent-1.jsonl",
+        fixture_time()?,
+        &[r#"{"type":"assistant","uuid":"g-2","sessionId":"gggg","isSidechain":true,"timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"text","text":"from the sub-agent"}]}}"#],
+    )?;
+    if lock(&other)?.is_none() {
+        return Ok(());
+    }
+    let picked = history.run_week(&[
+        "records",
+        "--type",
+        "prompt,reply",
+        "--subagents",
+        "--session",
+        "gggg",
+    ]);
+    let excluded = history.run_week(&["records", "--type", "prompt", "--session", "!gggg"]);
+    fs::set_permissions(&other, fs::Permissions::from_mode(0o600))?;
+    check_eq(&picked.code, &0, "exit")?;
+    check_eq(picked.err.as_str(), "", "stderr")?;
+    check_eq(
+        &(
+            picked.out.contains("mine"),
+            picked.out.contains("from the sub-agent"),
+        ),
+        &(true, true),
+        "the session and its sub-agent",
+    )?;
+    // Leaving a session out still reads every other file.
+    check_eq(
+        &excluded.err.contains("ffff.jsonl"),
+        &true,
+        "excluding opens the rest",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn session_titles_are_masked() -> TestResult {
     let history = History::new("root")?;
     let key_id = format!("AKIA{}", "Q".repeat(16));
@@ -937,6 +1015,11 @@ fn a_subagent_record_carries_the_masked_title_of_its_session() -> TestResult {
         &subagent.contains(r#""session_title":"Rotate ***REDACTED*** key""#),
         &true,
         "sub-agent title",
+    )?;
+    check_eq(
+        &subagent.contains(r#""session_title_then":"Rotate ***REDACTED*** key""#),
+        &true,
+        "sub-agent title then",
     )?;
     check_eq(&out.contains(&key_id), &false, "key shown")?;
     Ok(())
@@ -1744,7 +1827,7 @@ fn a_prompt_carries_the_permission_mode_recorded_on_its_line() -> TestResult {
     check_eq(&modes, &vec!["plan".to_owned(), String::new()], &ran.out)?;
     check_eq(
         &ran.out
-            .contains(r#""command":"","permission_mode":"plan","redacted""#),
+            .contains(r#""command":"","permission_mode":"plan","superseded":false,"redacted""#),
         &true,
         &ran.out,
     )?;
@@ -1784,7 +1867,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(4_i32)),
+        &Some(&serde_json::json!(5_i32)),
         "schema",
     )?;
     check_eq(

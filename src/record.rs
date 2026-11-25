@@ -18,11 +18,12 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 24] = [
+pub const RECORD_KEYS: [&str; 27] = [
     "type",
     "agent",
     "session_id",
     "session_title",
+    "session_title_then",
     "project",
     "cwd",
     "git_branch",
@@ -31,10 +32,12 @@ pub const RECORD_KEYS: [&str; 24] = [
     "input",
     "tool_use_id",
     "is_error",
+    "denial",
     "text",
     "kind",
     "command",
     "permission_mode",
+    "superseded",
     "model",
     "skill",
     "subagent",
@@ -86,6 +89,12 @@ pub struct Head {
     pub session_id: String,
     /// The session's last title, or empty.
     pub session_title: String,
+    /// The title the session had when the line was written: the last one
+    /// Claude Code wrote before it, or empty before the first. Claude Code
+    /// writes a title after the prompt it comes from, so the prompt that
+    /// changes the title carries the one before. A sub-agent's records
+    /// carry the session's last title.
+    pub session_title_then: String,
     /// The project directory's name.
     pub project: String,
     /// The working directory.
@@ -103,6 +112,8 @@ pub struct Head {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
+    /// What the user typed when they turned a tool call down.
+    Rejection,
     /// A slash command, folded back into what was typed.
     Slash,
     /// Plain text.
@@ -154,13 +165,18 @@ pub struct Prompt {
     pub head: Head,
     /// The prompt, trimmed and masked.
     pub text: String,
-    /// Plain text or a slash command.
+    /// Plain text, a slash command, or a comment on a tool call the user
+    /// turned down.
     pub kind: Kind,
     /// The slash command's name, or empty for plain text.
     pub command: String,
     /// The permission mode the line was written in, such as `plan` or
     /// `auto`, or empty when the line does not say, as for slash commands.
     pub permission_mode: String,
+    /// Whether the user sent another prompt in its place later in the
+    /// file: one that follows the same line, as when they press Esc and
+    /// edit the prompt, or interrupt the reply and send it again.
+    pub superseded: bool,
     /// Whether masking changed the text.
     pub redacted: bool,
     /// Where the line is.
@@ -172,6 +188,11 @@ pub struct Prompt {
     /// not written.
     #[serde(skip)]
     pub masked: Counts,
+    /// The ID of the line the prompt follows, for `superseded`; empty for
+    /// a comment on a turned-down call, which no prompt replaces; not
+    /// written.
+    #[serde(skip)]
+    pub parent_uuid: String,
 }
 
 /// What the Markdown writers need of every kind of record.
@@ -392,6 +413,9 @@ pub struct ToolResult {
     pub tool_use_id: String,
     /// Whether the tool reported a failure.
     pub is_error: bool,
+    /// Claude Code's name for why the call did not run, such as
+    /// `user-rejected` or `permission-rule`; empty when it ran.
+    pub denial: String,
     /// The output text, masked.
     pub text: String,
     /// The sub-agent file name, or empty for the session itself.

@@ -43,6 +43,7 @@ fn prompts(groups: &[Group]) -> Result<Vec<Prompt>, String> {
             agent: AGENT,
             session_id: session.clone(),
             session_title: title.clone(),
+            session_title_then: title.clone(),
             project: project.clone(),
             cwd: project.clone(),
             git_branch: String::new(),

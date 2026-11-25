@@ -82,7 +82,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
@@ -102,25 +102,26 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
 
-次の 4 つのオプションは、一部の種類にだけ効きます。
+次の 5 つのオプションは、一部の種類にだけ効きます。
 
 | フラグ | 効く種類 | 残すもの |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | このツールの呼び出しとその結果 |
 | `--status` | `result` | この状態の結果。`error` か `ok` |
+| `--denial` | `result` | この理由で実行されなかった呼び出しの結果。`user-rejected` など |
 | `--skill` | `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
 | `--subagents` | `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
-- `--tool` と `--skill` は、共通の絞り込みと同じく繰り返し指定でき、先頭の
-  `!` も使えます。`--status` は `--type` と同じくカンマ区切りで並べられます。
-- `--tool`・`--status`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
+- `--tool`・`--denial`・`--skill` は、共通の絞り込みと同じく繰り返し指定でき、
+  先頭の `!` も使えます。`--status` は `--type` と同じくカンマ区切りで並べられます。
+- `--tool`・`--status`・`--denial`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
   種類はそのまま残します。そのため
   `ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
   `tdd` の実行中に書かれた返答と呼び出しを残します。
-- `--type` を省略すると、`records` は付けた `--tool`・`--status`・`--skill` が
+- `--type` を省略すると、`records` は付けた `--tool`・`--status`・`--denial`・`--skill` が
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
-- この 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
+- この 5 つのフラグは、効く種類が `--type` に無いとエラーになります。
 - `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
   入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
   出力を小さく保てます。`--max-message-chars` と `--max-tool-chars` で
@@ -159,6 +160,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 - `prompt_count` と `started_at` は、選ばれた依頼文の件数と最初の時刻です。
   `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
+  ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
 - `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
@@ -188,7 +190,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ### digest
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
-依頼文に適用されます。
+依頼文に適用されます。ツールの呼び出しを却下したときに打ったコメントは、
+前に `(rejection)` を付けて並べます。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -202,7 +205,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.3","schema":4,"filter":"strict-v2"}
+{"version":"0.0.3","schema":5,"filter":"strict-v3"}
 ```
 
 ## 共通オプション
@@ -233,6 +236,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   指し、`CLAUDE_CODE_SESSION_ID` から読みます。`--session '!current'` で、
   検索している当のセッションを除けます。Claude Code の外では `current` は
   エラーになります。
+- 1 つのセッションに絞るときは ID 全体を渡してください。ID が別の ID の
+  先頭と同じなら、そちらにも一致します。Claude Code は transcript を
+  セッションの ID で名付けるので、`--session` は名前が値で始まる
+  transcript とそのサブエージェントの transcript だけを開き、1 セッションを
+  速く読めます。行を残すのは、その transcript の名前と行の `sessionId` が
+  どちらも値で始まるときだけです。`!` で始まる値だけなら、すべての
+  transcript を読みます。
 - `--grep` は、出力されるときのテキスト、つまりマスク後のテキストを
   検索します。そのため、秘密情報をその値で探し当てることはできません。
   対象は、依頼文や返答のテキスト、呼び出しの入力を詰めた JSON、結果の
@@ -295,10 +305,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ```json
 {"type":"prompt","agent":"claude-code","session_id":"<uuid>",
  "session_title":"Weekly report draft",
+ "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00",
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","redacted":false,
+ "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -312,10 +323,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
+ツールの呼び出しを却下したときに打ったコメントなら `rejection` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、
@@ -333,6 +345,34 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   JSON と JSON Lines は一致した行だけを並べ、Markdown は行を並べずに
   レコードを全文で出します。`!` で始まらないパターンが無ければ
   `matches` は空です。
+- `session_title_then` は、その行が書かれた時点のセッションのタイトルで、
+  Claude Code が最初のタイトルを書く前は空です。Claude Code はタイトルを
+  元になった依頼文の後に書くので、タイトルを変えた依頼文には変わる前の
+  タイトルが付きます。`session_title` は最後のタイトルで、セッションの
+  すべてのレコードに付きます。
+- 打ち方が `rejection` の依頼文は、ユーザーがツールの呼び出しを却下した
+  ときに打ったコメントです。`ExitPlanMode` で差し戻したプランへの
+  コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は
+  結果と同じで、ツール名は結果の `tool` で分かります。質問のダイアログで
+  "clarify" を選んだときに Claude Code が書く定型文は、コメントに含めません。
+- `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
+  送った依頼文で `true` です。同じ行の後に続く依頼文のことで、Esc で
+  依頼文を書き直したときや、返答を中断して送り直したときに生じます。
+  `rejection` に代わりの依頼文が付くことはありません。
+- `denial` は、呼び出しが実行されなかった理由を表す Claude Code の名前で、
+  `user-rejected`・`permission-rule`・`automode-blocked`・`cancelled`
+  などです。実行されたときは空です。Claude Code がこれを記録する前の
+  セッションでは、結果のテキストから `user-rejected` だけを読みます。
+  どの理由でも `is_error` は `true` です。
+- 依頼文は、貼り付けたテキストを Claude Code が書いた位置に
+  `<pasted_content id="...">` タグで囲んだまま持ちます。打った文だけを
+  読むときは、jq でタグごと除きます。
+
+  ```sh
+  ccdig records --type prompt | jq '.text |= gsub(
+    "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
+  ```
+
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。
@@ -340,8 +380,10 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `agent-1a2b` のようなファイル名です。サブエージェントのレコードは、
   そのセッションの `session_id` と `session_title` を持ちます。セッション
   本体の transcript の最終書き込みが `--since` より前なら、タイトルは空です。
-- `input` は、Claude Code が行の `wireToolInputs` に保存していればそこに
-  ある切り詰められていない入力で、なければ `tool_use` ブロックの入力です。
+- `input` は `tool_use` ブロックの入力に、Claude Code が行の
+  `wireToolInputs` に保存した切り詰められていない値を重ねたものです。
+  そのため、`ExitPlanMode` の `plan` のようにモデルが送らなかったキーも
+  残ります。
   呼び出しが見つからなかった結果は、`tool` が空で `input` が `null` です。
 - `usage` は応答のトークン数です。「トークン数」の節を参照してください。
 - `timestamp` は、`sessions` のレコードの時刻と同じく、`--tz` のゾーンの
@@ -373,7 +415,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":4,"filter":"strict-v2","ccdig":"0.0.3",
+{"schema":5,"filter":"strict-v3","ccdig":"0.0.3",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -426,7 +468,8 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 
 1. `isMeta`・`isSidechain`・`isCompactSummary` のいずれかが付いている
 2. `origin.kind` が `human` 以外である
-3. `tool_result` ブロックを持つ
+3. `tool_result` ブロックを持つ。ただし、ユーザーがコメントを添えて
+   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す
 4. `<system-reminder>`、`<task-notification>`、`<local-command-…>`、
    `<bash-input>`、`<bash-stdout>`、`<user-prompt-submit-hook>` などの
    ハーネスのタグで始まる
@@ -443,8 +486,10 @@ thinking ブロックは決して出力しません。
   `--subagents` を付けたときは `<root>/<project>/<session>/subagents/*.jsonl`
   も読みます。
 - シンボリックリンクはたどりません。
-- 再開したセッションは以前のエントリを繰り返しますが、各エントリ（`uuid` と
-  行内の位置で識別）は元のセッションで 1 回だけ出力されます。
+- 再開したセッションは以前のエントリを繰り返しますが、両方の transcript を
+  同じ実行で読めば、各エントリ（`uuid` と行内の位置で識別）は元の
+  セッションで 1 回だけ出力されます。Claude Code はコピーに新しい
+  セッションの ID を書くので、新しい ID の `--session` ではコピーも出ます。
 
 ### 読み飛ばす行
 

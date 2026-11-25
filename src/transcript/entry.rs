@@ -45,6 +45,13 @@ pub struct Entry {
     pub content: Content,
     /// The working directory the session ran in.
     pub cwd: String,
+    /// Why the tool call a user line answers did not run
+    /// (`toolDenialKind`), such as `user-rejected`; empty when it ran or
+    /// the line does not say.
+    pub denial_kind: String,
+    /// What the user typed when they turned the call down
+    /// (`userFeedback`); empty when the line does not say.
+    pub feedback: String,
     /// The markers that say the harness, not a person, wrote the line.
     pub flags: Flags,
     /// The git branch checked out at the time.
@@ -56,6 +63,10 @@ pub struct Entry {
     /// Who produced a user line, such as `human` or `task-notification`.
     /// `None` for sessions recorded before Claude Code wrote the field.
     pub origin: Option<String>,
+    /// The ID of the line this one follows in the conversation, or empty
+    /// for the first. Two lines with the same parent are two tries at the
+    /// same turn: the user sent a prompt again in place of the first.
+    pub parent_uuid: String,
     /// The permission mode a user line was written in, such as `plan` or
     /// `auto`; empty when the line does not say.
     pub permission_mode: String,
@@ -123,6 +134,9 @@ struct RawEntry<'line> {
     message: Option<RawMessage<'line>>,
     /// `origin`.
     origin: Option<RawOrigin>,
+    /// `parentUuid`.
+    #[serde(rename = "parentUuid")]
+    parent_uuid: Option<String>,
     /// `permissionMode`, on the user lines of recent Claude Code.
     #[serde(rename = "permissionMode")]
     permission_mode: Option<String>,
@@ -131,6 +145,13 @@ struct RawEntry<'line> {
     session_id: Option<String>,
     /// `timestamp`, parsed separately so a bad value rejects the line.
     timestamp: Option<String>,
+    /// `toolDenialKind`, on the result of a call that did not run.
+    #[serde(rename = "toolDenialKind")]
+    tool_denial_kind: Option<String>,
+    /// `userFeedback`, on the result of a call the user turned down with a
+    /// comment.
+    #[serde(rename = "userFeedback")]
+    user_feedback: Option<String>,
     /// `uuid`.
     uuid: Option<String>,
     /// `wireToolInputs`: the untruncated input of each tool call, by the
@@ -271,6 +292,8 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
     Some(Entry {
         content,
         cwd: raw.cwd.unwrap_or_default(),
+        denial_kind: raw.tool_denial_kind.unwrap_or_default(),
+        feedback: raw.user_feedback.unwrap_or_default(),
         flags: Flags {
             compact_summary: raw.is_compact_summary.unwrap_or_default(),
             meta: raw.is_meta.unwrap_or_default(),
@@ -280,6 +303,7 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         message_id,
         model,
         origin: raw.origin.map(|origin| origin.kind.unwrap_or_default()),
+        parent_uuid: raw.parent_uuid.unwrap_or_default(),
         permission_mode: raw.permission_mode.unwrap_or_default(),
         role: match raw.kind.as_deref() {
             Some("ai-title") => Role::AiTitle,
@@ -430,10 +454,13 @@ fn tool_use(fields: &Map<String, Value>) -> Block {
     })
 }
 
-/// Replaces each tool call's input with the untruncated one in `wire`, when
+/// Lays the untruncated input in `wire` over each tool call's input, when
 /// `wire` is an object holding an object for the call's ID. The `tool_use`
-/// block keeps a shortened copy of long inputs. Any other shape of `wire`
-/// leaves the inputs as they are.
+/// block keeps a shortened copy of long inputs, and also keys the model did
+/// not send, such as the plan of `ExitPlanMode`, so a key of `wire` replaces
+/// the block's value and the block's other keys stay. A block input that is
+/// not an object is replaced. Any other shape of `wire` leaves the inputs as
+/// they are.
 fn use_wire_inputs(blocks: &mut [Block], wire: &RawValue) {
     if !blocks
         .iter()
@@ -446,10 +473,16 @@ fn use_wire_inputs(blocks: &mut [Block], wire: &RawValue) {
     };
     for block in blocks {
         if let Block::ToolUse(ref mut call) = *block
-            && let Some(full) = inputs.remove(&call.id)
-            && full.is_object()
+            && let Some(Value::Object(full)) = inputs.remove(&call.id)
         {
-            call.input = full;
+            match call.input {
+                Value::Object(ref mut recorded) => recorded.extend(full),
+                Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::Array(_) => call.input = Value::Object(full),
+            }
         }
     }
 }

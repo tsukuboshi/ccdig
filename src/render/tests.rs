@@ -38,6 +38,7 @@ fn blog_head(time: &str) -> Result<Head, String> {
         agent: AGENT,
         session_id: BLOG_SESSION.to_owned(),
         session_title: "Weekly report draft".to_owned(),
+        session_title_then: "Weekly report draft".to_owned(),
         project: "-Users-alice-blog".to_owned(),
         cwd: "/Users/alice/blog".to_owned(),
         git_branch: "main".to_owned(),
@@ -49,6 +50,8 @@ fn blog_head(time: &str) -> Result<Head, String> {
 fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
     Prompt {
         permission_mode: String::new(),
+        superseded: false,
+        parent_uuid: String::new(),
         masked: Counts::default(),
         head,
         text: text.to_owned(),
@@ -74,6 +77,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
     Ok(vec![
         Prompt {
             permission_mode: String::new(),
+            superseded: false,
+            parent_uuid: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:23:45.678Z")?,
             text: "/weekly-report last week".to_owned(),
@@ -85,6 +90,8 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
         },
         Prompt {
             permission_mode: String::new(),
+            superseded: false,
+            parent_uuid: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:30:00Z")?,
             text: "keep <b> tags & \u{65e5}\u{672c}\u{8a9e} as is\nexport AWS_SECRET_ACCESS_KEY=***REDACTED***".to_owned(),
@@ -142,7 +149,7 @@ fn prompts_as_a_json_document() -> TestResult {
     golden(
         "render/prompts.json.golden",
         &document(
-            "strict-v2",
+            "strict-v3",
             "0.1.0",
             &Run::default(),
             prompts.get(..1).ok_or("no prompts")?,
@@ -156,7 +163,7 @@ fn an_empty_json_document_has_an_empty_list() -> TestResult {
     golden(
         "render/empty.json.golden",
         &document::<Prompt>(
-            "strict-v2",
+            "strict-v3",
             "0.1.0",
             &Run::default(),
             &[],
@@ -315,6 +322,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         input: json!({"command": "git log --oneline", "description": "List commits"}),
         tool_use_id: "toolu_1".to_owned(),
         is_error: true,
+        denial: String::new(),
         text: "fatal: not a git repository".to_owned(),
         subagent: "agent-1".to_owned(),
         redacted: false,
@@ -413,6 +421,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         input: json!({}),
         tool_use_id: String::new(),
         is_error: false,
+        denial: String::new(),
         text: String::new(),
         subagent: String::new(),
         redacted: false,

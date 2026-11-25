@@ -14,6 +14,7 @@ fn record() -> Result<Facts<'static>, jiff::Error> {
     Ok(Facts {
         branch: "main",
         cwd: "/Users/alice/blog",
+        denial: Some(""),
         is_error: Some(false),
         project: "-Users-alice-blog",
         session_id: "1f0e9d8c-session",

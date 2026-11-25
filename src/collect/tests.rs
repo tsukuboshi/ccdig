@@ -193,7 +193,7 @@ fn a_record_copied_into_a_resumed_session_is_kept_once_from_the_original() -> Te
         Reading::default(),
         &Query::default(),
         &masking(&[])?,
-        || Prompts,
+        Prompts::default,
     )?;
     let kept: Vec<(&str, bool)> = corpus
         .records
@@ -240,7 +240,7 @@ fn each_copy_of_a_resumed_session_ends_at_its_own_last_record() -> TestResult {
         },
         &Query::default(),
         &masking(&[])?,
-        || Prompts,
+        Prompts::default,
     )?;
     let spans: Vec<(String, String, String)> = corpus
         .sessions
@@ -301,7 +301,7 @@ fn a_resumed_copy_s_first_match_is_one_of_its_own() -> TestResult {
             ..Query::default()
         },
         &masking(&[])?,
-        || Prompts,
+        Prompts::default,
     )?;
     let firsts: Vec<(String, Option<usize>, Option<String>)> = corpus
         .sessions
