@@ -264,7 +264,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.3","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":5,"filter":"strict-v3"}
 ```
 
 ## 共通オプション
@@ -481,7 +481,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.3",
+{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

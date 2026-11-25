@@ -1,6 +1,6 @@
 [package]
 name = "ccdig"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.100.0"
 description = "Pull the logs you want to share out of Claude Code session transcripts, formatted and masked"
