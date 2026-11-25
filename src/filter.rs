@@ -15,6 +15,8 @@ pub struct Facts<'record> {
     pub branch: &'record str,
     /// The working directory.
     pub cwd: &'record str,
+    /// Why a tool call did not run, empty when it ran.
+    pub denial: Option<&'record str>,
     /// Whether the tool reported a failure.
     pub is_error: Option<bool>,
     /// The project directory's name.
@@ -61,6 +63,8 @@ pub enum Verdict {
 pub struct Query {
     /// `--branch`: exact branch names.
     pub branches: Filter<String>,
+    /// `--denial`: exact reasons a call did not run.
+    pub denials: Filter<String>,
     /// `--grep` and `--igrep`, compiled by `patterns`.
     pub grep: Filter<Regex>,
     /// `--status`: only failed tool results when `true`, only the others
@@ -122,6 +126,12 @@ impl<T> Filter<T> {
 }
 
 impl Filter<String> {
+    /// Whether a record with `name` passes, matched exactly. A kind
+    /// without the name (`None`) passes, so the kinds can be mixed.
+    pub fn allows_name(&self, name: Option<&str>) -> bool {
+        name.is_none_or(|have| self.allows(|want| want == have))
+    }
+
     /// The values of a name flag: one with a leading `!` excludes, and a
     /// leading `\!` stands for a `!` that does not.
     pub fn names(values: Vec<String>) -> Self {
@@ -162,12 +172,9 @@ impl Query {
                 .sessions
                 .allows(|id| facts.session_id.starts_with(id.as_str()))
             && self.branches.allows(|branch| branch == facts.branch)
-            && facts
-                .skill
-                .is_none_or(|skill| self.skills.allows(|want| want == skill))
-            && facts
-                .tool
-                .is_none_or(|tool| self.tools.allows(|want| want == tool))
+            && self.skills.allows_name(facts.skill)
+            && self.tools.allows_name(facts.tool)
+            && self.denials.allows_name(facts.denial)
             && self
                 .is_error
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))

@@ -18,7 +18,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 24] = [
+pub const RECORD_KEYS: [&str; 25] = [
     "type",
     "agent",
     "session_id",
@@ -31,6 +31,7 @@ pub const RECORD_KEYS: [&str; 24] = [
     "input",
     "tool_use_id",
     "is_error",
+    "denial",
     "text",
     "kind",
     "command",
@@ -392,6 +393,9 @@ pub struct ToolResult {
     pub tool_use_id: String,
     /// Whether the tool reported a failure.
     pub is_error: bool,
+    /// Claude Code's name for why the call did not run, such as
+    /// `user-rejected` or `permission-rule`; empty when it ran.
+    pub denial: String,
     /// The output text, masked.
     pub text: String,
     /// The sub-agent file name, or empty for the session itself.

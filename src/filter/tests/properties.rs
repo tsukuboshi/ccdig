@@ -29,6 +29,7 @@ impl Record {
         Facts {
             branch: self.names[0],
             cwd: self.names[1],
+            denial: None,
             is_error: self.optional.2,
             project: self.names[2],
             session_id: self.names[3],

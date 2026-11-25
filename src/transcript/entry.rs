@@ -45,6 +45,13 @@ pub struct Entry {
     pub content: Content,
     /// The working directory the session ran in.
     pub cwd: String,
+    /// Why the tool call a user line answers did not run
+    /// (`toolDenialKind`), such as `user-rejected`; empty when it ran or
+    /// the line does not say.
+    pub denial_kind: String,
+    /// What the user typed when they turned the call down
+    /// (`userFeedback`); empty when the line does not say.
+    pub feedback: String,
     /// The markers that say the harness, not a person, wrote the line.
     pub flags: Flags,
     /// The git branch checked out at the time.
@@ -131,6 +138,13 @@ struct RawEntry<'line> {
     session_id: Option<String>,
     /// `timestamp`, parsed separately so a bad value rejects the line.
     timestamp: Option<String>,
+    /// `toolDenialKind`, on the result of a call that did not run.
+    #[serde(rename = "toolDenialKind")]
+    tool_denial_kind: Option<String>,
+    /// `userFeedback`, on the result of a call the user turned down with a
+    /// comment.
+    #[serde(rename = "userFeedback")]
+    user_feedback: Option<String>,
     /// `uuid`.
     uuid: Option<String>,
     /// `wireToolInputs`: the untruncated input of each tool call, by the
@@ -271,6 +285,8 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
     Some(Entry {
         content,
         cwd: raw.cwd.unwrap_or_default(),
+        denial_kind: raw.tool_denial_kind.unwrap_or_default(),
+        feedback: raw.user_feedback.unwrap_or_default(),
         flags: Flags {
             compact_summary: raw.is_compact_summary.unwrap_or_default(),
             meta: raw.is_meta.unwrap_or_default(),

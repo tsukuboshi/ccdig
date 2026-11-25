@@ -117,6 +117,8 @@ pub trait Select: Record {
 /// The facts the filters see that only some kinds have, `None` for a kind
 /// without them.
 pub struct Extra<'record> {
+    /// Why a tool call did not run, empty when it ran.
+    pub denial: Option<&'record str>,
     /// Whether a tool reported a failure.
     pub is_error: Option<bool>,
     /// The skill running at the time.

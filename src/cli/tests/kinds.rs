@@ -344,6 +344,10 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
             "ccdig: --status needs --type result",
         ),
         (
+            &["records", "--type", "prompt", "--denial", "user-rejected"][..],
+            "ccdig: --denial needs --type result",
+        ),
+        (
             &["records", "--type", "prompt", "--skill", "tdd"][..],
             "ccdig: --skill needs --type reply, call, or result",
         ),

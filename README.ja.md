@@ -82,7 +82,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
@@ -102,25 +102,26 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
 
-次の 4 つのオプションは、一部の種類にだけ効きます。
+次の 5 つのオプションは、一部の種類にだけ効きます。
 
 | フラグ | 効く種類 | 残すもの |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | このツールの呼び出しとその結果 |
 | `--status` | `result` | この状態の結果。`error` か `ok` |
+| `--denial` | `result` | この理由で実行されなかった呼び出しの結果。`user-rejected` など |
 | `--skill` | `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
 | `--subagents` | `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
-- `--tool` と `--skill` は、共通の絞り込みと同じく繰り返し指定でき、先頭の
-  `!` も使えます。`--status` は `--type` と同じくカンマ区切りで並べられます。
-- `--tool`・`--status`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
+- `--tool`・`--denial`・`--skill` は、共通の絞り込みと同じく繰り返し指定でき、
+  先頭の `!` も使えます。`--status` は `--type` と同じくカンマ区切りで並べられます。
+- `--tool`・`--status`・`--denial`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
   種類はそのまま残します。そのため
   `ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
   `tdd` の実行中に書かれた返答と呼び出しを残します。
-- `--type` を省略すると、`records` は付けた `--tool`・`--status`・`--skill` が
+- `--type` を省略すると、`records` は付けた `--tool`・`--status`・`--denial`・`--skill` が
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
-- この 4 つのフラグは、効く種類が `--type` に無いとエラーになります。
+- この 5 つのフラグは、効く種類が `--type` に無いとエラーになります。
 - `--type` を付けずに検索すると、ツールの呼び出しも対象になり、呼び出しの
   入力は長くなりがちです。`--type prompt,reply` と `--limit` を付けると、
   出力を小さく保てます。`--max-message-chars` と `--max-tool-chars` で
@@ -312,7 +313,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
@@ -333,6 +334,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   JSON と JSON Lines は一致した行だけを並べ、Markdown は行を並べずに
   レコードを全文で出します。`!` で始まらないパターンが無ければ
   `matches` は空です。
+- `denial` は、呼び出しが実行されなかった理由を表す Claude Code の名前で、
+  `user-rejected`・`permission-rule`・`automode-blocked`・`cancelled`
+  などです。実行されたときは空です。Claude Code がこれを記録する前の
+  セッションでは、結果のテキストから `user-rejected` だけを読みます。
+  どの理由でも `is_error` は `true` です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。

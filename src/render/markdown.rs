@@ -129,14 +129,18 @@ pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<S
     Ok(out)
 }
 
-/// A tool result's body: the calling tool's name, whether it failed, and
-/// the output in a text block, or its matched lines.
+/// A tool result's body: the calling tool's name, whether it failed, why
+/// the call did not run when it did not, and the output in a text block, or
+/// its matched lines.
 fn tool_result(result: &ToolResult) -> String {
-    let head = format!(
+    let mut head = format!(
         "- Tool: {}\n- Error: {}\n",
         tool_name(&result.tool),
         if result.is_error { "yes" } else { "no" },
     );
+    if !result.denial.is_empty() {
+        head.extend(["- Denial: ", &code_span(&result.denial), "\n"]);
+    }
     if result.search.matches.is_empty() {
         return format!("{head}\n{}", fenced("text", &clean_text(&result.text)));
     }

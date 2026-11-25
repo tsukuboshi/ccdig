@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A result has a new `denial` key, Claude Code's name for why the call did
+  not run, such as `user-rejected` or `permission-rule`, and
+  `records --denial` keeps the results by it, or with a leading `!`,
+  leaves them out.
+
 ### Fixed
 
 - A call's `input` keeps the keys of the `tool_use` block that the line's

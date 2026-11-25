@@ -27,7 +27,7 @@ those before it.
 | `text` | Sanitizing text for the terminal and Markdown. |
 | `when` | Timestamps, day ranges, and named time zones. |
 | `transcript` | Producer: `walk` lists the files, `reader` streams their lines, `entry` decodes one line. |
-| `classify` | Whether a user line is something a person typed, and folding slash commands back. |
+| `classify` | Whether a user line is something a person typed, folding slash commands back, and why a tool call did not run. |
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
 | `filter` | Tester: the filters, as `Query`. |
@@ -82,6 +82,7 @@ files below are the ones there are.
   `text/tests/properties.rs`, `when/tests/properties.rs`,
   `transcript/entry/tests/properties.rs`,
   `transcript/reader/tests/properties.rs`,
+  `classify/denial/tests/properties.rs`,
   `classify/human/tests/properties.rs`,
   `classify/slash/tests/properties.rs`, `redact/tests/properties.rs`,
   `filter/tests/properties.rs`, `collect/tests/properties.rs`,

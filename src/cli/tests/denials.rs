@@ -8,6 +8,10 @@ use serde_json::{Value, json};
 use super::{History, fixture_time};
 use crate::testing::{TestResult, check_eq};
 
+/// The text Claude Code returns when the user turns a call down with a
+/// comment, as a JSON string body.
+const SAID: &str = r"The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\nOne PR, please.";
+
 /// The JSON Lines `args` print for the session `dddd`, parsed.
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
     let mut full = args.to_vec();
@@ -45,6 +49,130 @@ fn a_call_keeps_the_recorded_input_the_wire_input_leaves_out() -> TestResult {
             Some(&json!({"command": "cargo test --all"})),
         ],
         "inputs",
+    )?;
+    Ok(())
+}
+
+/// A history where the user turns a plan down with a comment, a command
+/// fails, a permission rule blocks another, and a read succeeds.
+fn history_with_denials() -> Result<History, Box<dyn Error>> {
+    let rejected = format!(
+        r#"{{"type":"user","uuid":"d-2","parentUuid":"d-1","sessionId":"dddd","timestamp":"2026-10-15T00:00:10Z","toolDenialKind":"user-rejected","userFeedback":"One PR, please.","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"toolu_p","is_error":true,"content":"{SAID}"}}]}}}}"#
+    );
+    history(&[
+        r##"{"type":"assistant","uuid":"d-1","sessionId":"dddd","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_p","name":"ExitPlanMode","input":{"plan":"# Plan"}}]}}"##,
+        &rejected,
+        r#"{"type":"assistant","uuid":"d-3","sessionId":"dddd","timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"toolu_f","name":"Bash","input":{"command":"false"}},{"type":"tool_use","id":"toolu_r","name":"Bash","input":{"command":"rm x"}},{"type":"tool_use","id":"toolu_ok","name":"Read","input":{"file_path":"/a"}}]}}"#,
+        r#"{"type":"user","uuid":"d-4","sessionId":"dddd","timestamp":"2026-10-15T00:01:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_f","is_error":true,"content":"Error: Exit code 1"}]}}"#,
+        r#"{"type":"user","uuid":"d-5","sessionId":"dddd","timestamp":"2026-10-15T00:01:11Z","toolDenialKind":"permission-rule","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_r","is_error":true,"content":"Permission to use Bash has been denied."}]}}"#,
+        r#"{"type":"user","uuid":"d-6","sessionId":"dddd","timestamp":"2026-10-15T00:01:12Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_ok","content":"a"}]}}"#,
+    ])
+}
+
+/// The string at `key` of each record.
+fn strings<'records>(records: &'records [Value], key: &str) -> Vec<&'records str> {
+    records
+        .iter()
+        .map(|record| {
+            record
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or("<missing>")
+        })
+        .collect()
+}
+
+#[test]
+fn a_result_names_why_its_call_did_not_run() -> TestResult {
+    let history = history_with_denials()?;
+    let results = records(&history, &["records", "--type", "result"])?;
+    check_eq(
+        &strings(&results, "denial"),
+        &vec!["user-rejected", "", "permission-rule", ""],
+        "denials",
+    )?;
+    check_eq(
+        &results
+            .iter()
+            .map(|result| result.get("is_error").and_then(Value::as_bool))
+            .collect::<Vec<_>>(),
+        &vec![Some(true), Some(true), Some(true), Some(false)],
+        "is_error stays",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn denial_picks_the_results_by_why_the_call_did_not_run() -> TestResult {
+    let history = history_with_denials()?;
+    for (args, want) in [
+        (&["--denial", "user-rejected"][..], vec!["toolu_p"]),
+        (
+            &["--denial", "user-rejected", "--denial", "permission-rule"][..],
+            vec!["toolu_p", "toolu_r"],
+        ),
+        (
+            &["--denial", "!user-rejected", "--status", "error"][..],
+            vec!["toolu_f", "toolu_r"],
+        ),
+        // Without --type, a result flag picks results alone.
+        (
+            &["--denial", "user-rejected", "--tool", "ExitPlanMode"][..],
+            vec!["toolu_p"],
+        ),
+    ] {
+        let mut full = vec!["records"];
+        full.extend_from_slice(args);
+        check_eq(
+            &strings(&records(&history, &full)?, "tool_use_id"),
+            &want,
+            &args.join(" "),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn markdown_names_why_a_call_did_not_run() -> TestResult {
+    let ran = history_with_denials()?.run(&[
+        "records",
+        "--type",
+        "result",
+        "--session",
+        "dddd",
+        "--format",
+        "md",
+    ]);
+    check_eq(&ran.code, &0, "exit")?;
+    check_eq(
+        &ran.out.matches("- Denial: ").count(),
+        &2,
+        "one line per denied call",
+    )?;
+    check_eq(
+        &ran.out.contains("- Denial: `user-rejected`\n"),
+        &true,
+        "the kind",
+    )?;
+    Ok(())
+}
+#[test]
+fn mask_values_mask_the_denial_too() -> TestResult {
+    let history = history_with_denials()?;
+    let results = records(
+        &history,
+        &[
+            "records",
+            "--denial",
+            "permission-rule",
+            "--mask-values",
+            r#"{"rule": ["permission-rule"]}"#,
+        ],
+    )?;
+    check_eq(
+        &strings(&results, "denial"),
+        &vec!["\u{FF3B}rule1\u{FF3D}"],
+        "denial",
     )?;
     Ok(())
 }

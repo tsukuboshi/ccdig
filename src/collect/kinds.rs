@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
+use crate::classify::denial::{Answer, denial};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
 use crate::record::{
@@ -277,6 +278,13 @@ impl Pick for Results {
                     input,
                     tool_use_id: result.tool_use_id.clone(),
                     is_error: result.is_error,
+                    denial: denial(Answer {
+                        denial_kind: &entry.denial_kind,
+                        feedback: &entry.feedback,
+                        is_error: result.is_error,
+                        text: &result.text,
+                    })
+                    .kind,
                     text,
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
@@ -363,6 +371,7 @@ impl Pick for Tools {
 impl Select for Prompt {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: None,
             tool: None,
@@ -397,6 +406,7 @@ impl Select for Prompt {
 impl Select for Reply {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: Some(&self.skill),
             tool: None,
@@ -435,6 +445,7 @@ impl Select for Reply {
 impl Select for Summary {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: None,
             tool: None,
@@ -469,6 +480,7 @@ impl Select for Summary {
 impl Select for ToolCall {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: None,
             is_error: None,
             skill: Some(&self.skill),
             tool: Some(&self.tool),
@@ -554,6 +566,7 @@ impl Select for Turn {
 impl Select for ToolResult {
     fn extra(&self) -> Extra<'_> {
         Extra {
+            denial: Some(&self.denial),
             is_error: Some(self.is_error),
             skill: Some(&self.skill),
             tool: Some(&self.tool),
@@ -573,7 +586,7 @@ impl Select for ToolResult {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.tool, &mut self.subagent]
+        vec![&mut self.tool, &mut self.denial, &mut self.subagent]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {

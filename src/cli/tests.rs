@@ -748,6 +748,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--igrep <REGEX>",
                 "--tool <NAME>",
                 "--status <STATUS>",
+                "--denial <KIND>",
                 "--skill <NAME>",
                 "Input:\n",
                 "--root <DIR>",

@@ -402,6 +402,7 @@ where
     query.verdict(&Facts {
         branch: &head.git_branch,
         cwd: &head.cwd,
+        denial: extra.denial,
         is_error: extra.is_error,
         project: &head.project,
         session_id: &head.session_id,

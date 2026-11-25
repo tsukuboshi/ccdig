@@ -81,7 +81,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
@@ -101,25 +101,27 @@ defaults to `prompt,reply,call`:
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
 
-Four options apply to some kinds only:
+Five options apply to some kinds only:
 
 | Flag | Applies to | Keeps |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | Calls to this tool and their results |
 | `--status` | `result` | Results with this status: `error` or `ok` |
+| `--denial` | `result` | Results of calls that did not run for this reason, such as `user-rejected` |
 | `--skill` | `reply`, `call`, `result` | Records written while the skill ran |
 | `--subagents` | `reply`, `call`, `result` | Sub-agent transcripts too |
 
-- `--tool` and `--skill` are repeatable and take a leading `!`, as the
-  shared filters do. `--status` takes a comma-separated list like `--type`.
-- `--tool`, `--status`, and `--skill` narrow only the kinds that have what
+- `--tool`, `--denial`, and `--skill` are repeatable and take a leading
+  `!`, as the shared filters do. `--status` takes a comma-separated list
+  like `--type`.
+- `--tool`, `--status`, `--denial`, and `--skill` narrow only the kinds that have what
   they test and let the other kinds through, so
   `ccdig records --type prompt,reply,call --skill tdd` keeps every prompt
   along with the replies and calls written while `tdd` ran.
 - Without `--type`, `records` lists only the kinds that every one of
-  `--tool`, `--status`, and `--skill` given applies to:
+  `--tool`, `--status`, `--denial`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
-- Each of the four needs a `--type` it applies to, or the command fails.
+- Each of the five needs a `--type` it applies to, or the command fails.
 - A search without `--type` reads the tool calls too, and a call's input
   can be long: give `--type prompt,reply` and `--limit` to keep the output
   small, or cut the texts with `--max-message-chars` and `--max-tool-chars`
@@ -312,7 +314,7 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `text`, `subagent` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
@@ -334,6 +336,11 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
   whole. Without `--context`, JSON and JSON Lines list the matched lines
   alone, and Markdown lists none, so it prints each record whole.
   `matches` is empty without a pattern that does not start with `!`.
+- `denial` is Claude Code's name for why a call did not run, such as
+  `user-rejected`, `permission-rule`, `automode-blocked`, or `cancelled`,
+  and empty when it ran. Before Claude Code recorded it, only
+  `user-rejected` is read, from the result's text. `is_error` is `true` for
+  each of them too.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.

@@ -55,7 +55,7 @@ pub struct Activity {
         long = "skill",
         value_name = "NAME",
         help_heading = "Filters",
-        display_order = 30
+        display_order = 31
     )]
     pub skills: Vec<String>,
     /// Also read sub-agent transcripts, which are left out by default; the
@@ -106,8 +106,8 @@ pub enum Command {
     )]
     Records {
         /// The record types to list (comma-separated, repeatable)
-        /// [default: prompt,reply,call, or with --tool, --status, or
-        /// --skill, the kinds they all apply to].
+        /// [default: prompt,reply,call, or with --tool, --status,
+        /// --denial, or --skill, the kinds they all apply to].
         #[arg(
             long = "type",
             value_name = "TYPE",
@@ -133,6 +133,16 @@ pub enum Command {
         /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
+        /// Keep tool results whose call did not run for this reason, such
+        /// as user-rejected or permission-rule, or with a leading !, leave
+        /// them out (repeatable).
+        #[arg(
+            long = "denial",
+            value_name = "KIND",
+            help_heading = "Filters",
+            display_order = 30
+        )]
+        denials: Vec<String>,
         /// Cut the text of each prompt, reply, and summary to this many
         /// characters [default: no limit].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
