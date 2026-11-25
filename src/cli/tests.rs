@@ -713,7 +713,7 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     let history = History::new("root")?;
     let examples = [
         "Examples:\n",
-        "  ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n",
+        "  ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n",
         "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
         "  ccdig sessions --igrep deploy --format md\n",
         "ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",

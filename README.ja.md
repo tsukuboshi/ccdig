@@ -58,8 +58,8 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 ccdig records --type reply --project blog --igrep deploy
 
 # Claude Code の中から、検索している当のセッションを除いて、ほかの
-# セッションの依頼文と返答を 20 件まで検索する
-ccdig records --session '!current' --type prompt,reply --igrep deploy \
+# セッションの依頼文・返答・ツールの呼び出しを 20 件まで検索する
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
 # "deploy" に最も多く触れたセッションを、最初に一致した行付きで、

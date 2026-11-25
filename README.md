@@ -56,9 +56,9 @@ ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
 # Replies in the blog project that mention "deploy", ignoring case
 ccdig records --type reply --project blog --igrep deploy
 
-# From Claude Code, search the other sessions' prompts and replies, 20 at
-# most, leaving out the session doing the search
-ccdig records --session '!current' --type prompt,reply --igrep deploy \
+# From Claude Code, search the other sessions' prompts, replies, and tool
+# calls, 20 at most, leaving out the session doing the search
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
 # The sessions that mention "deploy" most, each with the line it first

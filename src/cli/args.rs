@@ -28,7 +28,7 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   --format md for Markdown to read. Harness noise is dropped, slash\n\
                   commands are folded back, and common secrets are masked by default.",
     after_help = "Examples:\n\
-                  \x20 ccdig records --session '!current' --type prompt,reply --igrep deploy --format md --limit 20\n\
+                  \x20 ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
                   \x20 ccdig sessions --igrep deploy --format md\n\
                   \n\
