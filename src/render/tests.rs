@@ -124,6 +124,7 @@ fn sample_session() -> Result<Session, String> {
         prompt_count: 2,
         match_count: None,
         first_match: None,
+        matched_types: Vec::new(),
     })
 }
 

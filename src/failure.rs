@@ -97,6 +97,13 @@ pub enum Failure {
     /// The masking rules do not compile, which is a bug.
     #[error("compile masking rules: {0}")]
     Rules(#[source] regex::Error),
+    /// A flag of `sessions` that changes which matches are counted is given
+    /// without a pattern to count.
+    #[error("sessions {flag} needs --grep or --igrep with a pattern that does not start with !")]
+    SessionFlagNeedsGrep {
+        /// The flag.
+        flag: &'static str,
+    },
     /// `--since` is not a calendar day.
     #[error("parse since: {0}")]
     Since(String),

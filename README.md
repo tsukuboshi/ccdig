@@ -86,7 +86,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | Command | Lists | Own options |
 | --- | --- | --- |
 | `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
+| `sessions` | One record per session with a selected prompt | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
@@ -165,7 +165,13 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
 
 - `--grep` and `--igrep` pick the sessions whose prompts or replies they
   match, and `match_count` says how many of them matched in each, so the
-  session that mentions a word most can be read first. The other keys
+  session that mentions a word most can be read first. `--type` picks
+  other types of record to search, as `records --type` does, such as
+  `--type prompt,reply,call,result`, and `--subagents` adds the matches in
+  the replies, calls, and results of each session's sub-agent
+  transcripts to the session; the instruction a sub-agent was given is
+  not a prompt, so it is not searched. Both need a pattern that does not
+  start with `!`. The other keys
   come from every prompt the other filters keep, as without `--grep`,
   less those a pattern with a leading `!` leaves out, and Markdown adds a
   `Matches` column. Without a pattern that does not start
@@ -176,7 +182,7 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   work ended even when a session has one prompt. A comment the user typed
   when they turned a tool call down counts as a prompt, and so do the
   answers to a question and a plan approved or turned down.
-- `first_match` holds the first prompt or reply a search matched in the
+- `first_match` holds the first record a search matched in the
   session, so it can be judged without reading its records: its `type`,
   `timestamp`, the `line` a pattern matched in its text, and that line,
   masked, on one line and cut to 200 characters, as `text`. When the
@@ -526,7 +532,8 @@ A script can check `schema` and `filter` with
 how many `--around` added as context, as in
 `- Records: 7 (prompt 4, call 3) + 2 context`, so an empty list reads
 `- Records: 0`. `sessions` and `stats` start with how many sessions or
-groups they list, and a search of `sessions` with how many matches. The sessions table has a `Session` and a `Cwd` column, which
+groups they list, and a search of `sessions` with how many matches, by
+type. The sessions table has a `Session` and a `Cwd` column, which
 `records --session` and `--project` take.
 
 `records --format md` puts the records of each transcript file under one

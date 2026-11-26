@@ -60,9 +60,8 @@ struct Narrowing {
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
-    /// For `sessions`: whether a search counts the prompts and replies it
-    /// matches.
-    mentions: bool,
+    /// For `sessions`: the kinds of record whose matches a search counts.
+    mentions: Option<Types>,
     /// `--skill`.
     skills: Vec<String>,
     /// `--subagents`.
@@ -71,6 +70,20 @@ struct Narrowing {
     tools: Vec<String>,
     /// Whether to add up each session's tokens, for `sessions`.
     usage: bool,
+}
+
+/// What `ccdig sessions` was given, its shared flags merged.
+struct SessionsFlags {
+    /// The shared flags.
+    common: Common,
+    /// `--fields` and `--format`.
+    output: Output,
+    /// `--sort`.
+    sort: SessionSort,
+    /// `--subagents`.
+    subagents: bool,
+    /// `--type`.
+    types: Vec<RecordType>,
 }
 
 /// What `ccdig stats` was given, its shared flags merged.
@@ -174,7 +187,7 @@ impl Flags {
                 excerpt: narrowing
                     .context
                     .or_else(|| narrowing.context_by_default.filter(|_| finds)),
-                mentions: narrowing.mentions && finds,
+                mentions: narrowing.mentions.filter(|_| finds),
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
             },
@@ -460,13 +473,7 @@ fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, F
 fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> Types {
     if types.is_empty() {
         if !(tool || status || skill) {
-            return Types {
-                calls: false,
-                prompts: true,
-                replies: true,
-                results: false,
-                summaries: false,
-            };
+            return Types::CONVERSATION;
         }
         // Every one of them applies to results.
         return Types {
@@ -548,27 +555,18 @@ pub fn resolve(
             common: later,
             output,
             sort,
-        } => {
-            let flags = Flags::with_env(earlier.merged(later), environment)?;
-            let narrowing = Narrowing {
-                mentions: true,
-                usage: true,
-                ..Narrowing::default()
-            };
-            let format = output.format.into();
-            let picked = fields(output.fields, &SESSION_KEYS, format)?;
-            let shared = flags.shared(narrowing, environment)?;
-            let order = sort.into();
-            if order == SessionSort::Matches && !shared.reading.mentions {
-                return Err(Failure::SortNeedsGrep);
-            }
-            Ok(Config::Sessions {
-                fields: picked,
-                format,
-                shared: Box::new(shared),
-                sort: order,
-            })
-        }
+            subagents,
+            types,
+        } => sessions_config(
+            SessionsFlags {
+                common: earlier.merged(later),
+                output,
+                sort: sort.into(),
+                subagents,
+                types,
+            },
+            environment,
+        ),
         Command::Stats {
             activity,
             by,
@@ -596,6 +594,39 @@ pub fn resolve(
             format: format.into(),
         }),
     }
+}
+
+/// Resolves `sessions`, after checking that the flags that change which
+/// matches are counted have a pattern to count.
+fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Config, Failure> {
+    let flags = Flags::with_env(given.common, environment)?;
+    let narrowing = Narrowing {
+        mentions: Some(record_types(&given.types, false, false, false)),
+        subagents: given.subagents,
+        usage: true,
+        ..Narrowing::default()
+    };
+    let format = given.output.format.into();
+    let picked = fields(given.output.fields, &SESSION_KEYS, format)?;
+    let shared = flags.shared(narrowing, environment)?;
+    let counts = shared.reading.mentions.is_some();
+    for (flagged, flag) in [
+        (!given.types.is_empty(), "--type"),
+        (given.subagents, "--subagents"),
+    ] {
+        if flagged && !counts {
+            return Err(Failure::SessionFlagNeedsGrep { flag });
+        }
+    }
+    if given.sort == SessionSort::Matches && !counts {
+        return Err(Failure::SortNeedsGrep);
+    }
+    Ok(Config::Sessions {
+        fields: picked,
+        format,
+        shared: Box::new(shared),
+        sort: given.sort,
+    })
 }
 
 /// Resolves `stats`, with `--limit` taken out of the shared flags to count

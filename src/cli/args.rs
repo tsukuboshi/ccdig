@@ -202,8 +202,8 @@ pub enum Command {
         #[command(flatten)]
         output: Output,
         /// The order of the sessions: by the time of their first prompt, or
-        /// by how many prompts and replies --grep or --igrep matched, most
-        /// first, then by time.
+        /// by how many records of the types --type picks --grep or --igrep
+        /// matched, most first, then by time.
         #[arg(
             long,
             default_value = "time",
@@ -211,6 +211,23 @@ pub enum Command {
             display_order = 65
         )]
         sort: SessionSort,
+        /// Also search sub-agent transcripts, counting the matches in their
+        /// replies, calls, and results toward their session; the
+        /// instruction a sub-agent was given is not searched.
+        #[arg(long, help_heading = "Input", display_order = 41)]
+        subagents: bool,
+        /// The record types --grep and --igrep search, to count and show
+        /// the matches of each session (comma-separated, repeatable)
+        /// [default: prompt,reply]; a session is listed for its prompts all
+        /// the same.
+        #[arg(
+            long = "type",
+            value_name = "TYPE",
+            value_delimiter = ',',
+            help_heading = "Records",
+            display_order = 10
+        )]
+        types: Vec<RecordType>,
     },
     /// Count the records that records would list, grouped by the keys
     /// --by names.

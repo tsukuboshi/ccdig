@@ -14,8 +14,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use self::gather::{FileRecords, gather, inherit_title};
+use self::kinds::Types;
 use self::mask::{Draft, Mask};
-use self::read::{Skipped, read_file};
+use self::read::{Mention, Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
 use crate::record::{AGENT, Head, Outcome, Record, Search, Session};
@@ -45,10 +46,11 @@ pub struct Reading {
     /// With `--context`, how many lines around each line `--grep` matched
     /// to list in a record's `matches`.
     pub excerpt: Option<usize>,
-    /// For `sessions --grep`: whether to keep every prompt the other
-    /// filters let through and count the prompts and replies the including
-    /// patterns match, rather than keep only the prompts they match.
-    pub mentions: bool,
+    /// For `sessions --grep`: the kinds of record whose matches of the
+    /// including patterns to count, keeping every prompt the other filters
+    /// let through rather than only the prompts the patterns match; `None`
+    /// otherwise.
+    pub mentions: Option<Types>,
     /// Whether to read sub-agent transcripts too.
     pub subagents: bool,
     /// Whether to add up the tokens of each session's responses in the
@@ -238,6 +240,9 @@ where
     // What masking a sub-agent's own title counted, kept until it is known
     // whether its session's title replaces it.
     let mut own_titles: HashMap<PathBuf, Counts> = HashMap::new();
+    // The matches in each session's sub-agents, by the session's file,
+    // which count toward the session.
+    let mut delegated: HashMap<PathBuf, Vec<Mention>> = HashMap::new();
     for file in &found.sessions {
         // A time outside the supported years skips this file, not the run.
         let modified = match Stamp::from_system_time(file.modified) {
@@ -257,7 +262,12 @@ where
             continue;
         }
         match read_file(file, query, mask, new_picker(), reading) {
-            Ok(read) => {
+            Ok(mut read) => {
+                if let Some(ref parent) = file.parent
+                    && let Some(theirs) = read.mentions.take()
+                {
+                    delegated.entry(parent.clone()).or_default().extend(theirs);
+                }
                 if file.parent.is_some() {
                     own_titles.insert(file.path.clone(), read.title_masked);
                 } else if reading.subagents && !read.title.is_empty() {
@@ -294,6 +304,13 @@ where
     }
     for session in &mut sessions {
         inherit_title(session.file, &mut session.records, &titles, &own_titles);
+        if let Some(theirs) = delegated.remove(&session.file.path)
+            && let Some(ref mut mentions) = session.mentions
+        {
+            mentions.extend(theirs);
+            // The first match of the session is the earliest of all.
+            mentions.sort_by_key(Mention::instant);
+        }
     }
     // Order sessions by their first record. A resumed copy starts with the
     // original's timestamps, so ties go to the older file, the original,

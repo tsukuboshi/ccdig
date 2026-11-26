@@ -203,7 +203,11 @@ pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<S
             .iter()
             .filter_map(|session| session.match_count)
             .sum();
-        out.extend(["- Matches: ", &total.to_string(), "\n"]);
+        let types: Vec<&str> = records
+            .iter()
+            .flat_map(|session| session.matched_types.iter().copied())
+            .collect();
+        out.extend(["- Matches: ", &total.to_string(), &by_type(&types), "\n"]);
     }
     out.push_str(if matches {
         "\n| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |\n| --- | --- | --- | --- | ---: | ---: | --- | --- |\n"

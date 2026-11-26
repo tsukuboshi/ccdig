@@ -90,6 +90,7 @@ where
         let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
             continue;
         };
+        let mut matched_types = Vec::new();
         let (match_count, first_match) = match session.mentions {
             Some(found) => {
                 let counted: Vec<Mention> = found
@@ -98,6 +99,7 @@ where
                         mention.key().0.is_empty() || mentioned.insert(mention.key().clone())
                     })
                     .collect();
+                matched_types = counted.iter().map(Mention::kind).collect();
                 let count = counted.len();
                 let Some(earliest) = counted.into_iter().next() else {
                     // A resumed copy repeats these responses, and must not
@@ -149,6 +151,7 @@ where
             first_match: first_match.map(|earliest| earliest.first_match(grep)),
             usage,
             masked,
+            matched_types,
         });
         corpus.records.extend(kept);
     }

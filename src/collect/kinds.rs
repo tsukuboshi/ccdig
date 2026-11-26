@@ -94,6 +94,16 @@ pub struct Results {
 }
 
 impl Types {
+    /// Prompts and replies: the conversation, which `records` lists and
+    /// `sessions` searches by default.
+    pub const CONVERSATION: Self = Self {
+        calls: false,
+        prompts: true,
+        replies: true,
+        results: false,
+        summaries: false,
+    };
+
     /// Whether any of the kinds is on an assistant line, or needs one, as
     /// a result needs its call.
     pub const fn reads_assistant(self) -> bool {

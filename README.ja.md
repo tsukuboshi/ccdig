@@ -87,7 +87,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
 | `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
+| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
@@ -164,7 +164,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 - `--grep` と `--igrep` は、依頼文か返答が一致したセッションを選び、
   `match_count` にそれぞれで一致した件数を入れます。ある語に最も多く触れた
-  セッションから読めます。ほかのキーは、`--grep` が無いときと同じく、
+  セッションから読めます。`--type` を付けると、`records --type` と同じく
+  ほかの種類のレコードも検索します（例: `--type prompt,reply,call,result`）。
+  `--subagents` を付けると、各セッションのサブエージェントの履歴にある
+  返答・呼び出し・結果での一致も、そのセッションに数えます。サブエージェントに
+  渡された指示は依頼文ではないので、検索しません。どちらも `!` で始まらない
+  パターンが必要です。
+  ほかのキーは、`--grep` が無いときと同じく、
   ほかの絞り込みで残ったすべての依頼文から作ります。ただし、`!` 付きの
   パターンで除いた依頼文は数えません。Markdown には
   `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
@@ -174,7 +180,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
   ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
   質問への回答と、承認・却下したプランも同じです。
-- `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
+- `first_match` は、そのセッションで検索が最初に一致したレコードです。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
   200 文字で切ったもの）の `text` です。一致が行をまたぐときは、`line` が
@@ -521,7 +527,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 前後のレコードとして足した件数と合わせて最初に示します
 （例: `- Records: 7 (prompt 4, call 3) + 2 context`）。0 件なら
 `- Records: 0` です。`sessions` と `stats` は、出すセッションかグループの
-件数を最初に示し、`sessions` の検索では一致の件数も示します。
+件数を最初に示し、`sessions` の検索では一致の件数も種類別に示します。
 セッションの表には、`records --session` と `--project` に渡せる
 `Session` 列と `Cwd` 列があります。
 

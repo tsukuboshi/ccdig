@@ -318,11 +318,11 @@ pub struct Session {
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
-    /// With `--grep` or `--igrep`, how many of the session's prompts and
-    /// replies they matched; `null` otherwise.
+    /// With `--grep` or `--igrep`, how many of the session's records of
+    /// the types `--type` picks they matched; `null` otherwise.
     pub match_count: Option<usize>,
-    /// With `--grep` or `--igrep`, the first prompt or reply they matched
-    /// in the session; `null` otherwise.
+    /// With `--grep` or `--igrep`, the first of those records in the
+    /// session; `null` otherwise.
     pub first_match: Option<FirstMatch>,
     /// The tokens of the session's responses in the range, each response
     /// once.
@@ -330,17 +330,21 @@ pub struct Session {
     /// What masking these keys counted, for `--mask-report`; not written.
     #[serde(skip)]
     pub masked: Counts,
+    /// The type of each record `match_count` counts, for Markdown to break
+    /// the count down; not written.
+    #[serde(skip)]
+    pub matched_types: Vec<&'static str>,
 }
 
-/// The first prompt or reply a search matched in a session, so a session
-/// can be judged without reading its records.
+/// The first record a search matched in a session, so a session can be
+/// judged without reading its records.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "the JSON keys follow the declaration order"
 )]
 pub struct FirstMatch {
-    /// `prompt` or `reply`.
+    /// Its type, as `--type` names it.
     #[serde(rename = "type")]
     pub kind: &'static str,
     /// When it was written.

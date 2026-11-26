@@ -82,7 +82,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
         } => {
             let corpus = gather(&shared, sort, Prompts::default)?;
             let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
-                markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
+                markdown::sessions(sessions, &shared.zone, shared.reading.mentions.is_some())
             })?;
             printed(
                 &shared,

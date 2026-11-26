@@ -6,7 +6,7 @@ use proptest::sample::select;
 use serde_json::{Value, json};
 
 use super::{ALL, Root, masking};
-use crate::collect::kinds::{Prompts, Records};
+use crate::collect::kinds::{Prompts, Records, Types};
 use crate::collect::{Reading, collect};
 use crate::filter::{Query, patterns};
 use crate::record::{Record as _, Session, Turn};
@@ -99,7 +99,7 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                     Reading {
                         around: None,
                         excerpt,
-                        mentions: false,
+                        mentions: None,
                         subagents: false,
                         usage: true,
                     },
@@ -283,7 +283,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
         let searched = collect(
             root.path(),
             Reading {
-                mentions: true,
+                mentions: Some(Types::CONVERSATION),
                 usage: true,
                 ..Reading::default()
             },
@@ -309,6 +309,7 @@ fn a_search_of_sessions_keeps_their_rows_and_counts_what_mentions_it() -> TestRe
                 &Session {
                     match_count: None,
                     first_match: None,
+                    matched_types: Vec::new(),
                     ..session.clone()
                 },
                 same,

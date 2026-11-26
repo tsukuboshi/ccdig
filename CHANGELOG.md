@@ -19,6 +19,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and a plan turned down without a comment one of kind `rejection`, so
   `--type prompt`, `sessions`, and `digest` hold every answer the user
   gave.
+- `sessions --type` picks the types of record `--grep` and `--igrep`
+  search and count, `prompt,reply` by default, and `sessions --subagents`
+  counts the matches in a session's sub-agents toward the session.
 - Markdown starts with how many records, sessions, or groups it lists,
   by type, so an empty list reads `- Records: 0`, and the sessions table
   has a `Session` and a `Cwd` column.
