@@ -18,7 +18,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 27] = [
+pub const RECORD_KEYS: [&str; 28] = [
     "type",
     "agent",
     "session_id",
@@ -31,6 +31,7 @@ pub const RECORD_KEYS: [&str; 27] = [
     "tool",
     "input",
     "tool_use_id",
+    "result",
     "is_error",
     "denial",
     "text",
@@ -432,13 +433,17 @@ pub struct ToolCall {
     pub input: Value,
     /// The call's ID, which its result refers to.
     pub tool_use_id: String,
+    /// What the call came to, as its result in the same file says, masked;
+    /// `null` when the file has no result for it, as when it was
+    /// interrupted.
+    pub result: Option<Outcome>,
     /// The skill running at the time, or empty.
     pub skill: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
     /// The tokens of the response, as for a reply.
     pub usage: Option<Usage>,
-    /// Whether masking changed the input.
+    /// Whether masking changed the input or the result's text.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
@@ -452,6 +457,22 @@ pub struct ToolCall {
     /// not written.
     #[serde(skip)]
     pub masked: Counts,
+}
+
+/// What a tool call came to: the `result` of a `call`, so a call can be
+/// read without asking for the results too.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Outcome {
+    /// Whether the tool reported a failure.
+    pub is_error: bool,
+    /// Why the call did not run, as for a result; empty when it ran.
+    pub denial: String,
+    /// The output text.
+    pub text: String,
 }
 
 /// A tool's output, with the call it answers: a `result` of
@@ -674,7 +695,12 @@ impl Turn {
                 None,
                 &mut summary.search,
             ),
-            Self::Call(ref mut call) => (cuts.tool, None, Some(&mut call.input), &mut call.search),
+            Self::Call(ref mut call) => (
+                cuts.tool,
+                call.result.as_mut().map(|result| &mut result.text),
+                Some(&mut call.input),
+                &mut call.search,
+            ),
             Self::Result(ref mut result) => (
                 cuts.tool,
                 Some(&mut result.text),
@@ -707,12 +733,14 @@ impl Turn {
         }
     }
 
-    /// The tool's output the record carries: a result's text; `None` for
-    /// any other record.
-    pub const fn tool_output_mut(&mut self) -> Option<&mut String> {
+    /// The tool's output the record carries: a result's text, or the one
+    /// a call carries; `None` for any other record, and for a call without
+    /// a result.
+    pub fn tool_output_mut(&mut self) -> Option<&mut String> {
         match *self {
             Self::Result(ref mut result) => Some(&mut result.text),
-            Self::Call(_) | Self::Prompt(_) | Self::Reply(_) | Self::Summary(_) => None,
+            Self::Call(ref mut call) => call.result.as_mut().map(|result| &mut result.text),
+            Self::Prompt(_) | Self::Reply(_) | Self::Summary(_) => None,
         }
     }
 
@@ -725,6 +753,31 @@ impl Turn {
             Self::Result(_) => "result",
             Self::Summary(_) => "summary",
         }
+    }
+}
+
+impl<T> Record for &T
+where
+    T: Record,
+{
+    fn head(&self) -> &Head {
+        (**self).head()
+    }
+
+    fn own_masked(&self) -> &Counts {
+        (**self).own_masked()
+    }
+
+    fn search(&self) -> &Search {
+        (**self).search()
+    }
+
+    fn source(&self) -> &Source {
+        (**self).source()
+    }
+
+    fn subagent(&self) -> &str {
+        (**self).subagent()
     }
 }
 

@@ -435,8 +435,9 @@ fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
     }
 }
 
-/// The records of `drafts`, marked superseded where `picker`, which has now
-/// seen the whole file, says so, then masked and given the title.
+/// The records of `drafts`, given what their calls came to and marked
+/// superseded where `picker`, which has now seen the whole file, says so,
+/// then masked and given the title.
 fn seal_all<P>(
     drafts: Vec<(usize, Draft<P::Record>)>,
     picker: &P,
@@ -449,6 +450,7 @@ where
     drafts
         .into_iter()
         .map(|(block, mut draft)| {
+            draft.answer(mask, |id| picker.outcome(id));
             if picker.superseded(draft.record()) {
                 draft.mark_superseded();
             }

@@ -18,7 +18,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Record, Search, Session};
+use crate::record::{AGENT, Head, Outcome, Record, Search, Session};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -62,6 +62,13 @@ pub struct Reading {
 pub trait Pick {
     /// The record it makes.
     type Record: Select;
+
+    /// What the call `tool_use_id` came to, its text not yet masked, as
+    /// only the whole file tells: asked once every line has been seen.
+    /// Only calls have one.
+    fn outcome(&self, _tool_use_id: &str) -> Option<&Outcome> {
+        None
+    }
 
     /// Makes the records of an entry that `wants` accepted, each with its
     /// block's index in the line. A record comes with its text masked and
@@ -109,6 +116,13 @@ pub trait Select: Record {
 
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
+
+    /// The call's ID, where the kind carries what the call came to, and
+    /// whether masking changed the record, `None` for a kind that is not a
+    /// call.
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        None
+    }
 
     /// What the search made of the record, which `--around` and
     /// `--context` fill in.

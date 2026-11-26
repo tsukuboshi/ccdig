@@ -1,5 +1,5 @@
 {
-  "schema": 5,
+  "schema": 6,
   "filter": "strict-v3",
   "ccdig": "0.1.0",
   "run": {

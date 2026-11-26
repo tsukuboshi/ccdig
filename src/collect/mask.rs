@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::Select;
 use crate::failure::Failure;
-use crate::record::{MatchLine, Turn};
+use crate::record::{MatchLine, Outcome, Turn};
 use crate::redact::{Counts, ExtraMasks, Redactor};
 use crate::transcript::entry::Usage;
 
@@ -33,6 +33,29 @@ impl<T> Draft<T>
 where
     T: Select,
 {
+    /// Gives a call what `find` says it came to, with the text masked, as a
+    /// result's is, and what that counted added to the record's.
+    pub fn answer<'found, F>(&mut self, mask: &Mask, find: F)
+    where
+        F: FnOnce(&str) -> Option<&'found Outcome>,
+    {
+        let Some((id, slot, redacted)) = self.0.outcome_mut() else {
+            return;
+        };
+        let Some(found) = find(id) else {
+            return;
+        };
+        let mut counts = Counts::default();
+        let (text, changed) = mask.text(&found.text, &mut counts);
+        *redacted |= changed;
+        *slot = Some(Outcome {
+            is_error: found.is_error,
+            denial: found.denial.clone(),
+            text,
+        });
+        self.0.masked_mut().merge(&counts);
+    }
+
     /// The draft of what `wrap` makes of the record, as when a picker puts
     /// a kind's record in a `Turn`. `wrap` only wraps it; it must not keep
     /// the record.
@@ -80,7 +103,7 @@ where
 }
 
 impl Mask {
-    /// Rewrites the tool result's output in `turn` as indented JSON when it
+    /// Rewrites the tool's output `turn` carries as indented JSON when it
     /// is a JSON object or array, so that its strings read decoded, for
     /// Markdown. The output was masked as the tool wrote it, where an
     /// escape such as `\u0041` can hide a secret from the rules, so the

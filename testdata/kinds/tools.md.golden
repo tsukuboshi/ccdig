@@ -18,3 +18,9 @@
   "description": "List commits"
 }
 ```
+
+- Result: error
+
+```text
+fatal: not a git repository
+```

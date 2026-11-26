@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::failure::Failure;
 
 /// The version of the JSON envelope and the record keys.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// The JSON document: the records with the schema and filter versions,
 /// the ccdig version, and how the run was asked for.

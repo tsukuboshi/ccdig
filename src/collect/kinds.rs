@@ -11,7 +11,7 @@ use crate::classify::denial::{Answer, comment_in, denial};
 use crate::classify::human::{Reason, classify};
 use crate::classify::slash::fold;
 use crate::record::{
-    Head, Kind, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
+    Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::transcript::entry::{Block, Entry, Role, Usage};
@@ -30,6 +30,10 @@ struct Call {
 /// Picks the records of the kinds in `types`, in the order they were
 /// written.
 pub struct Records {
+    /// When the calls carry their results: for each call picked so far in
+    /// the file, by its ID, what it came to, unmasked, once its result is
+    /// seen.
+    outcomes: Option<HashMap<String, Option<Outcome>>>,
     /// Notes which prompts were sent again.
     prompts: Prompts,
     /// Pairs the results with their calls.
@@ -93,18 +97,52 @@ impl Types {
 }
 
 impl Records {
-    /// Picks the kinds in `types`.
+    /// Picks the kinds in `types`, the calls without their results, for
+    /// what counts the records and prints none.
     pub fn new(types: Types) -> Self {
         Self {
+            outcomes: None,
             prompts: Prompts::default(),
             results: Results::default(),
             types,
+        }
+    }
+
+    /// Notes what the calls whose results are on `entry` came to.
+    fn note_outcomes(&mut self, entry: &Entry) {
+        let Some(ref mut outcomes) = self.outcomes else {
+            return;
+        };
+        for block in &entry.content.blocks {
+            if let Block::ToolResult(ref result) = *block
+                && let Some(slot) = outcomes.get_mut(&result.tool_use_id)
+            {
+                *slot = Some(Outcome {
+                    is_error: result.is_error,
+                    // As for the result itself, in `Results::pick`.
+                    denial: denial(Answer::of(entry, result)).kind,
+                    text: result.text.clone(),
+                });
+            }
+        }
+    }
+
+    /// Picks the kinds in `types`, each call with its result, for printing
+    /// them.
+    pub fn with_results(types: Types) -> Self {
+        Self {
+            outcomes: types.calls.then(HashMap::new),
+            ..Self::new(types)
         }
     }
 }
 
 impl Pick for Records {
     type Record = Turn;
+
+    fn outcome(&self, tool_use_id: &str) -> Option<&Outcome> {
+        self.outcomes.as_ref()?.get(tool_use_id)?.as_ref()
+    }
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Turn>)> {
         let mut turns: Vec<(usize, Draft<Turn>)> = Vec::new();
@@ -137,8 +175,17 @@ impl Pick for Records {
                     turns.extend(replies.map(|(index, reply)| (index, reply.map(Turn::Reply))));
                 }
                 if self.types.calls {
-                    let calls = Tools.pick(spot, entry).into_iter();
-                    turns.extend(calls.map(|(index, call)| (index, call.map(Turn::Call))));
+                    let calls = Tools.pick(spot, entry);
+                    if let Some(ref mut outcomes) = self.outcomes {
+                        for pair in &calls {
+                            outcomes.insert(pair.1.record().tool_use_id.clone(), None);
+                        }
+                    }
+                    turns.extend(
+                        calls
+                            .into_iter()
+                            .map(|(index, call)| (index, call.map(Turn::Call))),
+                    );
                 }
             }
             Role::AiTitle | Role::Other => {}
@@ -150,7 +197,11 @@ impl Pick for Records {
     fn roles(&self) -> Roles {
         Roles {
             assistant: self.types.reads_assistant(),
-            user: self.types.prompts || self.types.results || self.types.summaries,
+            // A call's result is on a user line.
+            user: self.types.prompts
+                || self.types.results
+                || self.types.summaries
+                || self.outcomes.is_some(),
         }
     }
 
@@ -166,6 +217,9 @@ impl Pick for Records {
         // and the prompts every prompt sent again.
         let result = self.types.results && self.results.wants(entry);
         let prompt = self.types.prompts && self.prompts.wants(entry);
+        if entry.role == Role::User {
+            self.note_outcomes(entry);
+        }
         match entry.role {
             Role::User => result || prompt || (self.types.summaries && Summaries.wants(entry)),
             Role::Assistant => self.types.replies || self.types.calls,
@@ -335,13 +389,7 @@ impl Pick for Results {
                     is_error: result.is_error,
                     // The line's keys speak for its one result; see
                     // `comment_in`.
-                    denial: denial(Answer {
-                        denial_kind: &entry.denial_kind,
-                        feedback: &entry.feedback,
-                        is_error: result.is_error,
-                        text: &result.text,
-                    })
-                    .kind,
+                    denial: denial(Answer::of(entry, result)).kind,
                     text,
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
@@ -403,6 +451,7 @@ impl Pick for Tools {
                     tool: call.name.clone(),
                     input,
                     tool_use_id: call.id.clone(),
+                    result: None,
                     skill: entry.skill.clone(),
                     subagent: spot.subagent(),
                     usage: None,
@@ -571,16 +620,22 @@ impl Select for ToolCall {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![
+        let mut labels = vec![
             &mut self.tool,
             &mut self.model,
             &mut self.skill,
             &mut self.subagent,
-        ]
+        ];
+        labels.extend(self.result.as_mut().map(|result| &mut result.denial));
+        labels
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        Some((&self.tool_use_id, &mut self.result, &mut self.redacted))
     }
 
     fn search_mut(&mut self) -> &mut Search {
@@ -619,6 +674,10 @@ impl Select for Turn {
 
     fn masked_mut(&mut self) -> &mut Counts {
         selected_mut(self).masked_mut()
+    }
+
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        selected_mut(self).outcome_mut()
     }
 
     fn search_mut(&mut self) -> &mut Search {

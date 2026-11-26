@@ -3,7 +3,7 @@
 
 use core::error::Error;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::{History, json_lines, strings};
 use crate::testing::{TestResult, check_eq};
@@ -425,5 +425,165 @@ fn a_leading_bang_leaves_out_a_name() -> TestResult {
             &args.join(" "),
         )?;
     }
+    Ok(())
+}
+
+#[test]
+fn a_call_carries_its_result_masked_without_type_result() -> TestResult {
+    let history = History::new("kinds/root")?;
+    let calls = records(&history, &["records", "--type", "call"])?;
+    let result_of = |index: usize| calls.get(index)?.get("result");
+    check_eq(
+        &result_of(0),
+        &Some(&json!({
+            "is_error": true,
+            "denial": "",
+            "text": "test failed: cart is empty",
+        })),
+        "the failed test run",
+    )?;
+    let read = result_of(1)
+        .and_then(|result| result.get("text"))
+        .and_then(Value::as_str)
+        .ok_or("no result text for the read")?;
+    check_eq(&read.contains("EXAMPLEEXAMPLE"), &false, read)?;
+    let alone = records(&history, &["records", "--type", "result", "--tool", "Read"])?;
+    check_eq(
+        &strings(&alone, "text"),
+        &vec![read],
+        "masked as the result alone",
+    )?;
+    check_eq(
+        &calls.get(1).and_then(|call| call.get("redacted")),
+        &Some(&json!(true)),
+        "a call whose result was masked is redacted",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_call_without_a_result_in_its_file_has_a_null_result() -> TestResult {
+    let history = History::new("kinds/root")?;
+    history.write(
+        "-Users-alice-shop/eeee.jsonl",
+        super::fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"e-1","sessionId":"eeee","timestamp":"2026-10-13T03:00:00Z","message":{"content":[{"type":"tool_use","id":"t-e1","name":"Bash","input":{"command":"sleep 100"}}]}}"#,
+        ],
+    )?;
+    let calls = records(
+        &history,
+        &["records", "--session", "eeee", "--type", "call"],
+    )?;
+    check_eq(
+        &calls.first().and_then(|call| call.get("result")),
+        &Some(&Value::Null),
+        "interrupted call",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_shows_a_result_under_its_call_and_not_again() -> TestResult {
+    let history = History::new("kinds/root")?;
+    let ran = history.run(&["records", "--type", "call,result", "--format", "md"]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out
+            .contains("```\n\n- Result: error\n\n```text\ntest failed: cart is empty\n```\n"),
+        &true,
+        &ran.out,
+    )?;
+    check_eq(&ran.out.matches(" - Tool call\n").count(), &2, &ran.out)?;
+    // Only the result whose call is not in the file stands alone.
+    check_eq(&ran.out.matches(" - Tool result\n").count(), &1, &ran.out)?;
+    check_eq(
+        &ran.out.contains("- Records: 3 (call 2, result 1)\n"),
+        &true,
+        &ran.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_says_when_a_call_has_no_result() -> TestResult {
+    let history = History::new("kinds/root")?;
+    history.write(
+        "-Users-alice-shop/ffff.jsonl",
+        super::fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"f-1","sessionId":"ffff","timestamp":"2026-10-13T03:00:00Z","message":{"content":[{"type":"tool_use","id":"t-f1","name":"Bash","input":{"command":"sleep 100"}}]}}"#,
+        ],
+    )?;
+    let ran = history.run(&[
+        "records",
+        "--session",
+        "ffff",
+        "--type",
+        "call",
+        "--format",
+        "md",
+    ]);
+    check_eq(
+        &ran.out.ends_with("```\n\n- Result: (none)\n"),
+        &true,
+        &ran.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn max_tool_chars_cuts_the_result_a_call_carries() -> TestResult {
+    let history = History::new("kinds/root")?;
+    let calls = records(
+        &history,
+        &[
+            "records",
+            "--type",
+            "call",
+            "--tool",
+            "Bash",
+            "--max-tool-chars",
+            "5",
+        ],
+    )?;
+    check_eq(
+        &calls
+            .first()
+            .and_then(|call| call.get("result"))
+            .and_then(|result| result.get("text")),
+        &Some(&json!("test \u{2026} (21 more characters)")),
+        "cut result",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_keeps_a_matched_result_whose_call_is_context() -> TestResult {
+    let history = History::new("kinds/root")?;
+    let ran = history.run(&[
+        "records",
+        "--type",
+        "call,result",
+        "--igrep",
+        "cart is empty",
+        "--around",
+        "1",
+        "--format",
+        "md",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out.contains("- Records: 1 (result 1) + "),
+        &true,
+        &ran.out,
+    )?;
+    check_eq(&ran.out.matches(" - Tool result\n").count(), &1, &ran.out)?;
+    check_eq(&ran.out.matches("cart is empty").count(), &1, &ran.out)?;
+    check_eq(
+        &ran.out.contains(" - Tool call (context)\n"),
+        &true,
+        &ran.out,
+    )?;
     Ok(())
 }

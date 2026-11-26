@@ -103,7 +103,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- |
 | `prompt` | 人間が打った依頼文 |
 | `reply` | assistant のテキストブロック |
-| `call` | ツールの呼び出し |
+| `call` | ツールの呼び出しと、その結果 |
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
 
@@ -133,6 +133,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   呼び出しの入力は長くなりがちなので、`--limit` で出力を小さく保てます。
   `--max-message-chars` と `--max-tool-chars` で本文を切り、`--fields` で
   キーを省くこともできます。
+- 呼び出しは結果を持つので、`--type call` だけでも、質問への回答のような
+  ツールの返したものが抜けません。`--type result` は結果を単独で並べます。
+  中断したときのように、同じファイルに結果が無い呼び出しの結果は `null` です。
 - サブエージェントの履歴は、`--subagents` を付けない限り読みません。
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
   されません。出力されるのは、その返答・呼び出し・結果のうち `--type` で
@@ -152,7 +155,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す。付けなければ、JSON と JSON Lines は一致した行だけを並べる |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
 | `--max-message-chars N` | 依頼文・返答・要約の本文を N 文字で切って `… (M more characters)` を付ける |
-| `--max-tool-chars N` | ツールの入力にある文字列とツールの結果の出力を、それぞれ N 文字で切る。ファイル全体を書く `Write` で出力が埋まらずに済む |
+| `--max-tool-chars N` | ツールの入力にある文字列とツールの結果の出力（呼び出しが持つ結果も含む）を、それぞれ N 文字で切る。ファイル全体を書く `Write` で出力が埋まらずに済む |
 
 ### sessions
 
@@ -264,7 +267,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.4","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":6,"filter":"strict-v3"}
 ```
 
 ## 共通オプション
@@ -382,7 +385,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | 種類 | 間に入るキー |
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
@@ -390,6 +393,9 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 ツールの呼び出しを却下したときに打ったコメントなら `rejection` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
+- 呼び出しの `result` は、同じファイルにあるその結果の内容（マスク後）で、
+  結果と同じ `is_error`・`denial`・`text` を持ちます。ファイルに結果が無ければ
+  `null` です。
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、
   それ以外のレコードでは `true` です。
 - `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
@@ -481,7 +487,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v3","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -511,7 +517,11 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 `records --format md` は、履歴ファイルごとのレコードをプロジェクトと
 セッションを記した 1 つの見出しの下にまとめ、各レコードを時刻と種類の
-見出しの下に置きます。
+見出しの下に置きます。呼び出しは入力の下に結果を出し、その結果は、
+`--context` が一致した行を並べるときと、検索がその結果に一致して呼び出しには
+一致しなかったとき（呼び出しは前後のレコードとして出ます）を除いて、単独では
+出しません。`--limit` は JSON と同じく呼び出しの下に出した結果も数えるので、
+Markdown には上限より少ないレコードが出ることがあります。
 ツールの出力が JSON のオブジェクトか配列なら字下げし、`\u65e5` のような
 エスケープを戻します。JSON と JSON Lines は、ツールが書いたままにします。サブエージェントのレコードは、自分の見出しの末尾にも
 サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -

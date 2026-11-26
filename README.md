@@ -102,7 +102,7 @@ defaults to `prompt,reply`:
 | --- | --- |
 | `prompt` | A prompt a person typed |
 | `reply` | A text block of the assistant |
-| `call` | A tool call |
+| `call` | A tool call, with what its result says |
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
 
@@ -133,6 +133,10 @@ Five options apply to some kinds only:
   can be long, so keep the output small with `--limit`, or cut the texts
   with `--max-message-chars` and `--max-tool-chars` and leave keys out
   with `--fields`.
+- A call carries its result, so `--type call` does not leave out what a
+  tool returned, such as the answers to a question; `--type result` lists
+  the results on their own. A call whose file has no result for it, as
+  when it was interrupted, has a `null` result.
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are, of the types
@@ -152,7 +156,7 @@ Four options shape the output:
 | `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
 | `--max-message-chars N` | Cuts the text of each prompt, reply, and summary to N characters, followed by `… (M more characters)` |
-| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, to N characters, so a `Write` of a whole file does not fill the output |
+| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, the one a call carries too, to N characters, so a `Write` of a whole file does not fill the output |
 
 ### sessions
 
@@ -267,7 +271,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.4","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":6,"filter":"strict-v3"}
 ```
 
 ## Shared options
@@ -384,7 +388,7 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | Type | Keys in between |
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
@@ -392,6 +396,9 @@ Every key is always present unless `--fields` leaves it out. The `kind` of a pro
 `slash` or `text`, or `rejection` for what the user typed when they turned
 a tool call down; the record type is `type`, which `--type` picks.
 
+- `result` of a call is what its result in the same file says, masked:
+  `is_error`, `denial`, and `text`, as a result has them, or `null` when
+  the file has no result for it.
 - `matched` is `false` for a record `--around` lists next to a match, and
   `true` for every other record.
 - `matches` lists, with `--context`, the lines `--grep` or `--igrep`
@@ -486,7 +493,7 @@ a tool call down; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v3","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -515,7 +522,11 @@ groups they list, and a search of `sessions` with how many matches. The sessions
 
 `records --format md` puts the records of each transcript file under one
 heading with the project and session, and each record under a heading
-with its time and kind. A tool's output that is a JSON object or array is indented, with
+with its time and kind. A call shows its result under its input, and the
+result is not shown again on its own unless `--context` lists its matched
+lines, or a search matched it and not its call, which then shows as
+context. `--limit` counts a result shown under its call, as JSON lists
+it, so Markdown can show fewer records than the limit. A tool's output that is a JSON object or array is indented, with
 its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
 tool wrote it. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -

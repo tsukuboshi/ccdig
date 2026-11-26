@@ -10,11 +10,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A call has a new `result` key, what its result in the same file says:
+  `is_error`, `denial`, and `text`, or `null` when there is none. So
+  `--type call` no longer leaves out what a tool returned, such as the
+  answers to a question, and Markdown shows the result under its call.
 - Markdown starts with how many records, sessions, or groups it lists,
   by type, so an empty list reads `- Records: 0`, and the sessions table
   has a `Session` and a `Cwd` column.
 - Markdown indents a tool's output that is a JSON object or array, with
   its escapes such as `\u65e5` decoded.
+
+### Changed
+
+- The JSON schema is 6: calls have `result`.
 
 ## [0.0.4] - 2026-11-25
 

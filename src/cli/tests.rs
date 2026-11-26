@@ -696,7 +696,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":5,\"filter\":\"strict-v3\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":6,\"filter\":\"strict-v3\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -1528,21 +1528,23 @@ fn markdown_masks_a_secret_the_json_escapes_hid_once_it_is_decoded() -> TestResu
             r#"{"type":"user","uuid":"x-2","sessionId":"xxxx","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_x1","content":"{\"key\":\"AKIA\\u0049OSFODNN7EXAMPLE\"}"}]}}"#,
         ],
     )?;
-    let ran = history.run_week(&[
-        "records",
-        "--session",
-        "xxxx",
-        "--type",
-        "result",
-        "--format",
-        "md",
-        "--mask-report",
-        "json",
-    ]);
-    check_eq(&ran.code, &0, &ran.err)?;
-    check_eq(&ran.out.contains("\"key\": "), &true, &ran.out)?;
-    check_eq(&ran.out.contains("AKIAIOSFODNN7EXAMPLE"), &false, &ran.out)?;
-    check_eq(&ran.err.contains("\"masked\":{}"), &false, &ran.err)?;
+    for kind in ["call", "result"] {
+        let ran = history.run_week(&[
+            "records",
+            "--session",
+            "xxxx",
+            "--type",
+            kind,
+            "--format",
+            "md",
+            "--mask-report",
+            "json",
+        ]);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&ran.out.contains("\"key\": "), &true, &ran.out)?;
+        check_eq(&ran.out.contains("AKIAIOSFODNN7EXAMPLE"), &false, &ran.out)?;
+        check_eq(&ran.err.contains("\"masked\":{}"), &false, &ran.err)?;
+    }
     Ok(())
 }
 
@@ -1979,7 +1981,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(5_i32)),
+        &Some(&serde_json::json!(6_i32)),
         "schema",
     )?;
     check_eq(

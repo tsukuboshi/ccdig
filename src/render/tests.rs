@@ -13,8 +13,8 @@ use super::digest::{Limits, digest};
 use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
-    AGENT, Group, Head, Kind, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS, Search,
-    Session, Source, Summary, ToolCall, ToolResult, Turn,
+    AGENT, Group, Head, Kind, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS,
+    Search, Session, Source, Summary, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
@@ -372,6 +372,11 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         tool: "Bash".to_owned(),
         input: json!({"command": "git log --oneline", "description": "List commits"}),
         tool_use_id: "toolu_1".to_owned(),
+        result: Some(Outcome {
+            is_error: true,
+            denial: String::new(),
+            text: "fatal: not a git repository".to_owned(),
+        }),
         skill: "weekly-report".to_owned(),
         subagent: "agent-1".to_owned(),
         redacted: false,
@@ -475,6 +480,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         tool: "Bash".to_owned(),
         input: json!({}),
         tool_use_id: String::new(),
+        result: None,
         skill: String::new(),
         subagent: String::new(),
         usage: None,

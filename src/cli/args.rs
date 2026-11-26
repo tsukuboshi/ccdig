@@ -184,7 +184,8 @@ pub enum Command {
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
         max_message_chars: Option<i64>,
         /// Cut each string in a tool's input, and each tool result's
-        /// output, to this many characters [default: no limit].
+        /// output, the one a call carries too, to this many characters
+        /// [default: no limit].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 63)]
         max_tool_chars: Option<i64>,
         /// The output format.
