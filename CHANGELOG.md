@@ -8,6 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Markdown starts with how many records, sessions, or groups it lists,
+  by type, so an empty list reads `- Records: 0`, and the sessions table
+  has a `Session` and a `Cwd` column.
+- Markdown indents a tool's output that is a JSON object or array, with
+  its escapes such as `\u65e5` decoded.
+
 ## [0.0.4] - 2026-11-25
 
 ### Added

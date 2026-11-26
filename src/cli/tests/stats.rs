@@ -278,7 +278,7 @@ fn markdown_is_a_table() -> TestResult {
     ]);
     check_eq(&ran.code, &0, &ran.err)?;
     check_eq(
-        &ran.out.lines().nth(4),
+        &ran.out.lines().nth(6),
         &Some(
             "| `ExitPlanMode` | 2 | 24 | 1 | 2026-10-15 09:00 JST | 2026-10-15 09:02 JST |  |  |  |  |",
         ),

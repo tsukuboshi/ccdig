@@ -506,9 +506,18 @@ A script can check `schema` and `filter` with
 
 ### Markdown
 
+`records --format md` starts with how many records it lists, by type, and
+how many `--around` added as context, as in
+`- Records: 7 (prompt 4, call 3) + 2 context`, so an empty list reads
+`- Records: 0`. `sessions` and `stats` start with how many sessions or
+groups they list, and a search of `sessions` with how many matches. The sessions table has a `Session` and a `Cwd` column, which
+`records --session` and `--project` take.
+
 `records --format md` puts the records of each transcript file under one
 heading with the project and session, and each record under a heading
-with its time and kind. A sub-agent's record names the sub-agent at the
+with its time and kind. A tool's output that is a JSON object or array is indented, with
+its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
+tool wrote it. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``, so it stands apart from the session's own records.
 

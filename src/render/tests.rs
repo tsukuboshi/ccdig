@@ -3,6 +3,7 @@
 mod properties;
 
 use core::error::Error;
+use core::slice::from_ref;
 
 use jiff::tz::TimeZone;
 use serde::Serialize;
@@ -584,5 +585,73 @@ fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
             "columns names the keys before count",
         )?;
     }
+    Ok(())
+}
+
+#[test]
+fn markdown_counts_the_records_by_type_with_the_context_apart() -> TestResult {
+    let zone = TimeZone::UTC;
+    check_eq(
+        &markdown::records(&[], &zone)?,
+        &"# Records\n\n- Records: 0\n".to_owned(),
+        "no records",
+    )?;
+    let head = blog_head("2026-10-13T01:00:00Z")?;
+    let summary = Summary {
+        head: head.clone(),
+        text: "compacted".to_owned(),
+        redacted: false,
+        source: source(BLOG_FILE, 1, "s-1"),
+        search: Search::default(),
+        masked: Counts::default(),
+    };
+    let mut near = bare_prompt(head.clone(), BLOG_FILE, "near");
+    near.search.matched = false;
+    let turns = [
+        Turn::Summary(summary),
+        Turn::Prompt(bare_prompt(head.clone(), BLOG_FILE, "one")),
+        Turn::Prompt(near),
+        Turn::Prompt(bare_prompt(head, BLOG_FILE, "two")),
+    ];
+    let out = markdown::records(&turns, &zone)?;
+    check_eq(
+        &out.starts_with("# Records\n\n- Records: 3 (prompt 2, summary 1) + 1 context\n\n## "),
+        &true,
+        &out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_counts_the_sessions_the_matches_and_the_groups() -> TestResult {
+    let zone = tokyo()?;
+    let session = Session {
+        match_count: Some(3),
+        ..sample_session()?
+    };
+    let plain = markdown::sessions(from_ref(&session), &zone, false)?;
+    check_eq(
+        &plain.starts_with("# Sessions\n\n- Sessions: 1\n\n| Started |"),
+        &true,
+        &plain,
+    )?;
+    let searched = markdown::sessions(&[session.clone(), session], &zone, true)?;
+    check_eq(
+        &searched.starts_with("# Sessions\n\n- Sessions: 2\n- Matches: 6\n\n| Started |"),
+        &true,
+        &searched,
+    )?;
+    let none = markdown::sessions(&[], &zone, true)?;
+    check_eq(
+        &none.starts_with("# Sessions\n\n- Sessions: 0\n- Matches: 0\n\n| Started |"),
+        &true,
+        &none,
+    )?;
+    let stats = markdown::stats(&sample_groups()?, &[], &zone)?;
+    check_eq(
+        &stats.starts_with("# Stats\n\n- Groups: 2\n\n| Count |"),
+        &true,
+        &stats,
+    )?;
     Ok(())
 }

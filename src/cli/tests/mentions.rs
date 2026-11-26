@@ -171,7 +171,7 @@ fn sessions_in_markdown_have_a_matches_column_only_with_grep() -> TestResult {
     plain.extend(["--format", "md"]);
     let without = history.run_week(&plain).out;
     check_eq(
-        &without.contains("| Started | Project | Prompts | Title |"),
+        &without.contains("| Started | Session | Project | Cwd | Prompts | Title |"),
         &true,
         &without,
     )?;
@@ -179,7 +179,9 @@ fn sessions_in_markdown_have_a_matches_column_only_with_grep() -> TestResult {
     grep.extend(["--igrep", "cloud"]);
     let with = history.run_week(&grep).out;
     check_eq(
-        &with.contains("| Started | Project | Prompts | Matches | First match | Title |"),
+        &with.contains(
+            "| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |",
+        ),
         &true,
         &with,
     )?;
@@ -350,8 +352,9 @@ fn sessions_in_markdown_show_the_first_match_with_a_search() -> TestResult {
     let ran = history.run_week(&args);
     check_eq(&ran.code, &0, &ran.err)?;
     check_eq(
-        &ran.out
-            .contains("| Started | Project | Prompts | Matches | First match | Title |"),
+        &ran.out.contains(
+            "| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |",
+        ),
         &true,
         &ran.out,
     )?;

@@ -707,6 +707,15 @@ impl Turn {
         }
     }
 
+    /// The tool's output the record carries: a result's text; `None` for
+    /// any other record.
+    pub const fn tool_output_mut(&mut self) -> Option<&mut String> {
+        match *self {
+            Self::Result(ref mut result) => Some(&mut result.text),
+            Self::Call(_) | Self::Prompt(_) | Self::Reply(_) | Self::Summary(_) => None,
+        }
+    }
+
     /// The name the `type` key writes.
     pub const fn type_name(&self) -> &'static str {
         match *self {

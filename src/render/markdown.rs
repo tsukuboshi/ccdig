@@ -20,6 +20,7 @@ use crate::text::{
 pub fn records(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
     sections(
         "Records",
+        &record_count(records),
         records,
         zone,
         |turn| match *turn {
@@ -40,14 +41,56 @@ pub fn records(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
     )
 }
 
+/// The line that counts `records`: those a search matched, by type in the
+/// order a conversation has them, and apart from them, those `--around`
+/// added as context.
+fn record_count(records: &[Turn]) -> String {
+    let matched: Vec<&Turn> = records.iter().filter(|turn| turn.matched()).collect();
+    let mut out = format!(
+        "- Records: {}{}",
+        matched.len(),
+        by_type(
+            &matched
+                .iter()
+                .map(|turn| turn.type_name())
+                .collect::<Vec<_>>()
+        )
+    );
+    let context = records.len().saturating_sub(matched.len());
+    if context > 0 {
+        out.extend([" + ", &context.to_string(), " context"]);
+    }
+    out.push('\n');
+    out
+}
+
+/// How many of `types` are each type, in the order a conversation has
+/// them, as ` (prompt 2, call 1)`; empty when there are none.
+fn by_type(types: &[&str]) -> String {
+    /// The types in the order the count lists them.
+    const ORDER: [&str; 5] = ["prompt", "reply", "call", "result", "summary"];
+    let parts: Vec<String> = ORDER
+        .iter()
+        .filter_map(|name| {
+            let count = types.iter().filter(|kind| **kind == *name).count();
+            (count > 0).then(|| format!("{name} {count}"))
+        })
+        .collect();
+    if parts.is_empty() {
+        return String::new();
+    }
+    format!(" ({})", parts.join(", "))
+}
+
 /// Groups `records` under one heading per transcript file, with times shown
 /// in `zone`, each record's heading followed by its `label` when that is
 /// not empty and by its sub-agent when it has one, and each record's body
-/// written by `body`. Records of a file
+/// written by `body`, after the `count` line. Records of a file
 /// must be adjacent. Two files that share a session ID, such as a resumed
 /// copy, get two headings.
 fn sections<T>(
     title: &str,
+    count: &str,
     records: &[T],
     zone: &TimeZone,
     label: impl Fn(&T) -> &'static str,
@@ -56,7 +99,7 @@ fn sections<T>(
 where
     T: Record,
 {
-    let mut out = format!("# {title}\n");
+    let mut out = format!("# {title}\n\n{count}");
     for group in records.chunk_by(|left, right| left.source().file == right.source().file) {
         if let Some(first) = group.first() {
             let head = first.head();
@@ -100,17 +143,29 @@ where
 ///
 /// When a time cannot be shown in `zone`.
 pub fn sessions(records: &[Session], zone: &TimeZone, matches: bool) -> Result<String, Failure> {
-    let mut out = String::from(if matches {
-        "# Sessions\n\n| Started | Project | Prompts | Matches | First match | Title |\n| --- | --- | ---: | ---: | --- | --- |\n"
+    let mut out = format!("# Sessions\n\n- Sessions: {}\n", records.len());
+    if matches {
+        let total: usize = records
+            .iter()
+            .filter_map(|session| session.match_count)
+            .sum();
+        out.extend(["- Matches: ", &total.to_string(), "\n"]);
+    }
+    out.push_str(if matches {
+        "\n| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |\n| --- | --- | --- | --- | ---: | ---: | --- | --- |\n"
     } else {
-        "# Sessions\n\n| Started | Project | Prompts | Title |\n| --- | --- | ---: | --- |\n"
+        "\n| Started | Session | Project | Cwd | Prompts | Title |\n| --- | --- | --- | --- | ---: | --- |\n"
     });
     for session in records {
         out.extend([
             "| ",
             &session.started_at.minute_label(zone)?,
             " | ",
+            &escape_pipes(&code_span(&session.id)),
+            " | ",
             &escape_pipes(&code_span(&session.project)),
+            " | ",
+            &escape_pipes(&code_span(&session.cwd)),
             " | ",
             &session.prompt_count.to_string(),
             " | ",
@@ -155,7 +210,7 @@ pub fn stats(groups: &[Group], columns: &[&str], zone: &TimeZone) -> Result<Stri
         "cache_read",
         "cache_creation",
     ]);
-    let mut out = String::from("# Stats\n\n|");
+    let mut out = format!("# Stats\n\n- Groups: {}\n\n|", groups.len());
     for name in &names {
         out.extend([" ", &column_label(name), " |"]);
     }

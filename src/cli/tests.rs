@@ -1453,6 +1453,100 @@ fn max_tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult 
 }
 
 #[test]
+fn markdown_indents_a_json_tool_result_and_decodes_its_escapes() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/jjjj.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"j-1","sessionId":"jjjj","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_j1","name":"mcp__notes__find","input":{}},{"type":"tool_use","id":"toolu_j2","name":"Bash","input":{"command":"echo 42"}}]}}"#,
+            r#"{"type":"user","uuid":"j-2","sessionId":"jjjj","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_j1","content":"{\"title\":\"\\u65e5\\u672c\",\"tags\":[\"a\"]}"}]}}"#,
+            r#"{"type":"user","uuid":"j-3","sessionId":"jjjj","timestamp":"2026-10-15T00:00:30Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_j2","content":"42"}]}}"#,
+        ],
+    )?;
+    let args = ["records", "--session", "jjjj", "--type", "result"];
+    let mut md = args.to_vec();
+    md.extend(["--format", "md"]);
+    let ran = history.run_week(&md);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(
+        &ran.out.contains(
+            "```text\n{\n  \"title\": \"\u{65e5}\u{672c}\",\n  \"tags\": [\n    \"a\"\n  ]\n}\n```",
+        ),
+        &true,
+        &ran.out,
+    )?;
+    check_eq(&ran.out.contains("```text\n42\n```"), &true, &ran.out)?;
+    let raw = json_lines(history.run_week(&args))?;
+    check_eq(
+        &strings(&raw, "text"),
+        &vec![r#"{"title":"\u65e5\u672c","tags":["a"]}"#, "42"],
+        "JSON Lines keep the text",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_leaves_a_json_tool_result_whose_numbers_would_change_as_written() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/nnnn.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"n-1","sessionId":"nnnn","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_n1","name":"mcp__db__count","input":{}},{"type":"tool_use","id":"toolu_n2","name":"mcp__db__ratio","input":{}}]}}"#,
+            r#"{"type":"user","uuid":"n-2","sessionId":"nnnn","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_n1","content":"{\"rows\":12345678901234567890123}"}]}}"#,
+            r#"{"type":"user","uuid":"n-3","sessionId":"nnnn","timestamp":"2026-10-15T00:00:30Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_n2","content":"{\"ratio\":1e2,\"half\":0.5,\"n\":-3}"}]}}"#,
+        ],
+    )?;
+    let ran = history.run_week(&[
+        "records",
+        "--session",
+        "nnnn",
+        "--type",
+        "result",
+        "--format",
+        "md",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    for written in [
+        "```text\n{\"rows\":12345678901234567890123}\n```",
+        "```text\n{\"ratio\":1e2,\"half\":0.5,\"n\":-3}\n```",
+    ] {
+        check_eq(&ran.out.contains(written), &true, &ran.out)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn markdown_masks_a_secret_the_json_escapes_hid_once_it_is_decoded() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/xxxx.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"x-1","sessionId":"xxxx","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_x1","name":"mcp__keys__get","input":{}}]}}"#,
+            r#"{"type":"user","uuid":"x-2","sessionId":"xxxx","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_x1","content":"{\"key\":\"AKIA\\u0049OSFODNN7EXAMPLE\"}"}]}}"#,
+        ],
+    )?;
+    let ran = history.run_week(&[
+        "records",
+        "--session",
+        "xxxx",
+        "--type",
+        "result",
+        "--format",
+        "md",
+        "--mask-report",
+        "json",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    check_eq(&ran.out.contains("\"key\": "), &true, &ran.out)?;
+    check_eq(&ran.out.contains("AKIAIOSFODNN7EXAMPLE"), &false, &ran.out)?;
+    check_eq(&ran.err.contains("\"masked\":{}"), &false, &ran.err)?;
+    Ok(())
+}
+
+#[test]
 fn max_chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> TestResult {
     let history = History::new("root")?;
     history.write(

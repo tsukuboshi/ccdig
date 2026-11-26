@@ -501,9 +501,19 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 ### Markdown
 
+`records --format md` は、出すレコードの件数を種類別に、`--around` が
+前後のレコードとして足した件数と合わせて最初に示します
+（例: `- Records: 7 (prompt 4, call 3) + 2 context`）。0 件なら
+`- Records: 0` です。`sessions` と `stats` は、出すセッションかグループの
+件数を最初に示し、`sessions` の検索では一致の件数も示します。
+セッションの表には、`records --session` と `--project` に渡せる
+`Session` 列と `Cwd` 列があります。
+
 `records --format md` は、履歴ファイルごとのレコードをプロジェクトと
 セッションを記した 1 つの見出しの下にまとめ、各レコードを時刻と種類の
-見出しの下に置きます。サブエージェントのレコードは、自分の見出しの末尾にも
+見出しの下に置きます。
+ツールの出力が JSON のオブジェクトか配列なら字下げし、`\u65e5` のような
+エスケープを戻します。JSON と JSON Lines は、ツールが書いたままにします。サブエージェントのレコードは、自分の見出しの末尾にも
 サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``）。セッション本体のレコードと見分けられます。
 
