@@ -66,6 +66,30 @@ pub struct Activity {
     pub subagents: bool,
 }
 
+/// The flags of `records`, `stats`, and `digest` that pick the prompts by
+/// how they were typed and whether another was sent in their place.
+#[derive(Args)]
+pub struct Prompted {
+    /// Keep prompts of this kind: text, slash, rejection, answer, or
+    /// approval, or with a leading !, leave them out (repeatable).
+    #[arg(
+        long = "kind",
+        value_name = "KIND",
+        help_heading = "Filters",
+        display_order = 32
+    )]
+    pub kinds: Vec<String>,
+    /// Keep only the prompts the user sent another in place of (true), or
+    /// only the others (false).
+    #[arg(
+        long,
+        value_name = "BOOL",
+        help_heading = "Filters",
+        display_order = 33
+    )]
+    pub superseded: Option<bool>,
+}
+
 /// The flags of `records` and `stats` that pick the records: their types,
 /// and the tool, the status, and the reason a call did not run.
 #[derive(Args)]
@@ -75,8 +99,9 @@ pub struct Activity {
 )]
 pub struct Selection {
     /// The record types to list (comma-separated, repeatable)
-    /// [default: prompt,reply, or with --tool, --status,
-    /// --denial, or --skill, the kinds they all apply to].
+    /// [default: prompt,reply, or with --tool, --status, --denial,
+    /// --skill, --touched, --kind, or --superseded, the kinds they all
+    /// apply to, calls alone for --touched].
     #[arg(
         long = "type",
         value_name = "TYPE",
@@ -114,6 +139,16 @@ pub struct Selection {
         display_order = 28
     )]
     pub tools: Vec<String>,
+    /// Keep the edits and writes of this file, or of a file under this
+    /// directory, and the Bash commands that name it, or with a leading !,
+    /// leave them out (repeatable).
+    #[arg(
+        long = "touched",
+        value_name = "PATH",
+        help_heading = "Filters",
+        display_order = 34
+    )]
+    pub touched: Vec<String>,
 }
 
 /// The subcommands. Help lists them by `display_order`, most used first.
@@ -125,6 +160,9 @@ pub enum Command {
         /// The shared flags.
         #[command(flatten)]
         common: Common,
+        /// The flags for prompts.
+        #[command(flatten)]
+        prompted: Prompted,
         /// Truncate each prompt to this many characters.
         #[arg(
             long,
@@ -148,8 +186,8 @@ pub enum Command {
     /// they were written.
     #[command(
         display_order = 1,
-        after_help = "Without --type, --tool, --status, --denial, or --skill, a search reads\n\
-                      prompts and replies; add the tool calls with --type prompt,reply,call.\n\
+        after_help = "Without --type or a flag for some kinds, such as --tool or --kind, a search\n\
+                      reads prompts and replies; add the tool calls with --type prompt,reply,call.\n\
                       A tool call's input can be long: narrow it with --limit, as in\n\
                       \x20 ccdig records --type prompt,reply,call --igrep deploy --limit 20\n\
                       or cut the texts and leave out the keys every record of a session\n\
@@ -174,6 +212,9 @@ pub enum Command {
         /// The flags for assistant lines.
         #[command(flatten)]
         activity: Activity,
+        /// The flags for prompts.
+        #[command(flatten)]
+        prompted: Prompted,
         /// Also list this many records before and after each record --grep
         /// or --igrep matched, of the types --type picks and in the same
         /// file, with `matched` false.
@@ -290,6 +331,9 @@ pub enum Command {
         /// The flags for assistant lines.
         #[command(flatten)]
         activity: Activity,
+        /// The flags for prompts.
+        #[command(flatten)]
+        prompted: Prompted,
         /// The shared flags.
         #[command(flatten)]
         common: Common,
@@ -537,7 +581,10 @@ pub enum StatsKey {
     Branch,
     /// The day, in --tz.
     Day,
-    /// How a prompt was typed: text, slash, or rejection.
+    /// Why a tool call did not run, from its result.
+    Denial,
+    /// How a prompt was typed: text, slash, rejection, answer, or
+    /// approval.
     Kind,
     /// The model of a reply or a tool call.
     Model,
@@ -549,6 +596,8 @@ pub enum StatsKey {
     Session,
     /// The skill running at the time.
     Skill,
+    /// Whether a tool result is ok or an error.
+    Status,
     /// The sub-agent file name.
     Subagent,
     /// The tool of a call or a result.
@@ -695,12 +744,14 @@ impl From<StatsKey> for By {
         match key {
             StatsKey::Branch => Self::Branch,
             StatsKey::Day => Self::Day,
+            StatsKey::Denial => Self::Denial,
             StatsKey::Kind => Self::Kind,
             StatsKey::Model => Self::Model,
             StatsKey::Month => Self::Month,
             StatsKey::Project => Self::Project,
             StatsKey::Session => Self::Session,
             StatsKey::Skill => Self::Skill,
+            StatsKey::Status => Self::Status,
             StatsKey::Subagent => Self::Subagent,
             StatsKey::Tool => Self::Tool,
             StatsKey::Type => Self::Type,
@@ -794,7 +845,7 @@ fn hint(error: &clap::Error) -> Option<String> {
     }
     KIND_FLAGS.contains(&arg.as_str()).then(|| {
         format!(
-            "pick the record types with --type: {}",
+            "records, stats, and digest pick prompts by how they were typed with --kind; pick the record types with --type: {}",
             value_names::<RecordType>()
         )
     })
@@ -828,7 +879,7 @@ where
 }
 
 /// The values a flag of `T` takes, as `a, b, or c`.
-fn value_names<T>() -> String
+pub fn value_names<T>() -> String
 where
     T: ValueEnum,
 {

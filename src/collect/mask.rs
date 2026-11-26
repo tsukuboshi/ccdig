@@ -95,6 +95,11 @@ where
         &self.0
     }
 
+    /// Whether the record can be superseded: a prompt.
+    pub fn supersedable(&mut self) -> bool {
+        self.0.superseded_mut().is_some()
+    }
+
     /// Where the record carries the tokens of its response, `None` for a
     /// kind that does not.
     pub fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {

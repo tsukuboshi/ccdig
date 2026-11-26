@@ -224,3 +224,100 @@ fn mask_values_mask_the_denial_too() -> TestResult {
     )?;
     Ok(())
 }
+
+/// The `--by` values and counts of each line `stats` prints with `args`,
+/// sorted, so ties in count need no order.
+fn groups(history: &History, keys: &[&str], args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
+    let lines = records(history, args)?;
+    let mut got: Vec<Value> = lines
+        .iter()
+        .map(|line| {
+            let mut row: Vec<Value> = keys
+                .iter()
+                .map(|key| line.get(*key).cloned().unwrap_or_default())
+                .collect();
+            row.push(line.get("count").cloned().unwrap_or_default());
+            Value::Array(row)
+        })
+        .collect();
+    got.sort_by_key(ToString::to_string);
+    Ok(got)
+}
+
+#[test]
+fn stats_counts_the_results_by_denial_and_by_status() -> TestResult {
+    let history = history_with_denials()?;
+    for (keys, args, want) in [
+        (
+            &["denial", "tool"][..],
+            &["stats", "--type", "result", "--by", "denial,tool"][..],
+            vec![
+                json!(["permission-rule", "Bash", 1_u64]),
+                json!(["user-rejected", "ExitPlanMode", 1_u64]),
+                json!([null, "Bash", 1_u64]),
+                json!([null, "Read", 1_u64]),
+            ],
+        ),
+        (
+            &["status"][..],
+            &["stats", "--type", "result", "--by", "status"][..],
+            vec![json!(["error", 3_u64]), json!(["ok", 1_u64])],
+        ),
+    ] {
+        check_eq(&groups(&history, keys, args)?, &want, &args.join(" "))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn stats_by_denial_or_status_has_no_tokens_to_sort_by() -> TestResult {
+    let history = history_with_denials()?;
+    for key in ["denial", "status"] {
+        let ran = history.run(&[
+            "stats",
+            "--session",
+            "dddd",
+            "--type",
+            "result",
+            "--by",
+            key,
+            "--sort",
+            "output",
+        ]);
+        check_eq(
+            &ran.err,
+            &format!(
+                "ccdig: --sort output cannot be used with --by {key}, which leaves usage null\n"
+            ),
+            key,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn stats_by_denial_or_status_needs_the_results() -> TestResult {
+    let history = history_with_denials()?;
+    for key in ["denial", "status"] {
+        let ran = history.run(&["stats", "--session", "dddd", "--by", key]);
+        check_eq(
+            &ran.err,
+            &format!("ccdig: --by {key} needs --type result\n"),
+            key,
+        )?;
+    }
+    // A result flag picks the results without --type.
+    let ran = history.run(&[
+        "stats",
+        "--session",
+        "dddd",
+        "--by",
+        "status",
+        "--tool",
+        "Bash",
+        "--status",
+        "error",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    Ok(())
+}

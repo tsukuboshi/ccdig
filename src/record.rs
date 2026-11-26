@@ -69,7 +69,7 @@ pub const SESSION_KEYS: [&str; 14] = [
 
 /// The keys a line of `stats` can have, for `--fields`: the `--by` keys,
 /// in the order `--by` names them, then the rest in this order.
-pub const STATS_KEYS: [&str; 20] = [
+pub const STATS_KEYS: [&str; 22] = [
     "session",
     "project",
     "branch",
@@ -79,6 +79,8 @@ pub const STATS_KEYS: [&str; 20] = [
     "subagent",
     "model",
     "kind",
+    "denial",
+    "status",
     "day",
     "week",
     "month",
@@ -462,10 +464,27 @@ pub struct ToolCall {
     /// The model that made the call, for `stats --by model`; not written.
     #[serde(skip)]
     pub model: String,
+    /// What the call changed, from its input before masking, for
+    /// `--touched`; not written.
+    #[serde(skip)]
+    pub touched: Touch,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
     pub masked: Counts,
+}
+
+/// What a tool call changed, or the shell command that may have, for
+/// `--touched`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum Touch {
+    /// A shell command, whose words may name the paths it changed.
+    Command(String),
+    /// The call changed nothing `--touched` can tell, as a read.
+    #[default]
+    Nothing,
+    /// The file an edit or a write changed.
+    Path(String),
 }
 
 /// What a tool call came to: the `result` of a `call`, so a call can be
@@ -521,6 +540,10 @@ pub struct ToolResult {
     /// written.
     #[serde(skip)]
     pub skill: String,
+    /// What the call changed, from its input before masking, for
+    /// `--touched`; not written.
+    #[serde(skip)]
+    pub touched: Touch,
     /// What masking the kind's own fields counted, for `--mask-report`;
     /// not written.
     #[serde(skip)]
@@ -553,6 +576,15 @@ impl Group {
 }
 
 impl Kind {
+    /// Every kind, in the order `--kind` lists them.
+    pub const ALL: [Self; 5] = [
+        Self::Text,
+        Self::Slash,
+        Self::Rejection,
+        Self::Answer,
+        Self::Approval,
+    ];
+
     /// The name the `kind` key writes.
     pub const fn name(self) -> &'static str {
         match self {

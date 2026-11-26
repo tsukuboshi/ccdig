@@ -61,6 +61,9 @@ fn option() -> impl Strategy<Value = Vec<String>> {
         pair("--message-chars", &["1", "100", "0", "3-9", "9-3"]),
         pair("--tool-chars", &["1", "100", "-1", "1-1", "0-5"]),
         pair("--sort", &["time", "matches", "size"]),
+        pair("--kind", &["text", "!rejection", "call"]),
+        pair("--superseded", &["true", "false", "yes"]),
+        pair("--touched", &["README.md", "!src", "/"]),
         switch,
         hostile_text().prop_map(|text| vec![text]),
     ]

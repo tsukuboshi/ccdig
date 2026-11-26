@@ -4,6 +4,7 @@ use jiff::Timestamp;
 use regex::{Regex, RegexBuilder};
 
 use crate::failure::Failure;
+use crate::record::Touch;
 use crate::when::DayRange;
 
 /// What a record offers to the filters. A kind without a skill, a tool, or
@@ -19,6 +20,8 @@ pub struct Facts<'record> {
     pub denial: Option<&'record str>,
     /// Whether the tool reported a failure.
     pub is_error: Option<bool>,
+    /// How a prompt was typed.
+    pub kind: Option<&'record str>,
     /// The project directory's name.
     pub project: &'record str,
     /// The session ID.
@@ -32,6 +35,8 @@ pub struct Facts<'record> {
     pub timestamp: Timestamp,
     /// The tool's name.
     pub tool: Option<&'record str>,
+    /// What a tool call changed.
+    pub touched: Option<&'record Touch>,
 }
 
 /// The values of one filter flag. A record passes when it matches one of
@@ -70,6 +75,8 @@ pub struct Query {
     /// `--status`: only failed tool results when `true`, only the others
     /// when `false`.
     pub is_error: Option<bool>,
+    /// `--kind`: exact kinds of prompt.
+    pub kinds: Filter<String>,
     /// `--project`: substrings of the project directory or the cwd.
     pub projects: Filter<String>,
     /// `--since` and `--until`.
@@ -78,8 +85,14 @@ pub struct Query {
     pub sessions: Filter<String>,
     /// `--skill`: exact skill names.
     pub skills: Filter<String>,
+    /// `--superseded`: only the prompts sent again in place of when
+    /// `true`, only the others when `false`. A file tells it only once it
+    /// is read to the end, so `admits` does not see it.
+    pub superseded: Option<bool>,
     /// `--tool`: exact tool names.
     pub tools: Filter<String>,
+    /// `--touched`: paths, matched part by part by `touches`.
+    pub touched: Filter<String>,
 }
 
 impl<T> Default for Filter<T> {
@@ -175,9 +188,19 @@ impl Query {
             && self.skills.allows_name(facts.skill)
             && self.tools.allows_name(facts.tool)
             && self.denials.allows_name(facts.denial)
+            && self.kinds.allows_name(facts.kind)
+            && facts.touched.is_none_or(|touch| self.admits_touch(touch))
             && self
                 .is_error
                 .is_none_or(|want| facts.is_error.is_none_or(|failed| failed == want))
+    }
+
+    /// Whether a call that `touch` tells of passes `--touched`: one that
+    /// changed nothing passes only without it, so a leading `!` leaves a
+    /// path out of the calls that change one.
+    fn admits_touch(&self, touch: &Touch) -> bool {
+        self.touched.is_empty()
+            || (*touch != Touch::Nothing && self.touched.allows(|want| touch_matches(touch, want)))
     }
 
     /// Whether the project directory's name or the cwd contains a
@@ -212,6 +235,60 @@ impl Query {
         } else {
             Verdict::Near
         }
+    }
+}
+
+/// The parts of `path` between its slashes, or the backslashes of a
+/// Windows path, without the empty ones and `.`.
+fn path_parts(path: &str) -> Vec<&str> {
+    path.split(['/', '\\'])
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect()
+}
+
+/// Whether `value` has a part `touches` can match, one other than `/` and
+/// `.`.
+pub fn names_a_path(value: &str) -> bool {
+    !path_parts(value).is_empty()
+}
+
+/// Whether `path` is or is under `want`, a `--touched` value: the parts of
+/// `want` appear in a row among the parts of `path`, from the root when
+/// `want` is absolute. A part is matched whole, so `src/cli` is not in
+/// `src/client`.
+pub fn touches(want: &str, path: &str) -> bool {
+    let wanted = path_parts(want);
+    let parts = path_parts(path);
+    if wanted.is_empty() {
+        return false;
+    }
+    if want.starts_with('/') {
+        return path.starts_with('/') && parts.starts_with(&wanted);
+    }
+    parts
+        .windows(wanted.len())
+        .any(|run| run == wanted.as_slice())
+}
+
+/// Whether a word of the shell command `command` is a path `touches`
+/// `want`. The words are split at spaces, quotes, and the characters that
+/// end a word in a command line, such as `;`, `|`, `>`, and the `=` of an
+/// option, so a redirect or a `--out=FILE` is read too, and at `{`, `}`,
+/// `,`, and `:`, for a brace expansion, a list, or a `FILE:LINE`.
+pub fn command_touches(want: &str, command: &str) -> bool {
+    command
+        .split(|character: char| {
+            character.is_whitespace() || "'\";|&<>()=`{},:".contains(character)
+        })
+        .any(|word| touches(want, word))
+}
+
+/// Whether `touch` changed `want`, or names it in a shell command.
+fn touch_matches(touch: &Touch, want: &str) -> bool {
+    match *touch {
+        Touch::Command(ref command) => command_touches(want, command),
+        Touch::Nothing => false,
+        Touch::Path(ref path) => touches(want, path),
     }
 }
 

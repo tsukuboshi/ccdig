@@ -14,7 +14,7 @@ use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
     AGENT, Group, Head, Kind, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS,
-    Search, Session, Source, Summary, ToolCall, ToolResult, Turn,
+    Search, Session, Source, Summary, ToolCall, ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
@@ -373,6 +373,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         tool: "Bash".to_owned(),
         input: json!({"command": "git log --oneline", "description": "List commits"}),
         tool_use_id: "toolu_1".to_owned(),
+        touched: Touch::Nothing,
         result: Some(Outcome {
             is_error: true,
             denial: String::new(),
@@ -394,6 +395,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         tool: "Bash".to_owned(),
         input: json!({"command": "git log --oneline", "description": "List commits"}),
         tool_use_id: "toolu_1".to_owned(),
+        touched: Touch::Nothing,
         is_error: true,
         denial: String::new(),
         text: "fatal: not a git repository".to_owned(),
@@ -412,6 +414,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         tool: String::new(),
         input: serde_json::Value::Null,
         tool_use_id: "toolu_9".to_owned(),
+        touched: Touch::Nothing,
         is_error: false,
         text: "ok".to_owned(),
         subagent: String::new(),
@@ -481,6 +484,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         tool: "Bash".to_owned(),
         input: json!({}),
         tool_use_id: String::new(),
+        touched: Touch::Nothing,
         result: None,
         skill: String::new(),
         subagent: String::new(),
@@ -495,6 +499,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         tool: "Bash".to_owned(),
         input: json!({}),
         tool_use_id: String::new(),
+        touched: Touch::Nothing,
         is_error: false,
         denial: String::new(),
         text: String::new(),
@@ -560,6 +565,8 @@ fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
         By::Subagent,
         By::Model,
         By::Kind,
+        By::Denial,
+        By::Status,
         By::Day,
         By::Week,
         By::Month,

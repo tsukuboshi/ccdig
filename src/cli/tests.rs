@@ -15,6 +15,7 @@ mod properties;
 mod responses;
 mod stats;
 mod timeline;
+mod touched;
 
 use core::error::Error;
 use std::fs::{self, File};
@@ -635,27 +636,40 @@ fn bad_flags_fail_with_one_line() -> TestResult {
 #[test]
 fn a_flag_named_after_the_kind_key_points_at_type() -> TestResult {
     let history = History::new("root")?;
-    for args in [
-        &["records", "--kind", "prompt"][..],
-        &["records", "--kind=prompt"][..],
-        &["records", "--kinds", "prompt"][..],
-        &["--kind", "prompt", "records"][..],
+    let pointer = "pick the record types with --type: call, prompt, reply, result, or summary";
+    let elsewhere = "records, stats, and digest pick prompts by how they were typed with --kind";
+    for (args, want) in [
+        // Where --kind is a flag, a record type is not a kind it takes.
+        (
+            &["records", "--kind", "prompt"][..],
+            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+        ),
+        // Even with a flag that needs another type.
+        (
+            &["records", "--type", "call", "--kind", "call"][..],
+            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+        ),
+        (
+            &["records", "--kind=!call"][..],
+            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+        ),
+        (
+            &["records", "--kinds", "prompt"][..],
+            format!("ccdig: unexpected argument '--kinds' found; {elsewhere}; {pointer}\n"),
+        ),
+        (
+            &["--kind", "prompt", "records"][..],
+            format!("ccdig: unexpected argument '--kind' found; {elsewhere}; {pointer}\n"),
+        ),
+        (
+            &["sessions", "--kind", "text"][..],
+            format!("ccdig: unexpected argument '--kind' found; {elsewhere}; {pointer}\n"),
+        ),
     ] {
         let ran = history.run(args);
         let name = args.join(" ");
         check_eq(&ran.code, &1, &name)?;
-        check_eq(
-            ran.err.as_str(),
-            &format!(
-                "ccdig: unexpected argument '{}' found; pick the record types with --type: call, prompt, reply, result, or summary\n",
-                if name.contains("--kinds") {
-                    "--kinds"
-                } else {
-                    "--kind"
-                },
-            ),
-            &name,
-        )?;
+        check_eq(&ran.err, &want, &name)?;
     }
     let other = history.run(&["records", "--kindly"]);
     check_eq(
@@ -726,7 +740,7 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     }
     let records = history.run(&["records", "--help"]).out;
     for part in [
-        "Without --type, --tool, --status, --denial, or --skill, a search reads\nprompts and replies",
+        "Without --type or a flag for some kinds, such as --tool or --kind, a search\nreads prompts and replies",
         "add the tool calls with --type prompt,reply,call.\nA tool call's input can be long",
         "ccdig records --type prompt,reply,call --igrep deploy \\\n    --message-chars 500",
         "Also read sub-agent transcripts, which are left out by default",
@@ -807,6 +821,9 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--status <STATUS>",
                 "--denial <KIND>",
                 "--skill <NAME>",
+                "--kind <KIND>",
+                "--superseded <BOOL>",
+                "--touched <PATH>",
                 "Input:\n",
                 "--root <DIR>",
                 "--subagents",

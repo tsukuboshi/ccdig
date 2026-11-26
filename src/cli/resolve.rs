@@ -5,8 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use super::args::{
-    Activity, Command, Common, MaskKind, Output, RecordType, Selection, Status, listed, mask_kinds,
-    on_skip,
+    Activity, Command, Common, MaskKind, Output, Prompted, RecordType, Selection, Status, listed,
+    mask_kinds, on_skip, value_names,
 };
 use super::environment::Environment;
 use super::values::{self, Values};
@@ -15,8 +15,8 @@ use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
 use crate::config::{Config, Format, SessionSort, Shared};
 use crate::failure::Failure;
-use crate::filter::{Filter, Query, patterns};
-use crate::record::{Cuts, RECORD_KEYS, SESSION_KEYS, STATS_KEYS};
+use crate::filter::{Filter, Query, names_a_path, patterns};
+use crate::record::{Cuts, Kind, RECORD_KEYS, SESSION_KEYS, STATS_KEYS};
 use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
@@ -44,7 +44,16 @@ struct ResultFlags {
     status: bool,
 }
 
-/// The kind-specific filters, empty for `sessions` and `digest`.
+/// Which of the flags for calls and results are given.
+#[derive(Clone, Copy)]
+struct CallFlags {
+    /// `--tool`.
+    tool: bool,
+    /// `--touched`.
+    touched: bool,
+}
+
+/// The kind-specific filters, empty for `sessions`.
 #[derive(Default)]
 struct Narrowing {
     /// `--around`: how many records around each match to keep.
@@ -61,14 +70,20 @@ struct Narrowing {
     /// `--status`: whether to keep only failed results, only the others,
     /// or both.
     is_error: Option<bool>,
+    /// `--kind`.
+    kinds: Vec<String>,
     /// For `sessions`: the kinds of record whose matches a search counts.
     mentions: Option<Types>,
     /// `--skill`.
     skills: Vec<String>,
     /// `--subagents`.
     subagents: bool,
+    /// `--superseded`.
+    superseded: Option<bool>,
     /// `--tool`.
     tools: Vec<String>,
+    /// `--touched`.
+    touched: Vec<String>,
     /// Whether to add up each session's tokens, for `sessions`.
     usage: bool,
 }
@@ -99,6 +114,8 @@ struct StatsFlags {
     min_count: Option<usize>,
     /// `--format` and `--fields`.
     output: Output,
+    /// `--kind` and `--superseded`.
+    prompted: Prompted,
     /// `--type`, `--tool`, `--status`, and `--denial`.
     selection: Selection,
     /// `--sort`.
@@ -177,11 +194,14 @@ impl Flags {
                 denials: Filter::names(narrowing.denials),
                 grep,
                 is_error: narrowing.is_error,
+                kinds: Filter::names(narrowing.kinds),
                 projects: Filter::names(common.projects),
                 range,
                 sessions: Filter::names(sessions),
                 skills: Filter::names(narrowing.skills),
+                superseded: narrowing.superseded,
                 tools: Filter::names(narrowing.tools),
+                touched: Filter::names(narrowing.touched),
             },
             reading: Reading {
                 around: narrowing.around,
@@ -282,18 +302,37 @@ impl From<Activity> for Narrowing {
 }
 
 /// Checks that each kind-specific flag given has a kind in `kinds` it
-/// applies to: `tool` says whether `--tool` is given, and `results` which
-/// of the flags for results alone are.
+/// applies to: `tool` says which of the flags for calls and results are
+/// given, and `results` which of the flags for results alone are.
 fn check_kinds(
     kinds: Types,
     activity: &Activity,
-    tool: bool,
+    prompted: &Prompted,
+    tool: CallFlags,
     results: ResultFlags,
 ) -> Result<(), Failure> {
     let assistant = kinds.reads_assistant();
     for (given, applies, flag, needed) in [
         (
-            tool,
+            tool.touched,
+            kinds.calls || kinds.results,
+            "--touched",
+            "call or result",
+        ),
+        (
+            !prompted.kinds.is_empty(),
+            kinds.prompts,
+            "--kind",
+            "prompt",
+        ),
+        (
+            prompted.superseded.is_some(),
+            kinds.prompts,
+            "--superseded",
+            "prompt",
+        ),
+        (
+            tool.tool,
             kinds.calls || kinds.results,
             "--tool",
             "call or result",
@@ -323,31 +362,93 @@ fn check_kinds(
     Ok(())
 }
 
-/// The kinds `selection` and `activity` pick, after checking that each
-/// kind-specific flag given applies to one of them, and the filters they
-/// ask for.
-fn picked(selection: Selection, activity: Activity) -> Result<(Types, Narrowing), Failure> {
+/// Checks that each `--touched` value, a leading `!` aside, has a part to
+/// match: `.` or `/` alone would match nothing.
+fn check_touched(values: &[String]) -> Result<(), Failure> {
+    values
+        .iter()
+        .find(|value| !names_a_path(value.strip_prefix('!').unwrap_or(value)))
+        .map_or(Ok(()), |value| {
+            Err(Failure::TouchedPath {
+                value: value.clone(),
+            })
+        })
+}
+
+/// Checks that each `--kind` value, a leading `!` aside, is a kind of
+/// prompt: a record type there is a mix-up with `--type`.
+fn check_prompt_kinds(values: &[String]) -> Result<(), Failure> {
+    for value in values {
+        let name = value.strip_prefix('!').unwrap_or(value);
+        if !Kind::ALL.iter().any(|kind| kind.name() == name) {
+            let kinds: Vec<&str> = Kind::ALL.iter().map(|kind| kind.name()).collect();
+            return Err(Failure::KindValue {
+                kinds: listed(&kinds),
+                types: value_names::<RecordType>(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The kinds `selection`, `activity`, and `prompted` pick, after checking
+/// that each kind-specific flag given applies to one of them, and the
+/// filters they ask for.
+fn picked(
+    selection: Selection,
+    activity: Activity,
+    prompted: Prompted,
+) -> Result<(Types, Narrowing), Failure> {
     let Selection {
         denials,
         statuses,
         tools,
+        touched,
         types,
     } = selection;
+    // A record type given to --kind is a mix-up with --type, whatever else
+    // is given; so is a path with nothing to match.
+    check_prompt_kinds(&prompted.kinds)?;
+    check_touched(&touched)?;
     let results_only = ResultFlags {
         denial: !denials.is_empty(),
         status: !statuses.is_empty(),
     };
-    let kinds = record_types(
-        &types,
-        !tools.is_empty(),
-        results_only.any(),
-        !activity.skills.is_empty(),
-    );
-    check_kinds(kinds, &activity, !tools.is_empty(), results_only)?;
+    // No other kind-specific flag applies to prompts, so one given with
+    // --kind or --superseded is reported as needing its own --type.
+    let kinds = if types.is_empty() && (!prompted.kinds.is_empty() || prompted.superseded.is_some())
+    {
+        Types::PROMPTS
+    } else {
+        let mut picks = record_types(
+            &types,
+            !tools.is_empty() || !touched.is_empty(),
+            results_only.any(),
+            !activity.skills.is_empty(),
+        );
+        // A result would list each call --touched picks a second time.
+        if types.is_empty() && !touched.is_empty() && !results_only.any() {
+            picks.results = false;
+        }
+        picks
+    };
+    check_kinds(
+        kinds,
+        &activity,
+        &prompted,
+        CallFlags {
+            tool: !tools.is_empty(),
+            touched: !touched.is_empty(),
+        },
+        results_only,
+    )?;
     let narrowing = Narrowing {
         is_error: status_filter(&statuses),
         denials,
+        kinds: prompted.kinds,
+        superseded: prompted.superseded,
         tools,
+        touched,
         ..activity.into()
     };
     Ok((kinds, narrowing))
@@ -519,14 +620,13 @@ pub fn resolve(
             common: later,
             max_prompt_chars,
             max_session_chars,
-        } => {
-            let flags = Flags::with_env(earlier.merged(later), environment)?;
-            let limits = digest_limits(max_prompt_chars, max_session_chars)?;
-            Ok(Config::Digest {
-                limits,
-                shared: Box::new(flags.shared(Narrowing::default(), environment)?),
-            })
-        }
+            prompted,
+        } => digest_config(
+            earlier.merged(later),
+            prompted,
+            (max_prompt_chars, max_session_chars),
+            environment,
+        ),
         Command::Records {
             activity,
             around,
@@ -534,10 +634,14 @@ pub fn resolve(
             context,
             message_chars,
             output,
+            prompted,
             selection,
             tool_chars,
         } => {
-            let (kinds, picks) = picked(selection, activity)?;
+            if around.is_some_and(|records| records > 0) && prompted.superseded.is_some() {
+                return Err(Failure::SupersededWithAround);
+            }
+            let (kinds, picks) = picked(selection, activity, prompted)?;
             let format = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS, format)?;
             let cuts = Cuts {
@@ -581,6 +685,7 @@ pub fn resolve(
             common: later,
             min_count,
             output,
+            prompted,
             selection,
             sort,
         } => stats_config(
@@ -590,6 +695,7 @@ pub fn resolve(
                 common: earlier.merged(later),
                 min_count,
                 output,
+                prompted,
                 selection,
                 sort: sort.into(),
             },
@@ -602,6 +708,28 @@ pub fn resolve(
             format: format.into(),
         }),
     }
+}
+
+/// Resolves `digest`, with `given` the prompt and session limits, after
+/// checking the `--kind` values.
+fn digest_config(
+    common: Common,
+    prompted: Prompted,
+    given: (i64, i64),
+    environment: &Environment,
+) -> Result<Config, Failure> {
+    check_prompt_kinds(&prompted.kinds)?;
+    let narrowing = Narrowing {
+        kinds: prompted.kinds,
+        superseded: prompted.superseded,
+        ..Narrowing::default()
+    };
+    let flags = Flags::with_env(common, environment)?;
+    let limits = digest_limits(given.0, given.1)?;
+    Ok(Config::Digest {
+        limits,
+        shared: Box::new(flags.shared(narrowing, environment)?),
+    })
 }
 
 /// Resolves `sessions`, after checking that the flags that change which
@@ -641,10 +769,20 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
 /// groups, so every record is read.
 fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, Failure> {
     let subagents = given.activity.subagents;
-    let (kinds, narrowing) = picked(given.selection, given.activity)?;
+    let (kinds, narrowing) = picked(given.selection, given.activity, given.prompted)?;
     let format = given.output.format.into();
     let picked_fields = fields(given.output.fields, &STATS_KEYS, format)?;
     let keys = grouping_keys(given.by, given.sort)?;
+    // Only a result has a denial and a status, so without one every
+    // record would fall in the group whose value is null.
+    for (key, flag) in [(By::Denial, "--by denial"), (By::Status, "--by status")] {
+        if keys.contains(&key) && !kinds.results {
+            return Err(Failure::TypeForFlag {
+                flag,
+                kinds: "result",
+            });
+        }
+    }
     // Without the sub-agent transcripts, every record has no sub-agent.
     if keys.contains(&By::Subagent) && !subagents {
         return Err(Failure::ByNeedsSubagents);

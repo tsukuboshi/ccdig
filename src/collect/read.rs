@@ -447,10 +447,12 @@ fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
 
 /// The records of `drafts`, given what their calls came to and marked
 /// superseded where `picker`, which has now seen the whole file, says so,
-/// then masked and given the title.
+/// then masked and given the title. A prompt `--superseded` in `query`
+/// leaves out is dropped here, as only now is it known.
 fn seal_all<P>(
     drafts: Vec<(usize, Draft<P::Record>)>,
     picker: &P,
+    query: &Query,
     mask: &Mask,
     title: &Title<'_>,
 ) -> Vec<(usize, P::Record)>
@@ -459,12 +461,16 @@ where
 {
     drafts
         .into_iter()
-        .map(|(block, mut draft)| {
+        .filter_map(|(block, mut draft)| {
             draft.answer(mask, |id| picker.outcome(id));
-            if picker.superseded(draft.record()) {
+            let superseded = picker.superseded(draft.record());
+            if superseded {
                 draft.mark_superseded();
             }
-            (block, mask.seal(draft, title))
+            if draft.supersedable() && query.superseded.is_some_and(|want| want != superseded) {
+                return None;
+            }
+            Some((block, mask.seal(draft, title)))
         })
         .collect()
 }
@@ -487,12 +493,14 @@ where
         cwd: &head.cwd,
         denial: extra.denial,
         is_error: extra.is_error,
+        kind: extra.kind,
         project: &head.project,
         session_id: &head.session_id,
         skill: extra.skill,
         text: &text,
         timestamp: head.timestamp.instant(),
         tool: extra.tool,
+        touched: extra.touched,
     })
 }
 
@@ -588,7 +596,7 @@ where
         masked: file.parent.is_none().then_some(&title_masked),
         text: &masked_title,
     };
-    let records = seal_all(kept.drafts, &picker, mask, &sealing);
+    let records = seal_all(kept.drafts, &picker, query, mask, &sealing);
     let stats = lines.stats();
     Ok(Read {
         last,

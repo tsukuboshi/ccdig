@@ -32,6 +32,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its escapes such as `\u65e5` decoded.
 - `records --help` and `sessions --help` show examples of `--around`,
   `--context`, `--tool-chars`, `--type`, and `--subagents`.
+- `records --touched` and `stats --touched` keep the edits and writes of
+  a file, or of a file under a directory, and the Bash commands that name
+  it, matched part by part between the slashes, so the sessions that
+  changed a file can be found without a regular expression.
+- `stats --by denial` and `stats --by status` group the tool results by
+  why the call did not run and by `ok` or `error`.
+- `records`, `stats`, and `digest` take `--kind`, which keeps the prompts
+  of a kind such as `rejection`, or with a leading `!`, leaves them out,
+  and `--superseded true` or `false`, which keeps the prompts typed again
+  in place of others, or the others.
 
 ### Changed
 
@@ -40,8 +50,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ones.
 - A cut ends with the range that comes next, as in
   `… (12 more characters, next: 9-16)`.
-- The JSON schema is 6: calls have `result`, and a prompt's `kind` can be
-  `answer` or `approval`.
+- The JSON schema is 6: calls have `result`, a prompt's `kind` can be
+  `answer` or `approval`, and a `stats` record can have `denial` and
+  `status`.
+- `--kind` is a flag of `records`, `stats`, and `digest` now, where it
+  was only an error pointing to `--type`; a value that is not a kind of
+  prompt, such as `--kind call`, fails with that pointer, and `--kind`
+  elsewhere says which commands take it.
+- `stats --by denial` and `--by status` need `--type result`, or a flag
+  that picks the results.
 - The filter is `strict-v4`: a tool result that answers an
   `AskUserQuestion` or `ExitPlanMode` call is kept as a prompt, so
   `prompt_count` and the digest count it.

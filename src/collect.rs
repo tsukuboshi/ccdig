@@ -19,7 +19,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Mention, Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Outcome, Record, Search, Session};
+use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Touch};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -145,15 +145,20 @@ pub trait Select: Record {
 
 /// The facts the filters see that only some kinds have, `None` for a kind
 /// without them.
+#[derive(Default)]
 pub struct Extra<'record> {
     /// Why a tool call did not run, empty when it ran.
     pub denial: Option<&'record str>,
     /// Whether a tool reported a failure.
     pub is_error: Option<bool>,
+    /// How a prompt was typed.
+    pub kind: Option<&'static str>,
     /// The skill running at the time.
     pub skill: Option<&'record str>,
     /// The tool's name.
     pub tool: Option<&'record str>,
+    /// What a tool call changed.
+    pub touched: Option<&'record Touch>,
 }
 
 /// Where an entry is, for building its records.

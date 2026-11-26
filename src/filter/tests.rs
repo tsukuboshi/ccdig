@@ -5,7 +5,7 @@ mod properties;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Facts, Filter, Query, Verdict, compile_grep, patterns};
+use super::{Facts, Filter, Query, Verdict, command_touches, compile_grep, patterns, touches};
 use crate::testing::{TestResult, check_eq};
 use crate::when::DayRange;
 
@@ -16,12 +16,14 @@ fn record() -> Result<Facts<'static>, jiff::Error> {
         cwd: "/Users/alice/blog",
         denial: Some(""),
         is_error: Some(false),
+        kind: None,
         project: "-Users-alice-blog",
         session_id: "1f0e9d8c-session",
         skill: Some("tdd"),
         text: "Build FAILED: 3 tests",
         timestamp: "2026-10-13T01:00:00Z".parse::<Timestamp>()?,
         tool: Some("Bash"),
+        touched: None,
     })
 }
 
@@ -433,4 +435,63 @@ fn a_leading_backslash_bang_matches_a_bang() -> TestResult {
             ),
         ],
     )
+}
+
+#[test]
+fn a_path_is_touched_where_its_parts_line_up() -> TestResult {
+    for (want, path, touched) in [
+        ("src/cli/args.rs", "/home/a/ccdig/src/cli/args.rs", true),
+        ("src/cli", "/home/a/ccdig/src/cli/args.rs", true),
+        ("src/cli/", "/home/a/ccdig/src/cli/args.rs", true),
+        ("./src/cli", "/home/a/ccdig/src/cli/args.rs", true),
+        ("ccdig//src", "/home/a/ccdig/src/cli/args.rs", true),
+        ("README.md", "README.md", true),
+        ("src/main.rs", "C:\\Users\\me\\blog\\src\\main.rs", true),
+        // Not across a part's boundary.
+        ("src/cli", "/home/a/ccdig/src/client/x.rs", false),
+        ("args.rs", "/home/a/ccdig/src/cli/args.rs.bak", false),
+        ("cli/args", "/home/a/ccdig/src/cli/args.rs", false),
+        // An absolute path matches from the root.
+        ("/home/a/ccdig/README.md", "/home/a/ccdig/README.md", true),
+        ("/home/a/ccdig", "/home/a/ccdig/README.md", true),
+        (
+            "/home/a/ccdig/README.md",
+            "/tmp/home/a/ccdig/README.md",
+            false,
+        ),
+        // Nothing to match.
+        ("", "/home/a/ccdig/README.md", false),
+        ("/", "/home/a/ccdig/README.md", false),
+        ("README.md", "", false),
+    ] {
+        check_eq(&touches(want, path), &touched, &format!("{want} in {path}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_command_touches_a_path_one_of_its_words_is() -> TestResult {
+    for (want, command, touched) in [
+        ("README.md", "mv README.md docs/README.md", true),
+        ("docs", "mv README.md docs/README.md", true),
+        ("src/cli", "sed -i '' 's/a/b/' src/cli/args.rs", true),
+        ("README.md", "echo hi >README.md", true),
+        ("README.md", "echo hi >> \"README.md\"", true),
+        ("a.rs", "git add a.rs&&git commit -m x", true),
+        ("out.txt", "cargo run --out=out.txt", true),
+        ("x.rs", "(cd src; rm x.rs)", true),
+        ("args.rs", "cat src/cli/args.rs.bak", false),
+        ("x.rs", "cargo test", false),
+        ("README", "grep README.md", false),
+        ("src/a.rs", "cp src/a.rs{,.bak}", true),
+        ("docs", "tar czf x.tgz src,docs", true),
+        ("README.md", "grep -n x README.md:3", true),
+    ] {
+        check_eq(
+            &command_touches(want, command),
+            &touched,
+            &format!("{want} in {command}"),
+        )?;
+    }
+    Ok(())
 }

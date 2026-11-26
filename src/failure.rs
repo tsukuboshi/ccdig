@@ -64,6 +64,15 @@ pub enum Failure {
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),
+    /// `--kind` names something other than a kind of prompt, as a record
+    /// type.
+    #[error("--kind takes {kinds}; pick the record types with --type: {types}")]
+    KindValue {
+        /// The kinds of prompt.
+        kinds: String,
+        /// The record types.
+        types: String,
+    },
     /// The history root cannot be listed.
     #[error("list projects: {0}")]
     ListProjects(#[source] io::Error),
@@ -129,9 +138,19 @@ pub enum Failure {
         /// The `--sort` order.
         sort: &'static str,
     },
+    /// `--superseded` is given with `--around`, which keeps the records
+    /// next to a prompt before its file tells whether it was sent again.
+    #[error("--superseded cannot be used with --around")]
+    SupersededWithAround,
     /// A time cannot be formatted, such as one outside the supported years.
     #[error("format time: {0}")]
     TimeFormat(#[source] jiff::Error),
+    /// A `--touched` value has no part to match, as `.` or `/`.
+    #[error("--touched needs a path with a part other than / and ., not {value:?}")]
+    TouchedPath {
+        /// The value given.
+        value: String,
+    },
     /// A kind-specific flag is given without a `--type` it applies to.
     #[error("{flag} needs --type {kinds}")]
     TypeForFlag {

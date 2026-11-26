@@ -31,12 +31,14 @@ impl Record {
             cwd: self.names[1],
             denial: None,
             is_error: self.optional.2,
+            kind: None,
             project: self.names[2],
             session_id: self.names[3],
             skill: self.optional.0,
             text: self.names[4],
             timestamp: Timestamp::UNIX_EPOCH,
             tool: self.optional.1,
+            touched: None,
         }
     }
 }

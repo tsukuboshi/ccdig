@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::{By, Grouping, Sort, tally};
 use crate::record::{
-    AGENT, Group, Head, Kind, Prompt, Reply, Search, Source, ToolCall, ToolResult, Turn,
+    AGENT, Group, Head, Kind, Prompt, Reply, Search, Source, ToolCall, ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, zone};
@@ -97,6 +97,7 @@ fn call(
         tool: tool.to_owned(),
         input,
         tool_use_id: String::new(),
+        touched: Touch::Nothing,
         result: None,
         skill: String::new(),
         subagent: String::new(),
@@ -116,6 +117,7 @@ fn result(session: &str, time: &str, tool: &str, text: &str) -> Result<Turn, Str
         tool: tool.to_owned(),
         input: Value::Null,
         tool_use_id: String::new(),
+        touched: Touch::Nothing,
         is_error: false,
         denial: String::new(),
         text: text.to_owned(),
