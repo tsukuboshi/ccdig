@@ -730,8 +730,20 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
         "add the tool calls with --type prompt,reply,call.\nA tool call's input can be long",
         "ccdig records --type prompt,reply,call --igrep deploy \\\n    --message-chars 500",
         "Also read sub-agent transcripts, which are left out by default",
+        "--type call shows each call with its result, so the answers to a\nquestion are not left out",
+        "  ccdig records --type prompt,reply,call --igrep deploy --around 2 --format md\n",
+        "  ccdig records --type call --tool Bash --igrep error --context 3 --format md\n",
+        "  ccdig records --type call --tool-chars 2001-4000\n",
     ] {
         check_eq(&records.contains(part), &true, &records)?;
+    }
+    let sessions = history.run(&["sessions", "--help"]).out;
+    for part in [
+        "--grep and --igrep search the prompts and replies, and count the matches\nof each session",
+        "  ccdig sessions --igrep deploy --type prompt,reply,call,result --subagents --format md\n",
+        "in sessions, they search the records of the types --type picks",
+    ] {
+        check_eq(&sessions.contains(part), &true, &sessions)?;
     }
     let top = history.run(&["--help"]).out;
     check_eq(&top.contains("kind of record"), &false, &top)?;
@@ -847,7 +859,11 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
         &true,
         &digest,
     )?;
-    check_eq(&digest.contains("--type"), &false, "digest has no --type")?;
+    check_eq(
+        &digest.contains("--type <TYPE>"),
+        &false,
+        "digest has no --type",
+    )?;
     Ok(())
 }
 

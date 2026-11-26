@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   has a `Session` and a `Cwd` column.
 - Markdown indents a tool's output that is a JSON object or array, with
   its escapes such as `\u65e5` decoded.
+- `records --help` and `sessions --help` show examples of `--around`,
+  `--context`, `--tool-chars`, `--type`, and `--subagents`.
 
 ### Changed
 

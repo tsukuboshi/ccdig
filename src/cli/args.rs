@@ -156,7 +156,16 @@ pub enum Command {
                       repeats, as in\n\
                       \x20 ccdig records --type prompt,reply,call --igrep deploy \\\n\
                       \x20   --message-chars 500 --tool-chars 100 \\\n\
-                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
+                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'\n\
+                      --type call shows each call with its result, so the answers to a\n\
+                      question are not left out; --type result lists the results alone.\n\
+                      List the records around each match with --around, as in\n\
+                      \x20 ccdig records --type prompt,reply,call --igrep deploy --around 2 --format md\n\
+                      or the lines around it in each record with --context, as in\n\
+                      \x20 ccdig records --type call --tool Bash --igrep error --context 3 --format md\n\
+                      Read on where --tool-chars or --message-chars cut a text off with the\n\
+                      range the cut names, as in\n\
+                      \x20 ccdig records --type call --tool-chars 2001-4000"
     )]
     Records {
         /// The flags that pick the records.
@@ -207,7 +216,13 @@ pub enum Command {
         output: Output,
     },
     /// List sessions that have at least one selected prompt.
-    #[command(display_order = 2)]
+    #[command(
+        display_order = 2,
+        after_help = "--grep and --igrep search the prompts and replies, and count the matches\n\
+                      of each session; search the tool calls and results too with --type, and\n\
+                      the sub-agents with --subagents, as in\n\
+                      \x20 ccdig sessions --igrep deploy --type prompt,reply,call,result --subagents --format md"
+    )]
     Sessions {
         /// The shared flags.
         #[command(flatten)]
@@ -364,7 +379,8 @@ pub struct Common {
     /// Keep records whose text matches this regular expression, after
     /// masking, or with a leading !, leave them out (repeatable); in
     /// records, --around lists the records and --context the lines around a
-    /// match.
+    /// match, and in sessions, they search the records of the types --type
+    /// picks.
     #[arg(
         long = "grep",
         value_name = "REGEX",
