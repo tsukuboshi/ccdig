@@ -1,5 +1,7 @@
 # Records
 
+- Records: 1 (call 1)
+
 ## Weekly report draft
 
 - Project: `-Users-alice-blog`
@@ -15,4 +17,10 @@
   "command": "git log --oneline",
   "description": "List commits"
 }
+```
+
+- Result: error
+
+```text
+fatal: not a git repository
 ```

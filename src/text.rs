@@ -11,6 +11,16 @@ const INLINE_SPECIAL: &str = "\\`*_[]<>!&|";
 /// What a heading shows for a session without a title.
 const UNTITLED: &str = "(untitled)";
 
+/// Which characters of a text to keep: `take` of them after the first
+/// `skip`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Span {
+    /// How many characters to leave out before.
+    pub skip: usize,
+    /// How many characters to keep.
+    pub take: usize,
+}
+
 /// Replaces control characters other than newline and tab, and format
 /// characters other than the zero-width joiners, with U+FFFD.
 ///
@@ -25,6 +35,35 @@ pub fn clean_text(text: &str) -> String {
         .chars()
         .map(|ch| if is_unsafe(ch) { '\u{FFFD}' } else { ch })
         .collect()
+}
+
+/// The characters of `text` that `span` keeps. When it leaves some out
+/// before, they are counted before an ellipsis; when it leaves some out
+/// after, an ellipsis follows, with how many there are and the range that
+/// comes next, counted from 1 as `cut -c` counts.
+pub fn cut_span(text: &str, span: Span) -> String {
+    let length = text.chars().count();
+    let skipped = span.skip.min(length);
+    let mut out = String::new();
+    if skipped > 0 {
+        out.extend(["(", &skipped.to_string(), " characters before) \u{2026}"]);
+    }
+    out.extend(text.chars().skip(skipped).take(span.take));
+    let rest = length.saturating_sub(skipped).saturating_sub(span.take);
+    if rest > 0 {
+        let from = length.saturating_sub(rest).saturating_add(1);
+        let to = from.saturating_add(span.take).saturating_sub(1).min(length);
+        out.extend([
+            "\u{2026} (",
+            &rest.to_string(),
+            " more characters, next: ",
+            &from.to_string(),
+            "-",
+            &to.to_string(),
+            ")",
+        ]);
+    }
+    out
 }
 
 /// `text`, cut to `limit` characters and followed by an ellipsis and how

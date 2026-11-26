@@ -250,7 +250,7 @@ fn a_match_no_single_line_holds_lists_no_lines_and_prints_the_whole_text() -> Te
 }
 
 #[test]
-fn max_tool_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
+fn tool_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
     let history = history_with_long_records()?;
     let ran = history.run_week(&[
         "records",
@@ -262,7 +262,7 @@ fn max_tool_chars_cuts_the_lines_of_a_call_s_input_too() -> TestResult {
         "cloud edition",
         "--context",
         "0",
-        "--max-tool-chars",
+        "--tool-chars",
         "9",
         "--format",
         "md",

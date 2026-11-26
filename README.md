@@ -85,8 +85,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | One record per session with a selected prompt | `--format`, `--fields`, `--sort` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `sessions` | One record per session with a selected prompt | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
@@ -100,9 +100,9 @@ defaults to `prompt,reply`:
 
 | Type | Record |
 | --- | --- |
-| `prompt` | A prompt a person typed |
+| `prompt` | A prompt a person typed, or what they answered through a dialog |
 | `reply` | A text block of the assistant |
-| `call` | A tool call |
+| `call` | A tool call, with what its result says |
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
 
@@ -131,8 +131,12 @@ Five options apply to some kinds only:
   `--skill` reads prompts and replies only: give
   `--type prompt,reply,call` to read the tool calls too. A call's input
   can be long, so keep the output small with `--limit`, or cut the texts
-  with `--max-message-chars` and `--max-tool-chars` and leave keys out
+  with `--message-chars` and `--tool-chars` and leave keys out
   with `--fields`.
+- A call carries its result, so `--type call` does not leave out what a
+  tool returned, such as the answers to a question; `--type result` lists
+  the results on their own. A call whose file has no result for it, as
+  when it was interrupted, has a `null` result.
 - Sub-agent transcripts are left out unless `--subagents` is given. The
   instruction a sub-agent was given is not a prompt a person typed, so it
   is never listed; its replies, calls, and results are, of the types
@@ -151,8 +155,8 @@ Four options shape the output:
 | --- | --- |
 | `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
-| `--max-message-chars N` | Cuts the text of each prompt, reply, and summary to N characters, followed by `… (M more characters)` |
-| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, to N characters, so a `Write` of a whole file does not fill the output |
+| `--message-chars N` | Keeps the first N characters of the text of each prompt, reply, and summary, followed by `… (M more characters, next: N+1-2N)`. `--message-chars FROM-TO` keeps the characters from FROM to TO, counted from 1 as `cut -c` counts, after `(K characters before) …`, so the range a cut names reads on where it left off |
+| `--tool-chars N` | Does the same to each string in a tool's input, and to each tool result's output, the one a call carries too, so a `Write` of a whole file does not fill the output. It also takes `FROM-TO`, which leaves whole a string of an input no longer than TO - FROM + 1 characters, one the cut of that many left whole, such as a file's path |
 
 ### sessions
 
@@ -161,7 +165,13 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
 
 - `--grep` and `--igrep` pick the sessions whose prompts or replies they
   match, and `match_count` says how many of them matched in each, so the
-  session that mentions a word most can be read first. The other keys
+  session that mentions a word most can be read first. `--type` picks
+  other types of record to search, as `records --type` does, such as
+  `--type prompt,reply,call,result`, and `--subagents` adds the matches in
+  the replies, calls, and results of each session's sub-agent
+  transcripts to the session; the instruction a sub-agent was given is
+  not a prompt, so it is not searched. Both need a pattern that does not
+  start with `!`. The other keys
   come from every prompt the other filters keep, as without `--grep`,
   less those a pattern with a leading `!` leaves out, and Markdown adds a
   `Matches` column. Without a pattern that does not start
@@ -170,8 +180,9 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   first one's time. `ended_at` is the time of the session's last prompt,
   reply, tool call, or tool result in the range, so it shows when the
   work ended even when a session has one prompt. A comment the user typed
-  when they turned a tool call down counts as a prompt.
-- `first_match` holds the first prompt or reply a search matched in the
+  when they turned a tool call down counts as a prompt, and so do the
+  answers to a question and a plan approved or turned down.
+- `first_match` holds the first record a search matched in the
   session, so it can be judged without reading its records: its `type`,
   `timestamp`, the `line` a pattern matched in its text, and that line,
   masked, on one line and cut to 200 characters, as `text`. When the
@@ -233,7 +244,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   others with `--sort key`.
 - The keys hold the values after masking, so with `--mask-values` the
   projects are grouped by their labels.
-- `--around`, `--context`, `--max-message-chars`, and `--max-tool-chars`
+- `--around`, `--context`, `--message-chars`, and `--tool-chars`
   are errors, as they would change what is counted. So is `--by subagent`
   without `--subagents`, which leaves out every sub-agent's record.
 
@@ -244,7 +255,7 @@ A record has these keys, in this order:
 | The `--by` keys | Their values, in the order `--by` names them, or `null` |
 | `session_title`, `project`, `file` | With `--by session`, the session's last title, project, and transcript file, each `null` when empty, so it can be passed on to `records --session` |
 | `count` | How many records |
-| `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--max-tool-chars` cuts each string in an input, so it measures something else |
+| `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--tool-chars` cuts each string in an input, so it measures something else |
 | `sessions` | How many sessions the records are in; not written with `--by session` |
 | `first`, `last` | The times of the first and the last record, written as `timestamp` is |
 | `usage` | The tokens; see Tokens |
@@ -253,7 +264,8 @@ A record has these keys, in this order:
 
 A Markdown digest of the prompts, capped in size. The filters apply to
 the prompts. A comment the user typed when they turned a tool call down is
-listed with `(rejection)` before it.
+listed with `(rejection)` before it, the answers to a question with
+`(answer)`, and a plan approved with `(approval)`.
 
 | Flag | Default | Does |
 | --- | --- | --- |
@@ -267,7 +279,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.4","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":6,"filter":"strict-v4"}
 ```
 
 ## Shared options
@@ -384,14 +396,18 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 | Type | Keys in between |
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
 `slash` or `text`, or `rejection` for what the user typed when they turned
-a tool call down; the record type is `type`, which `--type` picks.
+a tool call down, `answer` for the answers to a question, and `approval`
+for a plan approved; the record type is `type`, which `--type` picks.
 
+- `result` of a call is what its result in the same file says, masked:
+  `is_error`, `denial`, and `text`, as a result has them, or `null` when
+  the file has no result for it.
 - `matched` is `false` for a record `--around` lists next to a match, and
   `true` for every other record.
 - `matches` lists, with `--context`, the lines `--grep` or `--igrep`
@@ -418,7 +434,13 @@ a tool call down; the record type is `type`, which `--type` picks.
   `ExitPlanMode`. It is on the line of the call's result, so its
   `source.uuid` is the result's, and the result's `tool` names the tool.
   Claude Code's own text when the user picks "clarify" in a question
-  dialog is not a comment.
+  dialog is not a comment. A plan turned down without a comment is a
+  `rejection` too, with the first sentence of Claude Code's text.
+- A prompt of kind `answer` is what the user picked or typed in an
+  `AskUserQuestion` dialog, without Claude Code's words around it, and one
+  of kind `approval` a plan approved with `ExitPlanMode`, with the first
+  sentence of Claude Code's text. Like a `rejection`, each is on the line
+  of the call's result.
 - `superseded` is `true` for a prompt the user sent another prompt in
   place of, later in the file: one that follows the same line, as when
   they press Esc and edit the prompt, or interrupt the reply and send it
@@ -486,7 +508,7 @@ a tool call down; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v4","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -506,9 +528,23 @@ A script can check `schema` and `filter` with
 
 ### Markdown
 
+`records --format md` starts with how many records it lists, by type, and
+how many `--around` added as context, as in
+`- Records: 7 (prompt 4, call 3) + 2 context`, so an empty list reads
+`- Records: 0`. `sessions` and `stats` start with how many sessions or
+groups they list, and a search of `sessions` with how many matches, by
+type. The sessions table has a `Session` and a `Cwd` column, which
+`records --session` and `--project` take.
+
 `records --format md` puts the records of each transcript file under one
 heading with the project and session, and each record under a heading
-with its time and kind. A sub-agent's record names the sub-agent at the
+with its time and kind. A call shows its result under its input, and the
+result is not shown again on its own unless `--context` lists its matched
+lines, or a search matched it and not its call, which then shows as
+context. `--limit` counts a result shown under its call, as JSON lists
+it, so Markdown can show fewer records than the limit. A tool's output that is a JSON object or array is indented, with
+its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
+tool wrote it. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``, so it stands apart from the session's own records.
 
@@ -541,6 +577,9 @@ A `user` entry is dropped, with the first matching reason, when it:
 2. has an `origin.kind` other than `human`;
 3. carries a `tool_result` block, unless the user turned the call down
    with a comment: the comment is kept, as a prompt of kind `rejection`;
+   or the block answers an `AskUserQuestion` or `ExitPlanMode` call: the
+   answer is kept, as a prompt of kind `answer`, `approval`, or
+   `rejection`;
 4. starts with a harness tag such as `<system-reminder>`,
    `<task-notification>`, `<local-command-…>`, `<bash-input>`,
    `<bash-stdout>`, or `<user-prompt-submit-hook>`;

@@ -14,11 +14,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use self::gather::{FileRecords, gather, inherit_title};
+use self::kinds::Types;
 use self::mask::{Draft, Mask};
-use self::read::{Skipped, read_file};
+use self::read::{Mention, Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Record, Search, Session};
+use crate::record::{AGENT, Head, Outcome, Record, Search, Session};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
@@ -45,10 +46,11 @@ pub struct Reading {
     /// With `--context`, how many lines around each line `--grep` matched
     /// to list in a record's `matches`.
     pub excerpt: Option<usize>,
-    /// For `sessions --grep`: whether to keep every prompt the other
-    /// filters let through and count the prompts and replies the including
-    /// patterns match, rather than keep only the prompts they match.
-    pub mentions: bool,
+    /// For `sessions --grep`: the kinds of record whose matches of the
+    /// including patterns to count, keeping every prompt the other filters
+    /// let through rather than only the prompts the patterns match; `None`
+    /// otherwise.
+    pub mentions: Option<Types>,
     /// Whether to read sub-agent transcripts too.
     pub subagents: bool,
     /// Whether to add up the tokens of each session's responses in the
@@ -62,6 +64,13 @@ pub struct Reading {
 pub trait Pick {
     /// The record it makes.
     type Record: Select;
+
+    /// What the call `tool_use_id` came to, its text not yet masked, as
+    /// only the whole file tells: asked once every line has been seen.
+    /// Only calls have one.
+    fn outcome(&self, _tool_use_id: &str) -> Option<&Outcome> {
+        None
+    }
 
     /// Makes the records of an entry that `wants` accepted, each with its
     /// block's index in the line. A record comes with its text masked and
@@ -109,6 +118,13 @@ pub trait Select: Record {
 
     /// What masking the kind's own fields counted.
     fn masked_mut(&mut self) -> &mut Counts;
+
+    /// The call's ID, where the kind carries what the call came to, and
+    /// whether masking changed the record, `None` for a kind that is not a
+    /// call.
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        None
+    }
 
     /// What the search made of the record, which `--around` and
     /// `--context` fill in.
@@ -224,6 +240,9 @@ where
     // What masking a sub-agent's own title counted, kept until it is known
     // whether its session's title replaces it.
     let mut own_titles: HashMap<PathBuf, Counts> = HashMap::new();
+    // The matches in each session's sub-agents, by the session's file,
+    // which count toward the session.
+    let mut delegated: HashMap<PathBuf, Vec<Mention>> = HashMap::new();
     for file in &found.sessions {
         // A time outside the supported years skips this file, not the run.
         let modified = match Stamp::from_system_time(file.modified) {
@@ -243,7 +262,12 @@ where
             continue;
         }
         match read_file(file, query, mask, new_picker(), reading) {
-            Ok(read) => {
+            Ok(mut read) => {
+                if let Some(ref parent) = file.parent
+                    && let Some(theirs) = read.mentions.take()
+                {
+                    delegated.entry(parent.clone()).or_default().extend(theirs);
+                }
                 if file.parent.is_some() {
                     own_titles.insert(file.path.clone(), read.title_masked);
                 } else if reading.subagents && !read.title.is_empty() {
@@ -280,6 +304,13 @@ where
     }
     for session in &mut sessions {
         inherit_title(session.file, &mut session.records, &titles, &own_titles);
+        if let Some(theirs) = delegated.remove(&session.file.path)
+            && let Some(ref mut mentions) = session.mentions
+        {
+            mentions.extend(theirs);
+            // The first match of the session is the earliest of all.
+            mentions.sort_by_key(Mention::instant);
+        }
     }
     // Order sessions by their first record. A resumed copy starts with the
     // original's timestamps, so ties go to the older file, the original,

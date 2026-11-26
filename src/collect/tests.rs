@@ -152,7 +152,7 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
         Reading {
             around: None,
             excerpt: None,
-            mentions: false,
+            mentions: None,
             subagents: true,
             usage: false,
         },
@@ -292,7 +292,7 @@ fn a_resumed_copy_s_first_match_is_one_of_its_own() -> TestResult {
     let corpus = collect(
         root.path(),
         Reading {
-            mentions: true,
+            mentions: Some(Types::CONVERSATION),
             usage: true,
             ..Reading::default()
         },
@@ -351,7 +351,7 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
         Reading {
             around: None,
             excerpt: None,
-            mentions: false,
+            mentions: None,
             subagents: false,
             usage: true,
         },

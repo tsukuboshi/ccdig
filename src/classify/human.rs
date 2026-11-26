@@ -5,7 +5,7 @@ use crate::transcript::entry::{Entry, Role};
 
 /// Names the rule set `classify` applies. It changes whenever a rule change
 /// can change which entries are kept.
-pub const FILTER_VERSION: &str = "strict-v3";
+pub const FILTER_VERSION: &str = "strict-v4";
 
 /// Tags the harness writes at the start of a body under the user role.
 /// `local-command` also covers `<local-command-caveat>` and

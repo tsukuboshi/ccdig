@@ -27,7 +27,7 @@ those before it.
 | `text` | Sanitizing text for the terminal and Markdown. |
 | `when` | Timestamps, day ranges, and named time zones. |
 | `transcript` | Producer: `walk` lists the files, `reader` streams their lines, `entry` decodes one line. |
-| `classify` | Whether a user line is something a person typed, folding slash commands back, and why a tool call did not run. |
+| `classify` | Whether a user line is something a person typed, folding slash commands back, why a tool call did not run, and what the user answered through a dialog. |
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |
 | `stats` | Grouping records into the lines of `ccdig stats`: the keys `--by` takes, and what each group counts and adds up. |

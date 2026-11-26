@@ -56,8 +56,12 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             kinds,
             shared,
         } => {
-            let mut corpus = gather(&shared, SessionSort::Time, || Records::new(kinds))?;
+            let mut corpus = gather(&shared, SessionSort::Time, || Records::with_results(kinds))?;
             for record in &mut corpus.records {
+                // Before the cut, which would leave the JSON unreadable.
+                if format == Format::Markdown {
+                    shared.mask.indent_json(record);
+                }
                 record.cut(cuts);
             }
             let out = write(format, &fields, &corpus.records, &shared.run, |records| {
@@ -78,7 +82,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
         } => {
             let corpus = gather(&shared, sort, Prompts::default)?;
             let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
-                markdown::sessions(sessions, &shared.zone, shared.reading.mentions)
+                markdown::sessions(sessions, &shared.zone, shared.reading.mentions.is_some())
             })?;
             printed(
                 &shared,

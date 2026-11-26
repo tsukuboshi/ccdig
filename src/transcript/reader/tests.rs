@@ -10,10 +10,7 @@ use crate::testing::{TestResult, check_eq};
 use crate::transcript::entry::Role;
 
 /// The roles the prompt subcommands read.
-const PROMPTS: Roles = Roles {
-    assistant: false,
-    user: true,
-};
+const PROMPTS: Roles = Roles::USER;
 
 /// What a test sees of a delivered entry: its line, role, and text.
 type Seen = (usize, Role, String);
@@ -93,6 +90,7 @@ fn assistant_lines_come_through_when_asked_for() -> TestResult {
         MAX_LINE_BYTES,
         Roles {
             assistant: true,
+            calls_to: &[],
             user: false,
         },
     )?;
@@ -145,6 +143,7 @@ fn undecodable_lines_are_counted_only_for_wanted_roles() -> TestResult {
         MAX_LINE_BYTES,
         Roles {
             assistant: true,
+            calls_to: &[],
             user: true,
         },
     )?;

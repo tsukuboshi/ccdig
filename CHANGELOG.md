@@ -8,6 +8,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A call has a new `result` key, what its result in the same file says:
+  `is_error`, `denial`, and `text`, or `null` when there is none. So
+  `--type call` no longer leaves out what a tool returned, such as the
+  answers to a question, and Markdown shows the result under its call.
+- The answers to an `AskUserQuestion` dialog are prompts of kind
+  `answer`, a plan approved with `ExitPlanMode` one of kind `approval`,
+  and a plan turned down without a comment one of kind `rejection`, so
+  `--type prompt`, `sessions`, and `digest` hold every answer the user
+  gave.
+- `sessions --type` picks the types of record `--grep` and `--igrep`
+  search and count, `prompt,reply` by default, and `sessions --subagents`
+  counts the matches in a session's sub-agents toward the session.
+- `--tool-chars` and `--message-chars` take a range such as `2001-4000`,
+  and a cut names the range that comes next, so a long text can be read
+  part by part.
+- Markdown starts with how many records, sessions, or groups it lists,
+  by type, so an empty list reads `- Records: 0`, and the sessions table
+  has a `Session` and a `Cwd` column.
+- Markdown indents a tool's output that is a JSON object or array, with
+  its escapes such as `\u65e5` decoded.
+- `records --help` and `sessions --help` show examples of `--around`,
+  `--context`, `--tool-chars`, `--type`, and `--subagents`.
+
+### Changed
+
+- `--max-tool-chars` is now `--tool-chars`, and `--max-message-chars`
+  `--message-chars`; the old names fail with a line that names the new
+  ones.
+- A cut ends with the range that comes next, as in
+  `… (12 more characters, next: 9-16)`.
+- The JSON schema is 6: calls have `result`, and a prompt's `kind` can be
+  `answer` or `approval`.
+- The filter is `strict-v4`: a tool result that answers an
+  `AskUserQuestion` or `ExitPlanMode` call is kept as a prompt, so
+  `prompt_count` and the digest count it.
+
 ## [0.0.4] - 2026-11-25
 
 ### Added

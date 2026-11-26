@@ -8,9 +8,10 @@ use core::mem;
 use std::collections::HashSet;
 
 use super::excerpt::excerpt;
-use super::kinds::Replies;
+use super::kinds::Records;
 use super::mask::{Draft, Mask, Title};
 use super::{Pick, Reading, Select, Spot};
+use jiff::Timestamp;
 use regex::Regex;
 
 use crate::classify::human::{Reason, classify};
@@ -44,7 +45,7 @@ pub struct Read<T> {
     pub usage: Vec<(String, Usage)>,
 }
 
-/// A prompt or reply the including patterns matched, for `sessions`. Only
+/// A record the including patterns matched, for `sessions`. Only
 /// the first one a session counts is shown, so the line it matched is
 /// found when `first_match` asks for it, not for every match.
 pub struct Mention {
@@ -52,7 +53,7 @@ pub struct Mention {
     fields: Vec<(String, String)>,
     /// Its line ID and block, which a resumed copy repeats.
     key: (String, usize),
-    /// `prompt` or `reply`.
+    /// Its type, as `--type` names it.
     kind: &'static str,
     /// What masking its text counted.
     masked: Counts,
@@ -92,9 +93,20 @@ impl Mention {
         }
     }
 
+    /// When it was written, to order the matches of a session and its
+    /// sub-agents.
+    pub const fn instant(&self) -> Timestamp {
+        self.timestamp.instant()
+    }
+
     /// Its line ID and block, which a resumed copy repeats.
     pub const fn key(&self) -> &(String, usize) {
         &self.key
+    }
+
+    /// Its type, as `--type` names it.
+    pub const fn kind(&self) -> &'static str {
+        self.kind
     }
 
     /// What masking its text counted.
@@ -292,7 +304,7 @@ where
 
     /// The keeper `reading` asks for.
     fn new(reading: Reading) -> Self {
-        if reading.mentions {
+        if reading.mentions.is_some() {
             return Self::Tally(Vec::new());
         }
         Self::Window(Window {
@@ -314,10 +326,8 @@ where
         lines: Option<usize>,
     ) {
         match *self {
-            Self::Tally(ref mut found) => {
-                if verdict == Verdict::Hit {
-                    found.push(Mention::of(drafted.1.record(), drafted.0));
-                }
+            // The matches are counted apart, over the kinds asked for.
+            Self::Tally(_) => {
                 if verdict != Verdict::Out {
                     kept.keep(None, drafted, response);
                 }
@@ -382,15 +392,15 @@ where
     }
 }
 
-/// The replies of the assistant line `entry` that the including patterns
-/// of `query` match and the other filters let through, by line ID and
-/// block. They are counted, not kept, and a line out of the range is not
-/// masked only to be dropped.
-fn mentioned_replies(spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<Mention> {
+/// The records `counter` picks of `entry`, which it wanted, that the
+/// including patterns of `query` match and the other filters let through,
+/// by line ID and block. They are counted, not kept, and a line out of the
+/// range is not masked only to be dropped.
+fn mentioned(counter: &mut Records, spot: &Spot<'_>, entry: &Entry, query: &Query) -> Vec<Mention> {
     if !query.range.contains(spot.timestamp.instant()) {
         return Vec::new();
     }
-    Replies
+    counter
         .pick(spot, entry)
         .into_iter()
         .filter(|pair| verdict(query, &pair.1) == Verdict::Hit)
@@ -435,8 +445,9 @@ fn later(last: Option<Stamp>, entry: &Entry, query: &Query) -> Option<Stamp> {
     }
 }
 
-/// The records of `drafts`, marked superseded where `picker`, which has now
-/// seen the whole file, says so, then masked and given the title.
+/// The records of `drafts`, given what their calls came to and marked
+/// superseded where `picker`, which has now seen the whole file, says so,
+/// then masked and given the title.
 fn seal_all<P>(
     drafts: Vec<(usize, Draft<P::Record>)>,
     picker: &P,
@@ -449,6 +460,7 @@ where
     drafts
         .into_iter()
         .map(|(block, mut draft)| {
+            draft.answer(mask, |id| picker.outcome(id));
             if picker.superseded(draft.record()) {
                 draft.mark_superseded();
             }
@@ -503,7 +515,8 @@ where
 {
     let wanted = picker.roles();
     let roles = Roles {
-        assistant: wanted.assistant || reading.usage || reading.mentions,
+        assistant: wanted.assistant || reading.usage || reading.mentions.is_some(),
+        calls_to: wanted.calls_to,
         user: wanted.user,
     };
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
@@ -514,6 +527,7 @@ where
         priced: HashSet::new(),
     };
     let mut keeper = Keeper::new(reading);
+    let mut counter = reading.mentions.map(Records::new);
     let mut untimed = 0_usize;
     let mut used = Vec::new();
     let mut responses = HashSet::new();
@@ -528,17 +542,21 @@ where
         if reading.usage {
             tally(&entry, query, &mut responses, &mut used);
         }
-        if let Keeper::Tally(ref mut found) = keeper
-            && entry.role == Role::Assistant
+        // `wants` sees every line, so the counter pairs results with
+        // their calls.
+        if let Some(ref mut tally) = counter
+            && tally.wants(&entry)
+            && let Keeper::Tally(ref mut found) = keeper
             && let Some(timestamp) = entry.timestamp
         {
-            found.extend(mentioned_replies(
+            found.extend(mentioned(
+                tally,
                 &titles.spot(file, line, mask, timestamp),
                 &entry,
                 query,
             ));
         }
-        if !wanted.assistant && entry.role == Role::Assistant {
+        if !wanted.assistant && wanted.calls_to.is_empty() && entry.role == Role::Assistant {
             continue;
         }
         if !picker.wants(&entry) {

@@ -9,9 +9,10 @@ use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::denial::{Answer, comment_in, denial};
 use crate::classify::human::{Reason, classify};
+use crate::classify::response::{ASK, DIALOGS, PLAN, Response, response};
 use crate::classify::slash::fold;
 use crate::record::{
-    Head, Kind, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
+    Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
 };
 use crate::redact::Counts;
 use crate::transcript::entry::{Block, Entry, Role, Usage};
@@ -30,6 +31,10 @@ struct Call {
 /// Picks the records of the kinds in `types`, in the order they were
 /// written.
 pub struct Records {
+    /// When the calls carry their results: for each call picked so far in
+    /// the file, by its ID, what it came to, unmasked, once its result is
+    /// seen.
+    outcomes: Option<HashMap<String, Option<Outcome>>>,
     /// Notes which prompts were sent again.
     prompts: Prompts,
     /// Pairs the results with their calls.
@@ -57,9 +62,13 @@ pub struct Types {
     pub summaries: bool,
 }
 
-/// Picks the prompts a person typed.
+/// Picks the prompts a person typed, and what they answered through a
+/// dialog.
 #[derive(Default)]
 pub struct Prompts {
+    /// The calls seen so far in the file that show the user a dialog, by
+    /// ID: the tool's name.
+    dialogs: HashMap<String, String>,
     /// The last typed prompt seen so far in the file that follows each
     /// line, by the line's ID: a prompt sent again in place of another
     /// follows the same line.
@@ -85,6 +94,16 @@ pub struct Results {
 }
 
 impl Types {
+    /// Prompts and replies: the conversation, which `records` lists and
+    /// `sessions` searches by default.
+    pub const CONVERSATION: Self = Self {
+        calls: false,
+        prompts: true,
+        replies: true,
+        results: false,
+        summaries: false,
+    };
+
     /// Whether any of the kinds is on an assistant line, or needs one, as
     /// a result needs its call.
     pub const fn reads_assistant(self) -> bool {
@@ -93,18 +112,52 @@ impl Types {
 }
 
 impl Records {
-    /// Picks the kinds in `types`.
+    /// Picks the kinds in `types`, the calls without their results, for
+    /// what counts the records and prints none.
     pub fn new(types: Types) -> Self {
         Self {
+            outcomes: None,
             prompts: Prompts::default(),
             results: Results::default(),
             types,
+        }
+    }
+
+    /// Notes what the calls whose results are on `entry` came to.
+    fn note_outcomes(&mut self, entry: &Entry) {
+        let Some(ref mut outcomes) = self.outcomes else {
+            return;
+        };
+        for block in &entry.content.blocks {
+            if let Block::ToolResult(ref result) = *block
+                && let Some(slot) = outcomes.get_mut(&result.tool_use_id)
+            {
+                *slot = Some(Outcome {
+                    is_error: result.is_error,
+                    // As for the result itself, in `Results::pick`.
+                    denial: denial(Answer::of(entry, result)).kind,
+                    text: result.text.clone(),
+                });
+            }
+        }
+    }
+
+    /// Picks the kinds in `types`, each call with its result, for printing
+    /// them.
+    pub fn with_results(types: Types) -> Self {
+        Self {
+            outcomes: types.calls.then(HashMap::new),
+            ..Self::new(types)
         }
     }
 }
 
 impl Pick for Records {
     type Record = Turn;
+
+    fn outcome(&self, tool_use_id: &str) -> Option<&Outcome> {
+        self.outcomes.as_ref()?.get(tool_use_id)?.as_ref()
+    }
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Turn>)> {
         let mut turns: Vec<(usize, Draft<Turn>)> = Vec::new();
@@ -116,7 +169,12 @@ impl Pick for Records {
                 // line's blocks, so a prompt's index cannot clash with a
                 // result's in the check for resumed copies.
                 let reason = classify(entry);
-                if self.types.prompts && matches!(reason, Reason::Human | Reason::Rejection) {
+                if self.types.prompts
+                    && matches!(
+                        reason,
+                        Reason::Human | Reason::Rejection | Reason::ToolResult
+                    )
+                {
                     let prompts = self.prompts.pick(spot, entry).into_iter();
                     turns.extend(prompts.map(|(index, prompt)| (index, prompt.map(Turn::Prompt))));
                 }
@@ -137,8 +195,17 @@ impl Pick for Records {
                     turns.extend(replies.map(|(index, reply)| (index, reply.map(Turn::Reply))));
                 }
                 if self.types.calls {
-                    let calls = Tools.pick(spot, entry).into_iter();
-                    turns.extend(calls.map(|(index, call)| (index, call.map(Turn::Call))));
+                    let calls = Tools.pick(spot, entry);
+                    if let Some(ref mut outcomes) = self.outcomes {
+                        for pair in &calls {
+                            outcomes.insert(pair.1.record().tool_use_id.clone(), None);
+                        }
+                    }
+                    turns.extend(
+                        calls
+                            .into_iter()
+                            .map(|(index, call)| (index, call.map(Turn::Call))),
+                    );
                 }
             }
             Role::AiTitle | Role::Other => {}
@@ -150,7 +217,13 @@ impl Pick for Records {
     fn roles(&self) -> Roles {
         Roles {
             assistant: self.types.reads_assistant(),
-            user: self.types.prompts || self.types.results || self.types.summaries,
+            // A prompt can answer the dialog of a call.
+            calls_to: if self.types.prompts { &DIALOGS } else { &[] },
+            // A call's result is on a user line.
+            user: self.types.prompts
+                || self.types.results
+                || self.types.summaries
+                || self.outcomes.is_some(),
         }
     }
 
@@ -166,6 +239,9 @@ impl Pick for Records {
         // and the prompts every prompt sent again.
         let result = self.types.results && self.results.wants(entry);
         let prompt = self.types.prompts && self.prompts.wants(entry);
+        if entry.role == Role::User {
+            self.note_outcomes(entry);
+        }
         match entry.role {
             Role::User => result || prompt || (self.types.summaries && Summaries.wants(entry)),
             Role::Assistant => self.types.replies || self.types.calls,
@@ -178,46 +254,44 @@ impl Pick for Prompts {
     type Record = Prompt;
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Prompt>)> {
-        // A rejection is on the line of its tool result: its index comes
-        // after the line's blocks.
-        let (index, typed, kind, command) = comment_in(entry).map_or_else(
-            || typed_prompt(entry),
-            |comment| {
-                (
-                    entry.content.blocks.len(),
-                    comment,
-                    Kind::Rejection,
-                    String::new(),
-                )
-            },
-        );
-        let mut masked = Counts::default();
-        let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
-        let source = source(spot, entry, &mut masked);
-        vec![(
-            index,
-            Draft::new(Prompt {
-                head: spot.head(entry),
-                text,
-                kind,
-                command,
-                permission_mode: entry.permission_mode.clone(),
-                superseded: false,
-                redacted,
-                source,
-                search: Search::default(),
-                masked,
-                parent_uuid: if kind == Kind::Rejection {
-                    String::new()
-                } else {
-                    entry.parent_uuid.clone()
+        let reason = classify(entry);
+        let mut picked = Vec::new();
+        if reason != Reason::ToolResult {
+            // A rejection is on the line of its tool result: its index
+            // comes after the line's blocks.
+            let (index, typed, kind, command) = comment_in(entry).map_or_else(
+                || typed_prompt(entry),
+                |comment| {
+                    (
+                        entry.content.blocks.len(),
+                        comment,
+                        Kind::Rejection,
+                        String::new(),
+                    )
                 },
-            }),
-        )]
+            );
+            picked.push((index, drafted(spot, entry, &typed, kind, command)));
+        }
+        // An answer can be on the line of a comment on another call, when
+        // the calls were made together.
+        if matches!(reason, Reason::ToolResult | Reason::Rejection) {
+            picked.extend(
+                self.responses(entry)
+                    .into_iter()
+                    .map(|(index, typed, kind)| {
+                        (index, drafted(spot, entry, &typed, kind, String::new()))
+                    }),
+            );
+        }
+        picked
     }
 
     fn roles(&self) -> Roles {
-        Roles::USER
+        // The calls that show a dialog are on assistant lines.
+        Roles {
+            calls_to: &DIALOGS,
+            ..Roles::USER
+        }
     }
 
     fn superseded(&self, record: &Prompt) -> bool {
@@ -229,6 +303,16 @@ impl Pick for Prompts {
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
+        if entry.role == Role::Assistant {
+            for block in &entry.content.blocks {
+                if let Block::ToolUse(ref call) = *block
+                    && matches!(call.name.as_str(), ASK | PLAN)
+                {
+                    self.dialogs.insert(call.id.clone(), call.name.clone());
+                }
+            }
+            return false;
+        }
         match classify(entry) {
             Reason::Human => {
                 if !entry.parent_uuid.is_empty() {
@@ -238,6 +322,7 @@ impl Pick for Prompts {
                 true
             }
             Reason::Rejection => true,
+            Reason::ToolResult => !self.responses(entry).is_empty(),
             Reason::CompactSummary
             | Reason::Empty
             | Reason::HarnessTag
@@ -245,9 +330,37 @@ impl Pick for Prompts {
             | Reason::Meta
             | Reason::NonHumanOrigin
             | Reason::NotUser
-            | Reason::Sidechain
-            | Reason::ToolResult => false,
+            | Reason::Sidechain => false,
         }
+    }
+}
+
+impl Prompts {
+    /// What the user answered through a dialog on `entry`, a line of tool
+    /// results: each answer's index, after the line's blocks and its
+    /// rejection's so that none clashes with a result's in the check for
+    /// resumed copies, its text, and its kind.
+    fn responses(&self, entry: &Entry) -> Vec<(usize, String, Kind)> {
+        let after = entry.content.blocks.len().saturating_add(1);
+        entry
+            .content
+            .blocks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, block)| {
+                let Block::ToolResult(ref result) = *block else {
+                    return None;
+                };
+                let tool = self.dialogs.get(&result.tool_use_id)?;
+                let found = response(tool, Answer::of(entry, result))?;
+                let (text, kind) = match found {
+                    Response::Answer(text) => (text, Kind::Answer),
+                    Response::Approval(text) => (text, Kind::Approval),
+                    Response::Rejection(text) => (text, Kind::Rejection),
+                };
+                Some((after.saturating_add(index), text, kind))
+            })
+            .collect()
     }
 }
 
@@ -335,13 +448,7 @@ impl Pick for Results {
                     is_error: result.is_error,
                     // The line's keys speak for its one result; see
                     // `comment_in`.
-                    denial: denial(Answer {
-                        denial_kind: &entry.denial_kind,
-                        feedback: &entry.feedback,
-                        is_error: result.is_error,
-                        text: &result.text,
-                    })
-                    .kind,
+                    denial: denial(Answer::of(entry, result)).kind,
                     text,
                     subagent: spot.subagent(),
                     redacted: input_redacted || text_redacted,
@@ -403,6 +510,7 @@ impl Pick for Tools {
                     tool: call.name.clone(),
                     input,
                     tool_use_id: call.id.clone(),
+                    result: None,
                     skill: entry.skill.clone(),
                     subagent: spot.subagent(),
                     usage: None,
@@ -571,16 +679,22 @@ impl Select for ToolCall {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![
+        let mut labels = vec![
             &mut self.tool,
             &mut self.model,
             &mut self.skill,
             &mut self.subagent,
-        ]
+        ];
+        labels.extend(self.result.as_mut().map(|result| &mut result.denial));
+        labels
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
         &mut self.masked
+    }
+
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        Some((&self.tool_use_id, &mut self.result, &mut self.redacted))
     }
 
     fn search_mut(&mut self) -> &mut Search {
@@ -619,6 +733,10 @@ impl Select for Turn {
 
     fn masked_mut(&mut self) -> &mut Counts {
         selected_mut(self).masked_mut()
+    }
+
+    fn outcome_mut(&mut self) -> Option<(&str, &mut Option<Outcome>, &mut bool)> {
+        selected_mut(self).outcome_mut()
     }
 
     fn search_mut(&mut self) -> &mut Search {
@@ -672,6 +790,38 @@ impl Select for ToolResult {
     fn search_mut(&mut self) -> &mut Search {
         &mut self.search
     }
+}
+
+/// The prompt `typed` on `entry`, of `kind`, masked. Only a typed prompt
+/// can be sent again in place of another, so only it keeps the line it
+/// follows.
+fn drafted(
+    spot: &Spot<'_>,
+    entry: &Entry,
+    typed: &str,
+    kind: Kind,
+    command: String,
+) -> Draft<Prompt> {
+    let mut masked = Counts::default();
+    let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
+    let source = source(spot, entry, &mut masked);
+    Draft::new(Prompt {
+        head: spot.head(entry),
+        text,
+        kind,
+        command,
+        permission_mode: entry.permission_mode.clone(),
+        superseded: false,
+        redacted,
+        source,
+        search: Search::default(),
+        masked,
+        parent_uuid: if matches!(kind, Kind::Text | Kind::Slash) {
+            entry.parent_uuid.clone()
+        } else {
+            String::new()
+        },
+    })
 }
 
 /// The records `make` builds from the blocks of `entry`, each with its

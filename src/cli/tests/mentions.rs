@@ -171,7 +171,7 @@ fn sessions_in_markdown_have_a_matches_column_only_with_grep() -> TestResult {
     plain.extend(["--format", "md"]);
     let without = history.run_week(&plain).out;
     check_eq(
-        &without.contains("| Started | Project | Prompts | Title |"),
+        &without.contains("| Started | Session | Project | Cwd | Prompts | Title |"),
         &true,
         &without,
     )?;
@@ -179,7 +179,9 @@ fn sessions_in_markdown_have_a_matches_column_only_with_grep() -> TestResult {
     grep.extend(["--igrep", "cloud"]);
     let with = history.run_week(&grep).out;
     check_eq(
-        &with.contains("| Started | Project | Prompts | Matches | First match | Title |"),
+        &with.contains(
+            "| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |",
+        ),
         &true,
         &with,
     )?;
@@ -350,8 +352,9 @@ fn sessions_in_markdown_show_the_first_match_with_a_search() -> TestResult {
     let ran = history.run_week(&args);
     check_eq(&ran.code, &0, &ran.err)?;
     check_eq(
-        &ran.out
-            .contains("| Started | Project | Prompts | Matches | First match | Title |"),
+        &ran.out.contains(
+            "| Started | Session | Project | Cwd | Prompts | Matches | First match | Title |",
+        ),
         &true,
         &ran.out,
     )?;
@@ -583,5 +586,109 @@ fn a_session_a_search_skips_leaves_its_tokens_out_of_a_resumed_copy() -> TestRes
     let mut search = both.to_vec();
     search.extend(["--igrep", "deploy"]);
     check_eq(&input(&search)?, &Some(10), "with --grep")?;
+    Ok(())
+}
+
+/// A history with a session `tttt` whose prompt does not mention the cloud
+/// but a tool call, its result, and a reply of its sub-agent do.
+fn history_with_tool_mentions() -> Result<History, Box<dyn Error>> {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/tttt.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"t-1","sessionId":"tttt","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"deploy it"}}"#,
+            r#"{"type":"assistant","uuid":"t-2","sessionId":"tttt","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_t1","name":"Bash","input":{"command":"deploy --cloud"}}]}}"#,
+            r#"{"type":"user","uuid":"t-3","sessionId":"tttt","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_t1","content":"cloud ok"}]}}"#,
+        ],
+    )?;
+    history.write(
+        "-Users-alice-blog/tttt/subagents/agent-2.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"ts-1","sessionId":"tttt","isSidechain":true,"timestamp":"2026-10-15T00:00:30Z","message":{"role":"user","content":"check the cloud"}}"#,
+            r#"{"type":"assistant","uuid":"ts-2","sessionId":"tttt","isSidechain":true,"timestamp":"2026-10-15T00:00:40Z","message":{"content":[{"type":"text","text":"The cloud is up."}]}}"#,
+        ],
+    )?;
+    Ok(history)
+}
+
+#[test]
+fn sessions_type_and_subagents_pick_what_grep_counts() -> TestResult {
+    let history = history_with_tool_mentions()?;
+    let count = |extra: &[&str]| -> Result<Vec<Value>, Box<dyn Error>> {
+        let mut args = vec!["sessions", "--session", "tttt", "--igrep", "cloud"];
+        args.extend(extra);
+        let ran = history.run_week(&args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        ran.out
+            .lines()
+            .map(|line| {
+                let session: Value = serde_json::from_str(line)?;
+                Ok(json!([
+                    session.get("match_count"),
+                    session.pointer("/first_match/type"),
+                ]))
+            })
+            .collect()
+    };
+    check_eq(&count(&[])?, &Vec::<Value>::new(), "prompts and replies")?;
+    check_eq(
+        &count(&["--type", "call,result"])?,
+        &vec![json!([2_u64, "call"])],
+        "the tool side",
+    )?;
+    check_eq(
+        &count(&["--type", "reply", "--subagents"])?,
+        &vec![json!([1_u64, "reply"])],
+        "the sub-agent's reply",
+    )?;
+    check_eq(
+        &count(&["--type", "prompt,reply,call,result", "--subagents"])?,
+        &vec![json!([3_u64, "call"])],
+        "all of them",
+    )?;
+    let md = history.run_week(&[
+        "sessions",
+        "--session",
+        "tttt",
+        "--igrep",
+        "cloud",
+        "--type",
+        "call,result",
+        "--format",
+        "md",
+    ]);
+    check_eq(
+        &md.out
+            .starts_with("# Sessions\n\n- Sessions: 1\n- Matches: 2 (call 1, result 1)\n"),
+        &true,
+        &md.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn sessions_type_and_subagents_need_a_pattern_to_count() -> TestResult {
+    let history = history_with_tool_mentions()?;
+    for (args, flag) in [
+        (&["sessions", "--type", "call"][..], "--type"),
+        (&["sessions", "--subagents"][..], "--subagents"),
+        (
+            &["sessions", "--subagents", "--grep", "!cloud"][..],
+            "--subagents",
+        ),
+    ] {
+        let ran = history.run(args);
+        check_eq(&ran.code, &1, flag)?;
+        check_eq(
+            ran.err.as_str(),
+            format!(
+                "ccdig: sessions {flag} needs --grep or --igrep with a pattern that does not start with !\n"
+            )
+            .as_str(),
+            flag,
+        )?;
+    }
     Ok(())
 }

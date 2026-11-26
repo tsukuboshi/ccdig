@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::Select;
 use crate::failure::Failure;
-use crate::record::MatchLine;
+use crate::record::{MatchLine, Outcome, Turn};
 use crate::redact::{Counts, ExtraMasks, Redactor};
 use crate::transcript::entry::Usage;
 
@@ -33,6 +33,29 @@ impl<T> Draft<T>
 where
     T: Select,
 {
+    /// Gives a call what `find` says it came to, with the text masked, as a
+    /// result's is, and what that counted added to the record's.
+    pub fn answer<'found, F>(&mut self, mask: &Mask, find: F)
+    where
+        F: FnOnce(&str) -> Option<&'found Outcome>,
+    {
+        let Some((id, slot, redacted)) = self.0.outcome_mut() else {
+            return;
+        };
+        let Some(found) = find(id) else {
+            return;
+        };
+        let mut counts = Counts::default();
+        let (text, changed) = mask.text(&found.text, &mut counts);
+        *redacted |= changed;
+        *slot = Some(Outcome {
+            is_error: found.is_error,
+            denial: found.denial.clone(),
+            text,
+        });
+        self.0.masked_mut().merge(&counts);
+    }
+
     /// The draft of what `wrap` makes of the record, as when a picker puts
     /// a kind's record in a `Turn`. `wrap` only wraps it; it must not keep
     /// the record.
@@ -80,6 +103,37 @@ where
 }
 
 impl Mask {
+    /// Rewrites the tool's output `turn` carries as indented JSON when it
+    /// is a JSON object or array, so that its strings read decoded, for
+    /// Markdown. The output was masked as the tool wrote it, where an
+    /// escape such as `\u0041` can hide a secret from the rules, so the
+    /// decoded strings and keys are masked again, and what that counts is
+    /// added to the record's. Any other output, and JSON whose numbers
+    /// would be written otherwise, stays as it is.
+    pub fn indent_json(&self, turn: &mut Turn) {
+        let mut counts = Counts::default();
+        let Some(text) = turn.tool_output_mut() else {
+            return;
+        };
+        if !text.trim_start().starts_with(['{', '[']) {
+            return;
+        }
+        let Ok(mut value) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
+        // A number too large for 64 bits, or written as `1e2`, would read
+        // otherwise once written again.
+        if numbers(text) != numbers(&value.to_string()) {
+            return;
+        }
+        self.json(&mut value, &mut counts);
+        let Ok(indented) = serde_json::to_string_pretty(&value) else {
+            return;
+        };
+        *text = indented;
+        turn.masked_mut().merge(&counts);
+    }
+
     /// Masks every string in `value`, reporting whether anything changed
     /// and counting what it masked in `counts`.
     pub fn json(&self, value: &mut Value, counts: &mut Counts) -> bool {
@@ -144,4 +198,43 @@ impl Mask {
             |rules| rules.redact_counted(text, counts),
         )
     }
+}
+
+/// The numbers in `json`, as written, in order: each run outside its
+/// strings that starts with a digit or `-` and holds only what a number
+/// can.
+fn numbers(json: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut start: Option<usize> = None;
+    for (at, character) in json.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            } else {
+                // Inside a string.
+            }
+            continue;
+        }
+        let continues =
+            character.is_ascii_digit() || matches!(character, '-' | '+' | '.' | 'e' | 'E');
+        match start {
+            Some(from) if !continues => {
+                found.extend(json.get(from..at));
+                start = None;
+            }
+            None if character.is_ascii_digit() || character == '-' => start = Some(at),
+            Some(_) | None => {}
+        }
+        in_string = character == '"';
+    }
+    if let Some(from) = start {
+        found.extend(json.get(from..));
+    }
+    found
 }

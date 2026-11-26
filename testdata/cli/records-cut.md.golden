@@ -1,5 +1,7 @@
 # Records
 
+- Records: 1 (call 1)
+
 ## (untitled)
 
 - Project: `-Users-alice-blog`
@@ -12,11 +14,13 @@
 ```json
 {
   "file_path": "/tmp/a.md",
-  "content": "0123456789… (10 more characters)",
+  "content": "0123456789… (10 more characters, next: 11-20)",
   "lines": [
     "short",
-    "abcdefghij… (6 more characters)"
+    "abcdefghij… (6 more characters, next: 11-16)"
   ],
   "count": 12
 }
 ```
+
+- Result: (none)

@@ -1,7 +1,7 @@
 //! Tool calls that were turned down, and what the user said when they turned
 //! one down.
 
-use crate::transcript::entry::{Block, Entry};
+use crate::transcript::entry::{Block, Entry, ToolResult};
 
 /// How the comment starts when the user picks "clarify" in a question
 /// dialog: Claude Code's words, not the user's.
@@ -29,6 +29,21 @@ pub struct Answer<'line> {
     pub is_error: bool,
     /// The block's text.
     pub text: &'line str,
+}
+
+impl<'line> Answer<'line> {
+    /// What Claude Code recorded about `result`, a tool result on `entry`.
+    /// `toolDenialKind` and `userFeedback` are keys of the line, not of a
+    /// block: Claude Code writes each tool result on a line of its own, so
+    /// they speak for the one result there.
+    pub fn of(entry: &'line Entry, result: &'line ToolResult) -> Self {
+        Self {
+            denial_kind: &entry.denial_kind,
+            feedback: &entry.feedback,
+            is_error: result.is_error,
+            text: &result.text,
+        }
+    }
 }
 
 /// Why a tool call did not run, and what the user said about it.
@@ -60,15 +75,7 @@ fn comment(answer: Answer<'_>) -> Option<String> {
 /// for the one result there.
 pub fn comment_in(entry: &Entry) -> Option<String> {
     entry.content.blocks.iter().find_map(|block| match *block {
-        Block::ToolResult(ref result) => {
-            denial(Answer {
-                denial_kind: &entry.denial_kind,
-                feedback: &entry.feedback,
-                is_error: result.is_error,
-                text: &result.text,
-            })
-            .comment
-        }
+        Block::ToolResult(ref result) => denial(Answer::of(entry, result)).comment,
         Block::Other | Block::Text(_) | Block::ToolUse(_) => None,
     })
 }

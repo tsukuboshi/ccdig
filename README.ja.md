@@ -86,8 +86,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
-| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--format`, `--fields`, `--sort` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
@@ -101,9 +101,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | 種類 | レコード |
 | --- | --- |
-| `prompt` | 人間が打った依頼文 |
+| `prompt` | 人間が打った依頼文と、ダイアログで答えた内容 |
 | `reply` | assistant のテキストブロック |
-| `call` | ツールの呼び出し |
+| `call` | ツールの呼び出しと、その結果 |
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
 
@@ -131,8 +131,11 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   検索すると、依頼文と返答だけが対象になります。
   ツールの呼び出しも読むなら `--type prompt,reply,call` を付けます。
   呼び出しの入力は長くなりがちなので、`--limit` で出力を小さく保てます。
-  `--max-message-chars` と `--max-tool-chars` で本文を切り、`--fields` で
+  `--message-chars` と `--tool-chars` で本文を切り、`--fields` で
   キーを省くこともできます。
+- 呼び出しは結果を持つので、`--type call` だけでも、質問への回答のような
+  ツールの返したものが抜けません。`--type result` は結果を単独で並べます。
+  中断したときのように、同じファイルに結果が無い呼び出しの結果は `null` です。
 - サブエージェントの履歴は、`--subagents` を付けない限り読みません。
   サブエージェントに渡された指示は人間が打った依頼文ではないので、出力
   されません。出力されるのは、その返答・呼び出し・結果のうち `--type` で
@@ -151,8 +154,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- |
 | `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す。付けなければ、JSON と JSON Lines は一致した行だけを並べる |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
-| `--max-message-chars N` | 依頼文・返答・要約の本文を N 文字で切って `… (M more characters)` を付ける |
-| `--max-tool-chars N` | ツールの入力にある文字列とツールの結果の出力を、それぞれ N 文字で切る。ファイル全体を書く `Write` で出力が埋まらずに済む |
+| `--message-chars N` | 依頼文・返答・要約の本文の先頭 N 文字を残し、`… (M more characters, next: N+1-2N)` を付ける。`--message-chars FROM-TO` は、`cut -c` と同じく 1 から数えて FROM から TO までの文字を `(K characters before) …` の後に残すので、切ったときに示された範囲で続きを読める |
+| `--tool-chars N` | ツールの入力にある文字列と、ツールの結果の出力（呼び出しが持つ結果も含む）に同じことをする。ファイル全体を書く `Write` で出力が埋まらずに済む。`FROM-TO` も取る。その場合、入力の文字列のうち TO - FROM + 1 文字以下のもの（ファイルのパスのように、その文字数で切ったときに切られなかったもの）はそのまま残す |
 
 ### sessions
 
@@ -161,7 +164,13 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 - `--grep` と `--igrep` は、依頼文か返答が一致したセッションを選び、
   `match_count` にそれぞれで一致した件数を入れます。ある語に最も多く触れた
-  セッションから読めます。ほかのキーは、`--grep` が無いときと同じく、
+  セッションから読めます。`--type` を付けると、`records --type` と同じく
+  ほかの種類のレコードも検索します（例: `--type prompt,reply,call,result`）。
+  `--subagents` を付けると、各セッションのサブエージェントの履歴にある
+  返答・呼び出し・結果での一致も、そのセッションに数えます。サブエージェントに
+  渡された指示は依頼文ではないので、検索しません。どちらも `!` で始まらない
+  パターンが必要です。
+  ほかのキーは、`--grep` が無いときと同じく、
   ほかの絞り込みで残ったすべての依頼文から作ります。ただし、`!` 付きの
   パターンで除いた依頼文は数えません。Markdown には
   `Matches` 列が加わります。`!` で始まらないパターンが無ければ、
@@ -170,7 +179,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
   ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
-- `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
+  質問への回答と、承認・却下したプランも同じです。
+- `first_match` は、そのセッションで検索が最初に一致したレコードです。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
   200 文字で切ったもの）の `text` です。一致が行をまたぐときは、`line` が
@@ -230,7 +240,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   値が `null` のグループに入り、`--sort key` ではほかのグループの後に並びます。
 - キーはマスク後の値なので、`--mask-values` を使うとプロジェクトはラベルで
   まとまります。
-- `--around`・`--context`・`--max-message-chars`・`--max-tool-chars` は、
+- `--around`・`--context`・`--message-chars`・`--tool-chars` は、
   数える対象が変わってしまうのでエラーです。`--subagents` の無い
   `--by subagent` も、サブエージェントのレコードがすべて外れるのでエラーです。
 
@@ -241,7 +251,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | `--by` のキー | その値。`--by` で指定した順に並ぶ。値が無ければ `null` |
 | `session_title`, `project`, `file` | `--by session` のときだけ、セッションの最後のタイトル・プロジェクト・transcript のファイル。空なら `null`。`records --session` にそのまま渡せる |
 | `count` | レコードの件数 |
-| `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--max-tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
+| `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
 | `sessions` | レコードを含むセッションの数。`--by session` のときは書かない |
 | `first`, `last` | 最初と最後のレコードの時刻。`timestamp` と同じ形で書く |
 | `usage` | トークン数。「トークン数」の節を参照 |
@@ -250,7 +260,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
 依頼文に適用されます。ツールの呼び出しを却下したときに打ったコメントは、
-前に `(rejection)` を付けて並べます。
+前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、承認した
+プランには `(approval)` を付けます。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -264,7 +275,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.4","schema":5,"filter":"strict-v3"}
+{"version":"0.0.4","schema":6,"filter":"strict-v4"}
 ```
 
 ## 共通オプション
@@ -382,14 +393,18 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | 種類 | 間に入るキー |
 | --- | --- |
 | `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `skill`, `subagent`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
-ツールの呼び出しを却下したときに打ったコメントなら `rejection` です。
+ツールの呼び出しを却下したときに打ったコメントなら `rejection`、質問への
+回答なら `answer`、承認したプランなら `approval` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
+- 呼び出しの `result` は、同じファイルにあるその結果の内容（マスク後）で、
+  結果と同じ `is_error`・`denial`・`text` を持ちます。ファイルに結果が無ければ
+  `null` です。
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、
   それ以外のレコードでは `true` です。
 - `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
@@ -415,6 +430,13 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は
   結果と同じで、ツール名は結果の `tool` で分かります。質問のダイアログで
   "clarify" を選んだときに Claude Code が書く定型文は、コメントに含めません。
+  コメントなしで差し戻したプランも `rejection` で、本文は Claude Code の
+  定型文の最初の 1 文です。
+- 打ち方が `answer` の依頼文は、`AskUserQuestion` のダイアログでユーザーが
+  選んだか打った回答で、前後の Claude Code の定型文を除いたものです。
+  打ち方が `approval` の依頼文は `ExitPlanMode` で承認したプランで、本文は
+  Claude Code の定型文の最初の 1 文です。どちらも `rejection` と同じく、
+  呼び出しの結果と同じ行にあります。
 - `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
   送った依頼文で `true` です。同じ行の後に続く依頼文のことで、Esc で
   依頼文を書き直したときや、返答を中断して送り直したときに生じます。
@@ -481,7 +503,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":5,"filter":"strict-v3","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v4","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -501,9 +523,23 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 ### Markdown
 
+`records --format md` は、出すレコードの件数を種類別に、`--around` が
+前後のレコードとして足した件数と合わせて最初に示します
+（例: `- Records: 7 (prompt 4, call 3) + 2 context`）。0 件なら
+`- Records: 0` です。`sessions` と `stats` は、出すセッションかグループの
+件数を最初に示し、`sessions` の検索では一致の件数も種類別に示します。
+セッションの表には、`records --session` と `--project` に渡せる
+`Session` 列と `Cwd` 列があります。
+
 `records --format md` は、履歴ファイルごとのレコードをプロジェクトと
 セッションを記した 1 つの見出しの下にまとめ、各レコードを時刻と種類の
-見出しの下に置きます。サブエージェントのレコードは、自分の見出しの末尾にも
+見出しの下に置きます。呼び出しは入力の下に結果を出し、その結果は、
+`--context` が一致した行を並べるときと、検索がその結果に一致して呼び出しには
+一致しなかったとき（呼び出しは前後のレコードとして出ます）を除いて、単独では
+出しません。`--limit` は JSON と同じく呼び出しの下に出した結果も数えるので、
+Markdown には上限より少ないレコードが出ることがあります。
+ツールの出力が JSON のオブジェクトか配列なら字下げし、`\u65e5` のような
+エスケープを戻します。JSON と JSON Lines は、ツールが書いたままにします。サブエージェントのレコードは、自分の見出しの末尾にも
 サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -
 `agent-1` ``）。セッション本体のレコードと見分けられます。
 
@@ -535,7 +571,9 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 1. `isMeta`・`isSidechain`・`isCompactSummary` のいずれかが付いている
 2. `origin.kind` が `human` 以外である
 3. `tool_result` ブロックを持つ。ただし、ユーザーがコメントを添えて
-   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す
+   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す。
+   `AskUserQuestion` か `ExitPlanMode` の呼び出しに答えるブロックなら、
+   答えを打ち方が `answer`・`approval`・`rejection` の依頼文として残す
 4. `<system-reminder>`、`<task-notification>`、`<local-command-…>`、
    `<bash-input>`、`<bash-stdout>`、`<user-prompt-submit-hook>` などの
    ハーネスのタグで始まる

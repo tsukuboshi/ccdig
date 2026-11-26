@@ -97,6 +97,7 @@ fn call(
         tool: tool.to_owned(),
         input,
         tool_use_id: String::new(),
+        result: None,
         skill: String::new(),
         subagent: String::new(),
         usage,

@@ -155,8 +155,17 @@ pub enum Command {
                       or cut the texts and leave out the keys every record of a session\n\
                       repeats, as in\n\
                       \x20 ccdig records --type prompt,reply,call --igrep deploy \\\n\
-                      \x20   --max-message-chars 500 --max-tool-chars 100 \\\n\
-                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
+                      \x20   --message-chars 500 --tool-chars 100 \\\n\
+                      \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'\n\
+                      --type call shows each call with its result, so the answers to a\n\
+                      question are not left out; --type result lists the results alone.\n\
+                      List the records around each match with --around, as in\n\
+                      \x20 ccdig records --type prompt,reply,call --igrep deploy --around 2 --format md\n\
+                      or the lines around it in each record with --context, as in\n\
+                      \x20 ccdig records --type call --tool Bash --igrep error --context 3 --format md\n\
+                      Read on where --tool-chars or --message-chars cut a text off with the\n\
+                      range the cut names, as in\n\
+                      \x20 ccdig records --type call --tool-chars 2001-4000"
     )]
     Records {
         /// The flags that pick the records.
@@ -179,20 +188,41 @@ pub enum Command {
         /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
-        /// Cut the text of each prompt, reply, and summary to this many
-        /// characters [default: no limit].
-        #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
-        max_message_chars: Option<i64>,
-        /// Cut each string in a tool's input, and each tool result's
-        /// output, to this many characters [default: no limit].
-        #[arg(long, value_name = "N", help_heading = "Output", display_order = 63)]
-        max_tool_chars: Option<i64>,
+        /// Keep this many characters of the text of each prompt, reply, and
+        /// summary, or with FROM-TO, those characters, counted from 1, to
+        /// read on where a cut left off [default: all of them].
+        #[arg(
+            long,
+            value_name = "N|FROM-TO",
+            allow_negative_numbers = true,
+            help_heading = "Output",
+            display_order = 62
+        )]
+        message_chars: Option<String>,
+        /// Keep this many characters of each string in a tool's input and
+        /// of each tool result's output, the one a call carries too, or
+        /// with FROM-TO, those characters, counted from 1 [default: all of
+        /// them].
+        #[arg(
+            long,
+            value_name = "N|FROM-TO",
+            allow_negative_numbers = true,
+            help_heading = "Output",
+            display_order = 63
+        )]
+        tool_chars: Option<String>,
         /// The output format.
         #[command(flatten)]
         output: Output,
     },
     /// List sessions that have at least one selected prompt.
-    #[command(display_order = 2)]
+    #[command(
+        display_order = 2,
+        after_help = "--grep and --igrep search the prompts and replies, and count the matches\n\
+                      of each session; search the tool calls and results too with --type, and\n\
+                      the sub-agents with --subagents, as in\n\
+                      \x20 ccdig sessions --igrep deploy --type prompt,reply,call,result --subagents --format md"
+    )]
     Sessions {
         /// The shared flags.
         #[command(flatten)]
@@ -201,8 +231,8 @@ pub enum Command {
         #[command(flatten)]
         output: Output,
         /// The order of the sessions: by the time of their first prompt, or
-        /// by how many prompts and replies --grep or --igrep matched, most
-        /// first, then by time.
+        /// by how many records of the types --type picks --grep or --igrep
+        /// matched, most first, then by time.
         #[arg(
             long,
             default_value = "time",
@@ -210,6 +240,23 @@ pub enum Command {
             display_order = 65
         )]
         sort: SessionSort,
+        /// Also search sub-agent transcripts, counting the matches in their
+        /// replies, calls, and results toward their session; the
+        /// instruction a sub-agent was given is not searched.
+        #[arg(long, help_heading = "Input", display_order = 41)]
+        subagents: bool,
+        /// The record types --grep and --igrep search, to count and show
+        /// the matches of each session (comma-separated, repeatable)
+        /// [default: prompt,reply]; a session is listed for its prompts all
+        /// the same.
+        #[arg(
+            long = "type",
+            value_name = "TYPE",
+            value_delimiter = ',',
+            help_heading = "Records",
+            display_order = 10
+        )]
+        types: Vec<RecordType>,
     },
     /// Count the records that records would list, grouped by the keys
     /// --by names.
@@ -332,7 +379,8 @@ pub struct Common {
     /// Keep records whose text matches this regular expression, after
     /// masking, or with a leading !, leave them out (repeatable); in
     /// records, --around lists the records and --context the lines around a
-    /// match.
+    /// match, and in sessions, they search the records of the types --type
+    /// picks.
     #[arg(
         long = "grep",
         value_name = "REGEX",
@@ -729,11 +777,20 @@ fn hint(error: &clap::Error) -> Option<String> {
         return None;
     }
     let arg = error.get(ContextKind::InvalidArg)?.to_string();
-    if arg == "--max-input-chars" {
-        return Some(
-            "it is --max-tool-chars now, which cuts the tool inputs and outputs in every format"
-                .to_owned(),
-        );
+    let renamed = match arg.as_str() {
+        "--max-input-chars" => {
+            Some("it is --tool-chars now, which cuts the tool inputs and outputs in every format")
+        }
+        "--max-tool-chars" => {
+            Some("it is --tool-chars now, which also takes a range such as 2001-4000")
+        }
+        "--max-message-chars" => {
+            Some("it is --message-chars now, which also takes a range such as 2001-4000")
+        }
+        _ => None,
+    };
+    if let Some(said) = renamed {
+        return Some(said.to_owned());
     }
     KIND_FLAGS.contains(&arg.as_str()).then(|| {
         format!(
