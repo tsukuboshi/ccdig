@@ -107,10 +107,11 @@ fn session(
         // A code span keeps the prompt literal when the digest is
         // previewed: no rendered HTML, no ![](url) fetched from a
         // transcript.
-        let mark = if prompt.kind == Kind::Rejection {
-            "(rejection) "
-        } else {
-            ""
+        let mark = match prompt.kind {
+            Kind::Answer => "(answer) ",
+            Kind::Approval => "(approval) ",
+            Kind::Rejection => "(rejection) ",
+            Kind::Slash | Kind::Text => "",
         };
         out.extend(["- ", mark, &code_span(&text), "\n"]);
         used = used.saturating_add(length);

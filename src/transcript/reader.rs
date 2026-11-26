@@ -125,6 +125,7 @@ impl<R: BufRead> Lines<R> {
         has(r#""ai-title""#)
             || (self.roles.user && has(r#""user""#))
             || (self.roles.assistant && has(r#""assistant""#))
+            || (has(r#""assistant""#) && self.roles.calls_to.iter().any(|name| has(name)))
     }
 }
 
@@ -151,7 +152,7 @@ impl<R: BufRead> Iterator for Lines<R> {
             };
             let wanted = match entry.role {
                 Role::AiTitle => true,
-                Role::Assistant => self.roles.assistant,
+                Role::Assistant => self.roles.assistant || !self.roles.calls_to.is_empty(),
                 Role::User => self.roles.user,
                 Role::Other => false,
             };
@@ -180,6 +181,10 @@ pub struct ReadStats {
 pub struct Roles {
     /// The assistant's messages.
     pub assistant: bool,
+    /// Without `assistant`, the assistant's messages that name one of these
+    /// tools, as a call to it does, so a reader that needs only those calls
+    /// does not decode every assistant line.
+    pub calls_to: &'static [&'static str],
     /// User messages, which hold prompts and tool results.
     pub user: bool,
 }
@@ -188,16 +193,19 @@ impl Roles {
     /// Assistant messages only, for replies and tool calls.
     pub const ASSISTANT: Self = Self {
         assistant: true,
+        calls_to: &[],
         user: false,
     };
     /// Both, for tool results and the calls they answer.
     pub const BOTH: Self = Self {
         assistant: true,
+        calls_to: &[],
         user: true,
     };
     /// User messages only, for prompts.
     pub const USER: Self = Self {
         assistant: false,
+        calls_to: &[],
         user: true,
     };
 }

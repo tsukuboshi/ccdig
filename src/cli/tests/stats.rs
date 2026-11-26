@@ -143,8 +143,9 @@ fn by_type_counts_every_kind_given() -> TestResult {
         &pick(&got, &["type", "count", "chars"]),
         &vec![
             json!(["call", 4_u64, 52_u64]),
+            // The two plans approved are prompts too.
+            json!(["prompt", 4_u64, 36_u64]),
             json!(["result", 4_u64, 27_u64]),
-            json!(["prompt", 2_u64, 20_u64]),
             json!(["reply", 1_u64, 17_u64]),
         ],
         "the most first, then by name",
@@ -201,12 +202,12 @@ fn without_by_the_default_types_are_one_line() -> TestResult {
     check_eq(
         &pick(&got, &["count", "sessions", "first", "last"]),
         &vec![json!([
-            3_u64,
+            5_u64,
             2_u64,
             "2026-10-15T09:00:00+09:00",
-            "2026-10-16T09:00:00+09:00"
+            "2026-10-16T09:01:00+09:00"
         ])],
-        "prompts and replies, as records lists them",
+        "prompts, the approvals among them, and replies, as records lists them",
     )?;
     Ok(())
 }

@@ -101,7 +101,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | 種類 | レコード |
 | --- | --- |
-| `prompt` | 人間が打った依頼文 |
+| `prompt` | 人間が打った依頼文と、ダイアログで答えた内容 |
 | `reply` | assistant のテキストブロック |
 | `call` | ツールの呼び出しと、その結果 |
 | `result` | ツールの結果。呼び出しのツールと入力付き |
@@ -173,6 +173,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   `ended_at` は、範囲内でそのセッションの最後の依頼文・返答・ツール呼び出し・
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
   ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
+  質問への回答と、承認・却下したプランも同じです。
 - `first_match` は、そのセッションで検索が最初に一致した依頼文か返答です。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
@@ -253,7 +254,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
 依頼文に適用されます。ツールの呼び出しを却下したときに打ったコメントは、
-前に `(rejection)` を付けて並べます。
+前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、承認した
+プランには `(approval)` を付けます。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -267,7 +269,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.4","schema":6,"filter":"strict-v3"}
+{"version":"0.0.4","schema":6,"filter":"strict-v4"}
 ```
 
 ## 共通オプション
@@ -390,7 +392,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
-ツールの呼び出しを却下したときに打ったコメントなら `rejection` です。
+ツールの呼び出しを却下したときに打ったコメントなら `rejection`、質問への
+回答なら `answer`、承認したプランなら `approval` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
 - 呼び出しの `result` は、同じファイルにあるその結果の内容（マスク後）で、
@@ -421,6 +424,13 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   コメントなどです。呼び出しの結果と同じ行にあるので、`source.uuid` は
   結果と同じで、ツール名は結果の `tool` で分かります。質問のダイアログで
   "clarify" を選んだときに Claude Code が書く定型文は、コメントに含めません。
+  コメントなしで差し戻したプランも `rejection` で、本文は Claude Code の
+  定型文の最初の 1 文です。
+- 打ち方が `answer` の依頼文は、`AskUserQuestion` のダイアログでユーザーが
+  選んだか打った回答で、前後の Claude Code の定型文を除いたものです。
+  打ち方が `approval` の依頼文は `ExitPlanMode` で承認したプランで、本文は
+  Claude Code の定型文の最初の 1 文です。どちらも `rejection` と同じく、
+  呼び出しの結果と同じ行にあります。
 - `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
   送った依頼文で `true` です。同じ行の後に続く依頼文のことで、Esc で
   依頼文を書き直したときや、返答を中断して送り直したときに生じます。
@@ -487,7 +497,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":6,"filter":"strict-v3","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v4","ccdig":"0.0.4",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -555,7 +565,9 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 1. `isMeta`・`isSidechain`・`isCompactSummary` のいずれかが付いている
 2. `origin.kind` が `human` 以外である
 3. `tool_result` ブロックを持つ。ただし、ユーザーがコメントを添えて
-   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す
+   呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す。
+   `AskUserQuestion` か `ExitPlanMode` の呼び出しに答えるブロックなら、
+   答えを打ち方が `answer`・`approval`・`rejection` の依頼文として残す
 4. `<system-reminder>`、`<task-notification>`、`<local-command-…>`、
    `<bash-input>`、`<bash-stdout>`、`<user-prompt-submit-hook>` などの
    ハーネスのタグで始まる

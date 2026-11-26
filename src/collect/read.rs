@@ -506,6 +506,7 @@ where
     let wanted = picker.roles();
     let roles = Roles {
         assistant: wanted.assistant || reading.usage || reading.mentions,
+        calls_to: wanted.calls_to,
         user: wanted.user,
     };
     let mut lines = reader::open(&file.path, MAX_LINE_BYTES, roles)
@@ -540,7 +541,7 @@ where
                 query,
             ));
         }
-        if !wanted.assistant && entry.role == Role::Assistant {
+        if !wanted.assistant && wanted.calls_to.is_empty() && entry.role == Role::Assistant {
             continue;
         }
         if !picker.wants(&entry) {

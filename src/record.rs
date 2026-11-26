@@ -138,7 +138,12 @@ pub struct Head {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// What the user typed when they turned a tool call down.
+    /// The answers the user picked or typed for Claude Code's questions.
+    Answer,
+    /// A plan the user approved.
+    Approval,
+    /// What the user typed when they turned a tool call down, or a plan
+    /// they turned down without a comment.
     Rejection,
     /// A slash command, folded back into what was typed.
     Slash,
@@ -547,6 +552,8 @@ impl Kind {
     /// The name the `kind` key writes.
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Answer => "answer",
+            Self::Approval => "approval",
             Self::Rejection => "rejection",
             Self::Slash => "slash",
             Self::Text => "text",

@@ -14,6 +14,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `is_error`, `denial`, and `text`, or `null` when there is none. So
   `--type call` no longer leaves out what a tool returned, such as the
   answers to a question, and Markdown shows the result under its call.
+- The answers to an `AskUserQuestion` dialog are prompts of kind
+  `answer`, a plan approved with `ExitPlanMode` one of kind `approval`,
+  and a plan turned down without a comment one of kind `rejection`, so
+  `--type prompt`, `sessions`, and `digest` hold every answer the user
+  gave.
 - Markdown starts with how many records, sessions, or groups it lists,
   by type, so an empty list reads `- Records: 0`, and the sessions table
   has a `Session` and a `Cwd` column.
@@ -22,7 +27,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The JSON schema is 6: calls have `result`.
+- The JSON schema is 6: calls have `result`, and a prompt's `kind` can be
+  `answer` or `approval`.
+- The filter is `strict-v4`: a tool result that answers an
+  `AskUserQuestion` or `ExitPlanMode` call is kept as a prompt, so
+  `prompt_count` and the digest count it.
 
 ## [0.0.4] - 2026-11-25
 

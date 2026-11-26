@@ -12,6 +12,7 @@ mod fields;
 mod kinds;
 mod mentions;
 mod properties;
+mod responses;
 mod stats;
 mod timeline;
 
@@ -696,7 +697,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":6,\"filter\":\"strict-v3\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":6,\"filter\":\"strict-v4\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {

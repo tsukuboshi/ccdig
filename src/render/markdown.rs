@@ -66,8 +66,12 @@ pub fn records(records: &[Turn], zone: &TimeZone) -> Result<String, Failure> {
         &shown,
         zone,
         |turn| match **turn {
-            Turn::Prompt(ref prompt) if prompt.kind == Kind::Rejection => "Rejection",
-            Turn::Prompt(_) => "Prompt",
+            Turn::Prompt(ref prompt) => match prompt.kind {
+                Kind::Answer => "Answer",
+                Kind::Approval => "Approval",
+                Kind::Rejection => "Rejection",
+                Kind::Slash | Kind::Text => "Prompt",
+            },
             Turn::Reply(_) => "Reply",
             Turn::Call(_) => "Tool call",
             Turn::Result(_) => "Tool result",
