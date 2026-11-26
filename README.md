@@ -2,15 +2,16 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Pull the logs you want to share out of your Claude Code session
-transcripts, formatted and masked. Combine filters for time, project,
-session, branch, text, record type, tool, outcome, and skill to narrow
-the history down to the part that matters, and count what is left with
-`stats`. `records`, `sessions`, and `stats` write JSON Lines to process
-by default, on a terminal and in a pipe alike; give `--format md` for
-Markdown to read. Common secrets are
-masked by default, and email addresses, IP addresses, your user name,
-and values you list can be masked too.
+Pull the logs you need out of your Claude Code session transcripts,
+formatted and masked: to pass them to people or an LLM, to search past
+sessions, or to count them and look back on how you work. Combine filters
+for time, project, session, branch, text, record type, tool, outcome, and
+skill to narrow the history down to the part that matters, and count the
+records and tokens with `stats`. `records`, `sessions`, and `stats` write
+JSON Lines to process by default, on a terminal and in a pipe alike; give
+`--format md` for Markdown to read. Common secrets are masked by default,
+and email addresses, IP addresses, your user name, and values you list
+can be masked too.
 
 [日本語](README.ja.md)
 
@@ -48,37 +49,126 @@ cargo test --locked
 cargo install --path . --locked
 ```
 
-## Quick start
+## Use cases
+
+### Share a log with people
+
+A session can go out as Markdown in the order it was written, with
+secrets masked by default. List the names of customers and repositories
+in a file, and they read as labels such as `［repo1］`, while
+`--mask-report` writes what was masked, and how many times, on stderr, so
+a log can be checked and shown outside the team as it is. A PR or a
+weekly report can be given a digest of the prompts on its branch or in
+its week as the story of the work, and someone in another time zone the
+times in theirs with `--tz`.
 
 ```sh
-# Prompts from one week, one JSON object per line
-ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
+# One session, also masking emails, IPs, the user name, and a file's values
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json --mask-report text
 
-# Replies in the blog project that mention "deploy", ignoring case
-ccdig records --type reply --project blog --igrep deploy
+# The prompts on the branch feature/login, as a digest to attach to a PR
+ccdig digest --branch feature/login
 
-# From Claude Code, search the other sessions' prompts, replies, and tool
-# calls, 20 at most, leaving out the session doing the search
+# A week's prompts for a weekly report, 300 characters a prompt, 2000 a session
+ccdig digest --since 2026-10-05 --until 2026-10-11 \
+  --max-prompt-chars 300 --max-session-chars 2000
+
+# A log for a teammate on the US west coast, in their local time
+ccdig records --session 1a2b --format md --tz America/Los_Angeles
+```
+
+### Let Claude Code search past sessions
+
+Run ccdig from inside Claude Code, and it finds what was decided or tried
+in the other sessions; `current` leaves out the session that is running,
+and leaving out the keys every session repeats and cutting the texts
+keeps the tokens of reading the results down.
+Find the sessions that matched most with `sessions` first, then read
+around each match with `records --around` to follow the prompts and
+replies of the time as they went.
+
+```sh
+# The other sessions' prompts, replies, and tool calls, 20 at most
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
-# The sessions that mention "deploy" most, each with the line it first
-# matched, without the tokens
+# The same search, without repeated keys, texts and tool I/O cut short
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
+  --message-chars 500 --tool-chars 200 \
+  --fields '!agent,!session_title,!project,!cwd,!git_branch'
+
+# The sessions that mention "deploy" most, with the line each first matched
 ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 
-# Failed Bash calls, with sub-agents, as Markdown
+# In the session found, the records that matched and 2 before and after
+ccdig records --session b799 --igrep deploy --around 2 --format md
+
+# Of a long reply, only the lines that matched and 1 line around each
+ccdig records --type reply --igrep deploy --context 1 --format md
+```
+
+### Find the sessions that changed a file
+
+Search the edits and writes by path to find the sessions that changed a
+file and when, and check later which request a change came from.
+
+```sh
+# The calls that changed src/main.rs, with the session, time, and tool
+ccdig records --touched src/main.rs --fields session_id,timestamp,tool
+```
+
+### Review the calls that went wrong
+
+Count the calls a permission rule stopped and those you turned down, per
+tool, as material for tuning the allow and deny lists of
+`settings.json`. The failed calls can be read with the sub-agents', so a
+command that keeps failing stands out, and narrowed to a skill, they show
+where in its steps the skill fails.
+
+```sh
+# The calls a permission rule stopped, per tool
+ccdig stats --denial permission-rule --by tool --since 2026-10-05 --until 2026-10-11
+
+# The calls you turned down
+ccdig records --denial user-rejected --format md
+
+# Failed Bash calls, with the sub-agents'
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# The calls that failed while the skill weekly-report ran
+ccdig records --type result --skill weekly-report --status error --format md
+```
+
+### Review how you ask
+
+A session where plans were turned down or asked for again and again is a
+sign that the first prompt left conditions out. The comment typed when
+turning one down is kept as a prompt whose `kind` is `rejection`, so the
+conditions added later can be read as they were typed.
+
+```sh
 # The sessions that asked to approve a plan twice or more
 ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
 
-# A size-capped Markdown digest of the prompts to paste into an LLM
-ccdig digest --since 2026-10-05 --until 2026-10-11
+# The comments typed when turning a plan or a tool call down
+ccdig records --kind rejection --fields session_title,text
+```
 
-# One session as a thread to share, with emails, IP addresses, the user
-# name, and the values in a file masked too
-ccdig records --session 1a2b --format md --mask email,ip,user \
-  --mask-values @secrets.json
+### Count usage
+
+Count the records, sessions, and tokens per project, month, or skill, to
+see how much AI each project used or which skills are used most.
+
+```sh
+# Records and tokens per project and month
+ccdig stats --by project,month --since 2026-10-01 --until 2026-10-31
+
+# One project's usage (blog), month by month
+ccdig stats --project blog --by month
+
+# Output tokens per skill, most first
+ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 ```
 
 ## Commands

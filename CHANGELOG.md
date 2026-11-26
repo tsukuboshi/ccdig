@@ -42,6 +42,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of a kind such as `rejection`, or with a leading `!`, leaves them out,
   and `--superseded true` or `false`, which keeps the prompts typed again
   in place of others, or the others.
+- The README starts with use cases: sharing a log, searching past
+  sessions, finding the sessions that changed a file, reviewing the calls
+  that went wrong and how you ask, and counting usage.
 
 ### Changed
 

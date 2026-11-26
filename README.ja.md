@@ -2,11 +2,13 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
-取り出す CLI です。
+Claude Code の会話履歴から、必要なログだけを整形・マスクして取り出す
+CLI です。
+人や LLM に渡す、過去のやり取りを探す、集計して使い方を振り返る、
+といった用途に使えます。
 期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
-成否・スキルを組み合わせて必要な部分に絞り込み、残ったものを `stats` で
-集計できます。`records`・`sessions`・`stats` は、
+成否・スキルを組み合わせて必要な部分に絞り込み、`stats` で件数や
+トークン数を数えられます。`records`・`sessions`・`stats` は、
 端末でもパイプでも既定で加工しやすい JSON Lines を出し、`--format md` を
 付けると読みやすい Markdown を出します。
 よくある秘密情報は既定でマスクし、メールアドレス・IP アドレス・ユーザー名・
@@ -49,37 +51,117 @@ cargo test --locked
 cargo install --path . --locked
 ```
 
-## クイックスタート
+## ユースケース
+
+### ログを人に共有する
+
+1 セッションを会話の流れのまま Markdown にし、秘密情報を既定でマスクして渡せます。
+顧客名やリポジトリ名もファイルに書いておけば `［repo1］` のような表記に置き換わり、
+`--mask-report` で何をいくつマスクしたかを渡す前に確かめられるので、社外や別チームに見せるログもそのまま作れます。
+PR のレビュアーや週報には、ブランチや期間で絞った依頼文のダイジェストを作業の経緯として添えられ、別のタイムゾーンの相手には `--tz` で時刻を現地の表記にそろえて渡せます。
 
 ```sh
-# 1 週間分の依頼文を、1 行に 1 つの JSON オブジェクトで出す
-ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
+# 1 セッションを、メールアドレス・IP アドレス・ユーザー名・ファイルに書いた値もマスクして出す
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json --mask-report text
 
-# blog プロジェクトで "deploy" に触れた返答を、大文字小文字を区別せずに出す
-ccdig records --type reply --project blog --igrep deploy
+# ブランチ feature/login での依頼文を、PR に添えるダイジェストにする
+ccdig digest --branch feature/login
 
-# Claude Code の中から、検索している当のセッションを除いて、ほかの
-# セッションの依頼文・返答・ツールの呼び出しを 20 件まで検索する
+# 1 週間分の依頼文を、1 件 300 字・1 セッション 2000 字までの週報の材料にまとめる
+ccdig digest --since 2026-10-05 --until 2026-10-11 \
+  --max-prompt-chars 300 --max-session-chars 2000
+
+# 米国西海岸のメンバーに渡すログを、現地時刻で出す
+ccdig records --session 1a2b --format md --tz America/Los_Angeles
+```
+
+### 過去のやり取りを Claude Code 自身に探させる
+
+Claude Code の中から ccdig を呼ぶと、ほかのセッションで決めたことや試したことを探せます。
+いま動いているセッションは `current` で除け、どのセッションでも同じキーを省いて本文を切り詰めれば、結果を読むトークンも抑えられます。
+まず `sessions` でよく一致したセッションに当たりを付け、`records --around` で一致の前後を読むと、
+そのときの依頼と返答を流れごと追えます。
+
+```sh
+# ほかのセッションの依頼文・返答・ツールの呼び出しを 20 件まで検索する
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
-# "deploy" に最も多く触れたセッションを、最初に一致した行付きで、
-# トークン数を省いて出す
+# 同じキーを省き、本文とツールの入出力を切り詰めて検索する
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
+  --message-chars 500 --tool-chars 200 \
+  --fields '!agent,!session_title,!project,!cwd,!git_branch'
+
+# "deploy" に最も多く触れたセッションを、最初に一致した行付きで出す
 ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 
-# 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
+# 当たりを付けたセッションで、一致したレコードと前後 2 件を読む
+ccdig records --session b799 --igrep deploy --around 2 --format md
+
+# 長い返答は、一致した行と前後 1 行だけを読む
+ccdig records --type reply --igrep deploy --context 1 --format md
+```
+
+### どのセッションがファイルを変えたかを辿る
+
+ファイルの編集や書き込みをパスで検索すると、そのファイルを変えたセッションと時刻が分かります。
+いつの、どの依頼による変更だったかを後から確かめられます。
+
+```sh
+# src/main.rs を変えた呼び出しを、セッションと時刻とツールだけで出す
+ccdig records --touched src/main.rs --fields session_id,timestamp,tool
+```
+
+### うまくいかなかった呼び出しを見直す
+
+権限ルールで止まった呼び出しや、自分で断った呼び出しを、ツールごとに数えられます。
+`settings.json` の allow / deny を調整するときの材料になります。
+失敗した呼び出しもサブエージェントの分まで拾えるので繰り返し失敗しているコマンドが見つかり、
+スキルで絞ればそのスキルの手順のどこで失敗しているかも分かります。
+
+```sh
+# 権限ルールで止まった呼び出しを、ツールごとに数える
+ccdig stats --denial permission-rule --by tool --since 2026-10-05 --until 2026-10-11
+
+# 自分で断った呼び出し
+ccdig records --denial user-rejected --format md
+
+# 失敗した Bash の呼び出しを、サブエージェントも含めて出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# スキル weekly-report の実行中に失敗した呼び出し
+ccdig records --type result --skill weekly-report --status error --format md
+```
+
+### 頼み方を振り返る
+
+プランの差し戻しや出し直しが多いセッションは、最初の依頼で条件が足りていなかった印です。
+差し戻したときに打ったコメントは `kind` が `rejection` の依頼文として残るので、
+後から足した条件をそのまま読めます。
+
+```sh
 # プランの承認を 2 回以上求めたセッション
 ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
 
-# LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
-ccdig digest --since 2026-10-05 --until 2026-10-11
+# プランやツールの実行を断ったときに打ったコメント
+ccdig records --kind rejection --fields session_title,text
+```
 
-# 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・IP
-# アドレス・ユーザー名・ファイルに書いた値もマスクする
-ccdig records --session 1a2b --format md --mask email,ip,user \
-  --mask-values @secrets.json
+### 利用量を集計する
+
+プロジェクト・月・スキルごとに、件数・セッション数・トークン数を集計できます。
+案件ごとの AI の利用量を把握したり、よく使うスキルを見つけたりするのに使えます。
+
+```sh
+# プロジェクトごと・月ごとの件数とトークン数
+ccdig stats --by project,month --since 2026-10-01 --until 2026-10-31
+
+# 1 つの案件（blog プロジェクト）の利用量を月ごとに追う
+ccdig stats --project blog --by month
+
+# スキルごとの出力トークン数を、多い順に出す
+ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 ```
 
 ## コマンド
