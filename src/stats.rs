@@ -21,6 +21,8 @@ pub enum By {
     Branch,
     /// The day the record was written, in the output's zone.
     Day,
+    /// Why a tool call did not run, from its result.
+    Denial,
     /// How a prompt was typed.
     Kind,
     /// The model of a reply or a tool call.
@@ -33,6 +35,9 @@ pub enum By {
     Session,
     /// The skill running at the time.
     Skill,
+    /// Whether a tool result is `ok` or an `error`, the words `--status`
+    /// takes.
+    Status,
     /// The sub-agent file name.
     Subagent,
     /// The tool of a call or a result.
@@ -119,12 +124,14 @@ impl By {
         match self {
             Self::Branch => "branch",
             Self::Day => "day",
+            Self::Denial => "denial",
             Self::Kind => "kind",
             Self::Model => "model",
             Self::Month => "month",
             Self::Project => "project",
             Self::Session => "session",
             Self::Skill => "skill",
+            Self::Status => "status",
             Self::Subagent => "subagent",
             Self::Tool => "tool",
             Self::Type => "type",
@@ -136,7 +143,10 @@ impl By {
     /// groups, so a response's tokens belong to none of them: a reply and
     /// the tool calls of one response have different types and tools.
     pub const fn splits_responses(self) -> bool {
-        matches!(self, Self::Kind | Self::Tool | Self::Type)
+        matches!(
+            self,
+            Self::Denial | Self::Kind | Self::Status | Self::Tool | Self::Type
+        )
     }
 
     /// The value of the key for `turn`, `None` when it has none or it is
@@ -146,6 +156,12 @@ impl By {
         let text = match self {
             Self::Branch => head.git_branch.clone(),
             Self::Day => head.timestamp.date_label(zone)?,
+            Self::Denial => match *turn {
+                Turn::Result(ref result) => result.denial.clone(),
+                Turn::Call(_) | Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => {
+                    String::new()
+                }
+            },
             Self::Kind => match *turn {
                 Turn::Prompt(ref prompt) => prompt.kind.name().to_owned(),
                 Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => {
@@ -165,6 +181,12 @@ impl By {
                 Turn::Reply(ref reply) => reply.skill.clone(),
                 Turn::Result(ref result) => result.skill.clone(),
                 Turn::Prompt(_) | Turn::Summary(_) => String::new(),
+            },
+            Self::Status => match *turn {
+                Turn::Result(ref result) => if result.is_error { "error" } else { "ok" }.to_owned(),
+                Turn::Call(_) | Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => {
+                    String::new()
+                }
             },
             Self::Subagent => turn.subagent().to_owned(),
             Self::Tool => match *turn {

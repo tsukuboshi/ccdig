@@ -12,7 +12,7 @@ use crate::classify::human::{Reason, classify};
 use crate::classify::response::{ASK, DIALOGS, PLAN, Response, response};
 use crate::classify::slash::fold;
 use crate::record::{
-    Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Turn,
+    Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::transcript::entry::{Block, Entry, Role, Usage};
@@ -100,6 +100,16 @@ impl Types {
         calls: false,
         prompts: true,
         replies: true,
+        results: false,
+        summaries: false,
+    };
+
+    /// Prompts alone, which `--kind` and `--superseded` pick without
+    /// `--type`.
+    pub const PROMPTS: Self = Self {
+        calls: false,
+        prompts: true,
+        replies: false,
         results: false,
         summaries: false,
     };
@@ -455,6 +465,8 @@ impl Pick for Results {
                     source,
                     search: Search::default(),
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
+                    touched: call
+                        .map_or_else(Touch::default, |found| touch(&found.name, &found.input)),
                     masked,
                 })
             }
@@ -518,6 +530,7 @@ impl Pick for Tools {
                     source,
                     search: Search::default(),
                     model: entry.model.clone(),
+                    touched: touch(&call.name, &call.input),
                     masked,
                 })
             }
@@ -537,10 +550,8 @@ impl Pick for Tools {
 impl Select for Prompt {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            denial: None,
-            is_error: None,
-            skill: None,
-            tool: None,
+            kind: Some(self.kind.name()),
+            ..Extra::default()
         }
     }
 
@@ -576,10 +587,8 @@ impl Select for Prompt {
 impl Select for Reply {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            denial: None,
-            is_error: None,
             skill: Some(&self.skill),
-            tool: None,
+            ..Extra::default()
         }
     }
 
@@ -614,12 +623,7 @@ impl Select for Reply {
 
 impl Select for Summary {
     fn extra(&self) -> Extra<'_> {
-        Extra {
-            denial: None,
-            is_error: None,
-            skill: None,
-            tool: None,
-        }
+        Extra::default()
     }
 
     fn grep_text(&self) -> Cow<'_, str> {
@@ -650,10 +654,10 @@ impl Select for Summary {
 impl Select for ToolCall {
     fn extra(&self) -> Extra<'_> {
         Extra {
-            denial: None,
-            is_error: None,
             skill: Some(&self.skill),
             tool: Some(&self.tool),
+            touched: Some(&self.touched),
+            ..Extra::default()
         }
     }
 
@@ -759,6 +763,8 @@ impl Select for ToolResult {
             is_error: Some(self.is_error),
             skill: Some(&self.skill),
             tool: Some(&self.tool),
+            touched: Some(&self.touched),
+            ..Extra::default()
         }
     }
 
@@ -910,5 +916,23 @@ fn source(spot: &Spot<'_>, entry: &Entry, masked: &mut Counts) -> Source {
         file: spot.mask.meta(&spot.file.path.to_string_lossy(), masked),
         line: spot.line,
         uuid: entry.uuid.clone(),
+    }
+}
+
+/// What a call of `tool` with `input`, before masking, changed: the file
+/// an edit or a write went to, or a shell command, whose words may name it.
+fn touch(tool: &str, input: &Value) -> Touch {
+    let text = |key: &str| {
+        input
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    match tool {
+        "Edit" | "MultiEdit" | "Write" => Touch::Path(text("file_path")),
+        "NotebookEdit" => Touch::Path(text("notebook_path")),
+        "Bash" => Touch::Command(text("command")),
+        _ => Touch::Nothing,
     }
 }

@@ -2,15 +2,16 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Pull the logs you want to share out of your Claude Code session
-transcripts, formatted and masked. Combine filters for time, project,
-session, branch, text, record type, tool, outcome, and skill to narrow
-the history down to the part that matters, and count what is left with
-`stats`. `records`, `sessions`, and `stats` write JSON Lines to process
-by default, on a terminal and in a pipe alike; give `--format md` for
-Markdown to read. Common secrets are
-masked by default, and email addresses, IP addresses, your user name,
-and values you list can be masked too.
+Pull the logs you need out of your Claude Code session transcripts,
+formatted and masked: to pass them to people or an LLM, to search past
+sessions, or to count them and look back on how you work. Combine filters
+for time, project, session, branch, text, record type, tool, outcome, and
+skill to narrow the history down to the part that matters, and count the
+records and tokens with `stats`. `records`, `sessions`, and `stats` write
+JSON Lines to process by default, on a terminal and in a pipe alike; give
+`--format md` for Markdown to read. Common secrets are masked by default,
+and email addresses, IP addresses, your user name, and values you list
+can be masked too.
 
 [日本語](README.ja.md)
 
@@ -48,47 +49,136 @@ cargo test --locked
 cargo install --path . --locked
 ```
 
-## Quick start
+## Use cases
+
+### Share a log with people
+
+A session can go out as Markdown in the order it was written, with
+secrets masked by default. List the names of customers and repositories
+in a file, and they read as labels such as `［repo1］`, while
+`--mask-report` writes what was masked, and how many times, on stderr, so
+a log can be checked and shown outside the team as it is. A PR or a
+weekly report can be given a digest of the prompts on its branch or in
+its week as the story of the work, and someone in another time zone the
+times in theirs with `--tz`.
 
 ```sh
-# Prompts from one week, one JSON object per line
-ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
+# One session, also masking emails, IPs, the user name, and a file's values
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json --mask-report text
 
-# Replies in the blog project that mention "deploy", ignoring case
-ccdig records --type reply --project blog --igrep deploy
+# The prompts on the branch feature/login, as a digest to attach to a PR
+ccdig digest --branch feature/login
 
-# From Claude Code, search the other sessions' prompts, replies, and tool
-# calls, 20 at most, leaving out the session doing the search
+# A week's prompts for a weekly report, 300 characters a prompt, 2000 a session
+ccdig digest --since 2026-10-05 --until 2026-10-11 \
+  --max-prompt-chars 300 --max-session-chars 2000
+
+# A log for a teammate on the US west coast, in their local time
+ccdig records --session 1a2b --format md --tz America/Los_Angeles
+```
+
+### Let Claude Code search past sessions
+
+Run ccdig from inside Claude Code, and it finds what was decided or tried
+in the other sessions; `current` leaves out the session that is running,
+and leaving out the keys every session repeats and cutting the texts
+keeps the tokens of reading the results down.
+Find the sessions that matched most with `sessions` first, then read
+around each match with `records --around` to follow the prompts and
+replies of the time as they went.
+
+```sh
+# The other sessions' prompts, replies, and tool calls, 20 at most
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
-# The sessions that mention "deploy" most, each with the line it first
-# matched, without the tokens
+# The same search, without repeated keys, texts and tool I/O cut short
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
+  --message-chars 500 --tool-chars 200 \
+  --fields '!agent,!session_title,!project,!cwd,!git_branch'
+
+# The sessions that mention "deploy" most, with the line each first matched
 ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 
-# Failed Bash calls, with sub-agents, as Markdown
+# In the session found, the records that matched and 2 before and after
+ccdig records --session b799 --igrep deploy --around 2 --format md
+
+# Of a long reply, only the lines that matched and 1 line around each
+ccdig records --type reply --igrep deploy --context 1 --format md
+```
+
+### Find the sessions that changed a file
+
+Search the edits and writes by path to find the sessions that changed a
+file and when, and check later which request a change came from.
+
+```sh
+# The calls that changed src/main.rs, with the session, time, and tool
+ccdig records --touched src/main.rs --fields session_id,timestamp,tool
+```
+
+### Review the calls that went wrong
+
+Count the calls a permission rule stopped and those you turned down, per
+tool, as material for tuning the allow and deny lists of
+`settings.json`. The failed calls can be read with the sub-agents', so a
+command that keeps failing stands out, and narrowed to a skill, they show
+where in its steps the skill fails.
+
+```sh
+# The calls a permission rule stopped, per tool
+ccdig stats --denial permission-rule --by tool --since 2026-10-05 --until 2026-10-11
+
+# The calls you turned down
+ccdig records --denial user-rejected --format md
+
+# Failed Bash calls, with the sub-agents'
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# The calls that failed while the skill weekly-report ran
+ccdig records --type result --skill weekly-report --status error --format md
+```
+
+### Review how you ask
+
+A session where plans were turned down or asked for again and again is a
+sign that the first prompt left conditions out. The comment typed when
+turning one down is kept as a prompt whose `kind` is `rejection`, so the
+conditions added later can be read as they were typed.
+
+```sh
 # The sessions that asked to approve a plan twice or more
 ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
 
-# A size-capped Markdown digest of the prompts to paste into an LLM
-ccdig digest --since 2026-10-05 --until 2026-10-11
+# The comments typed when turning a plan or a tool call down
+ccdig records --kind rejection --fields session_title,text
+```
 
-# One session as a thread to share, with emails, IP addresses, the user
-# name, and the values in a file masked too
-ccdig records --session 1a2b --format md --mask email,ip,user \
-  --mask-values @secrets.json
+### Count usage
+
+Count the records, sessions, and tokens per project, month, or skill, to
+see how much AI each project used or which skills are used most.
+
+```sh
+# Records and tokens per project and month
+ccdig stats --by project,month --since 2026-10-01 --until 2026-10-31
+
+# One project's usage (blog), month by month
+ccdig stats --project blog --by month
+
+# Output tokens per skill, most first
+ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 ```
 
 ## Commands
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
-| `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
-| `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
+| `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--format`, `--fields`, `--sort` |
+| `digest` | A size-capped Markdown digest of the prompts | `--kind`, `--superseded`, `--max-prompt-chars`, `--max-session-chars` |
 | `version` | The installed version | `--format` |
 
 Every command also takes the options under Shared options.
@@ -106,29 +196,38 @@ defaults to `prompt,reply`:
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
 
-Five options apply to some kinds only:
+Eight options apply to some kinds only:
 
 | Flag | Applies to | Keeps |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | Calls to this tool and their results |
+| `--touched` | `call`, `result` | Edits and writes of this file, or of a file under this directory, and Bash commands that name it |
 | `--status` | `result` | Results with this status: `error` or `ok` |
 | `--denial` | `result` | Results of calls that did not run for this reason, such as `user-rejected` |
 | `--skill` | `reply`, `call`, `result` | Records written while the skill ran |
+| `--kind` | `prompt` | Prompts typed this way: `text`, `slash`, `rejection`, `answer`, or `approval` |
+| `--superseded` | `prompt` | With `true`, the prompts the user sent another in place of, and with `false`, the others |
 | `--subagents` | `reply`, `call`, `result` | Sub-agent transcripts too |
 
-- `--tool`, `--denial`, and `--skill` are repeatable and take a leading
-  `!`, as the shared filters do. `--status` takes a comma-separated list
-  like `--type`.
-- `--tool`, `--status`, `--denial`, and `--skill` narrow only the kinds that have what
+- `--tool`, `--touched`, `--denial`, `--skill`, and `--kind` are
+  repeatable and take a leading `!`, as the shared filters do. `--status`
+  takes a comma-separated list like `--type`, and `--superseded` takes
+  `true` or `false`.
+- `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, and
+  `--superseded` narrow only the kinds that have what
   they test and let the other kinds through, so
   `ccdig records --type prompt,reply,call --skill tdd` keeps every prompt
   along with the replies and calls written while `tdd` ran.
 - Without `--type`, `records` lists only the kinds that every one of
   `--tool`, `--status`, `--denial`, and `--skill` given applies to:
   `ccdig records --tool Bash` prints the `Bash` calls and their results.
-- Each of the five needs a `--type` it applies to, or the command fails.
-- A search with none of `--type`, `--tool`, `--status`, `--denial`, and
-  `--skill` reads prompts and replies only: give
+  `--touched` lists the calls alone, as each result would list its call
+  again, and `--kind` and `--superseded` list the prompts.
+- Each of the eight needs a `--type` it applies to, or the command fails.
+  `--kind` takes only the kinds above, so `--kind call` fails with a
+  pointer to `--type`.
+- A search with no `--type` and none of the flags above but
+  `--subagents` reads prompts and replies only: give
   `--type prompt,reply,call` to read the tool calls too. A call's input
   can be long, so keep the output small with `--limit`, or cut the texts
   with `--message-chars` and `--tool-chars` and leave keys out
@@ -142,6 +241,21 @@ Five options apply to some kinds only:
   is never listed; its replies, calls, and results are, of the types
   `--type` picks. `--subagents` alone lists their replies: give
   `--type prompt,reply,call` to read their calls too.
+- `--touched` reads the `file_path` of `Edit`, `MultiEdit`, and `Write`,
+  the `notebook_path` of `NotebookEdit`, and each word of a `Bash`
+  command, split at spaces, quotes, and characters such as `;`, `>`, `=`,
+  `,`, and `:`. A value matches a path whose parts, between the slashes or
+  backslashes, hold its parts in a row, so `src/cli` matches
+  `/repo/src/cli/args.rs` but not `/repo/src/client.rs`, and a value that
+  starts with `/` matches from the root. A value with a leading `!` leaves
+  a path out of the calls that change one, so a read is never kept, and a
+  value with no part but `/` and `.` is an error. A command is matched as written, so a relative path in it
+  matches only a relative value, and a command that only reads a file,
+  such as `cat`, matches too: leave such commands out with
+  `--tool '!Bash'`. The paths are matched before masking, as
+  `--project` is.
+- `--superseded` is known only once a transcript is read to the end, so
+  it cannot be used with `--around` above 0.
 - `--around N` also lists the N records before and after each record
   `--grep` or `--igrep` matched, such as the prompt a matched reply
   answered: records of the types `--type` picks that pass every other
@@ -211,8 +325,9 @@ A record has these keys, in this order:
 ### stats
 
 Groups the records `records` would list by the keys `--by` names, and
-writes one record per group. `--type`, `--tool`, `--status`, `--denial`,
-`--skill`, `--subagents`, and the filters pick the records as they do for
+writes one record per group. `--type`, `--tool`, `--touched`,
+`--status`, `--denial`, `--skill`, `--kind`, `--superseded`,
+`--subagents`, and the filters pick the records as they do for
 `records`, so `--type` defaults to `prompt,reply` here too. `--format`
 takes `jsonl` (default), `json`, or `md`, a table.
 
@@ -229,7 +344,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 | Flag | Does |
 | --- | --- |
-| `--by KEY` | Groups by these keys, comma-separated or repeated, in that order: `session`, `project`, `branch`, `type`, `tool`, `skill`, `subagent`, `model`, `kind`, `day`, `week`, or `month`. Without it, all the records are one group, and nothing is written when there are none |
+| `--by KEY` | Groups by these keys, comma-separated or repeated, in that order: `session`, `project`, `branch`, `type`, `tool`, `skill`, `subagent`, `model`, `kind`, `denial`, `status`, `day`, `week`, or `month`. Without it, all the records are one group, and nothing is written when there are none |
 | `--min-count N` | Leaves out the groups with fewer than N records |
 | `--sort SORT` | `count` (default), `chars`, `output`, or `cache_read`, the most first, or `key`, by the values of the keys. Groups that tie are in the order of their keys |
 | `--limit N` | Keeps the first N groups after sorting |
@@ -238,7 +353,11 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   Monday, `2026-W48`, and `month` as `2026-11`, all in the zone `--tz`
   names.
 - `kind` is how a prompt was typed, as in the `kind` key, and `model`
-  that of a reply or a tool call. A record without the key, such as a
+  that of a reply or a tool call. `denial` and `status` are those of a
+  tool result, in the words `--denial` and `--status` take, so
+  `--type result --by denial,tool` counts the calls that did not run per
+  reason and tool. They need `--type result`, or a flag such as
+  `--denial` that picks the results. A record without the key, such as a
   prompt with `--by tool`, or with it empty, such as a reply outside a
   skill with `--by skill`, is in a group whose value is `null`, after the
   others with `--sort key`.
@@ -263,7 +382,8 @@ A record has these keys, in this order:
 ### digest
 
 A Markdown digest of the prompts, capped in size. The filters apply to
-the prompts. A comment the user typed when they turned a tool call down is
+the prompts, and so do `--kind` and `--superseded`, as for `records`:
+`--superseded false` leaves out the prompts the user typed again. A comment the user typed when they turned a tool call down is
 listed with `(rejection)` before it, the answers to a question with
 `(answer)`, and a plan approved with `(approval)`.
 
@@ -497,7 +617,8 @@ for a plan approved; the record type is `type`, which `--type` picks.
   `sessions` also reads the assistant lines.
 - A `stats` record adds up in `usage` the tokens its records carry, so
   each response counts once, and only when a record of it is kept; the
-  sum is not that of `sessions`. With `--by tool`, `type`, or `kind`, the
+  sum is not that of `sessions`. With `--by tool`, `type`, `kind`,
+  `denial`, or `status`, the
   records of one response are in different groups, so `usage` is `null`,
   and `--sort output` and `--sort cache_read` are errors. It is `null`
   too when no record carries tokens, as with `--type prompt`.

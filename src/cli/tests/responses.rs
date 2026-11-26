@@ -148,3 +148,78 @@ fn an_answer_beside_a_comment_on_another_call_is_a_prompt_too() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn kind_picks_the_prompts_by_how_they_were_typed() -> TestResult {
+    let history = history()?;
+    for (args, want) in [
+        (&["--kind", "rejection"][..], vec!["rejection"]),
+        (
+            &["--kind", "answer", "--kind", "approval"][..],
+            vec!["answer", "answer", "approval", "approval"],
+        ),
+        (
+            &["--kind", "!approval"][..],
+            vec!["answer", "answer", "rejection", "text"],
+        ),
+        // Without --type, --kind picks prompts alone.
+        (
+            &["--kind", "text", "--type", "prompt,reply"][..],
+            vec!["text"],
+        ),
+    ] {
+        let mut full = vec!["records", "--session", "rrrr"];
+        full.extend_from_slice(args);
+        check_eq(
+            &strings(&json_lines(history.run(&full))?, "kind"),
+            &want,
+            &args.join(" "),
+        )?;
+    }
+    let all = json_lines(history.run(&["records", "--session", "rrrr", "--kind", "text"]))?;
+    check_eq(
+        &strings(&all, "type"),
+        &vec!["prompt"],
+        "the type --kind picks",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn stats_and_the_digest_take_kind_too() -> TestResult {
+    let history = history()?;
+    let groups = json_lines(history.run(&[
+        "stats",
+        "--session",
+        "rrrr",
+        "--kind",
+        "!answer",
+        "--by",
+        "kind",
+    ]))?;
+    check_eq(
+        &strings(&groups, "kind"),
+        &vec!["approval", "rejection", "text"],
+        "stats",
+    )?;
+    let digest = history.run(&["digest", "--session", "rrrr", "--kind", "rejection"]);
+    check_eq(&digest.code, &0, &digest.err)?;
+    check_eq(
+        &(digest.out.contains("(rejection)") && !digest.out.contains("thanks")),
+        &true,
+        &digest.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn kind_without_prompts_is_an_error() -> TestResult {
+    let history = history()?;
+    let ran = history.run(&["records", "--type", "reply", "--kind", "text"]);
+    check_eq(
+        &ran.err.as_str(),
+        &"ccdig: --kind needs --type prompt\n",
+        "records",
+    )?;
+    Ok(())
+}

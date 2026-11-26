@@ -2,11 +2,13 @@
 
 [![CI](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml/badge.svg)](https://github.com/tsukuboshi/ccdig/actions/workflows/ci.yml)
 
-Claude Code の会話履歴から、共有したいログだけを、整形・マスクして
-取り出す CLI です。
+Claude Code の会話履歴から、必要なログだけを整形・マスクして取り出す
+CLI です。
+人や LLM に渡す、過去のやり取りを探す、集計して使い方を振り返る、
+といった用途に使えます。
 期間・プロジェクト・セッション・ブランチ・語句・レコードの種類・ツール・
-成否・スキルを組み合わせて必要な部分に絞り込み、残ったものを `stats` で
-集計できます。`records`・`sessions`・`stats` は、
+成否・スキルを組み合わせて必要な部分に絞り込み、`stats` で件数や
+トークン数を数えられます。`records`・`sessions`・`stats` は、
 端末でもパイプでも既定で加工しやすい JSON Lines を出し、`--format md` を
 付けると読みやすい Markdown を出します。
 よくある秘密情報は既定でマスクし、メールアドレス・IP アドレス・ユーザー名・
@@ -49,47 +51,127 @@ cargo test --locked
 cargo install --path . --locked
 ```
 
-## クイックスタート
+## ユースケース
+
+### ログを人に共有する
+
+1 セッションを会話の流れのまま Markdown にし、秘密情報を既定でマスクして渡せます。
+顧客名やリポジトリ名もファイルに書いておけば `［repo1］` のような表記に置き換わり、
+`--mask-report` で何をいくつマスクしたかを渡す前に確かめられるので、社外や別チームに見せるログもそのまま作れます。
+PR のレビュアーや週報には、ブランチや期間で絞った依頼文のダイジェストを作業の経緯として添えられ、別のタイムゾーンの相手には `--tz` で時刻を現地の表記にそろえて渡せます。
 
 ```sh
-# 1 週間分の依頼文を、1 行に 1 つの JSON オブジェクトで出す
-ccdig records --type prompt --since 2026-10-05 --until 2026-10-11
+# 1 セッションを、メールアドレス・IP アドレス・ユーザー名・ファイルに書いた値もマスクして出す
+ccdig records --session 1a2b --format md --mask email,ip,user \
+  --mask-values @secrets.json --mask-report text
 
-# blog プロジェクトで "deploy" に触れた返答を、大文字小文字を区別せずに出す
-ccdig records --type reply --project blog --igrep deploy
+# ブランチ feature/login での依頼文を、PR に添えるダイジェストにする
+ccdig digest --branch feature/login
 
-# Claude Code の中から、検索している当のセッションを除いて、ほかの
-# セッションの依頼文・返答・ツールの呼び出しを 20 件まで検索する
+# 1 週間分の依頼文を、1 件 300 字・1 セッション 2000 字までの週報の材料にまとめる
+ccdig digest --since 2026-10-05 --until 2026-10-11 \
+  --max-prompt-chars 300 --max-session-chars 2000
+
+# 米国西海岸のメンバーに渡すログを、現地時刻で出す
+ccdig records --session 1a2b --format md --tz America/Los_Angeles
+```
+
+### 過去のやり取りを Claude Code 自身に探させる
+
+Claude Code の中から ccdig を呼ぶと、ほかのセッションで決めたことや試したことを探せます。
+いま動いているセッションは `current` で除け、どのセッションでも同じキーを省いて本文を切り詰めれば、結果を読むトークンも抑えられます。
+まず `sessions` でよく一致したセッションに当たりを付け、`records --around` で一致の前後を読むと、
+そのときの依頼と返答を流れごと追えます。
+
+```sh
+# ほかのセッションの依頼文・返答・ツールの呼び出しを 20 件まで検索する
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
   --format md --limit 20
 
-# "deploy" に最も多く触れたセッションを、最初に一致した行付きで、
-# トークン数を省いて出す
+# 同じキーを省き、本文とツールの入出力を切り詰めて検索する
+ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
+  --message-chars 500 --tool-chars 200 \
+  --fields '!agent,!session_title,!project,!cwd,!git_branch'
+
+# "deploy" に最も多く触れたセッションを、最初に一致した行付きで出す
 ccdig sessions --igrep deploy --sort matches --fields '!usage' --limit 10
 
-# 失敗した Bash の呼び出しを、サブエージェントも含めて Markdown で出す
+# 当たりを付けたセッションで、一致したレコードと前後 2 件を読む
+ccdig records --session b799 --igrep deploy --around 2 --format md
+
+# 長い返答は、一致した行と前後 1 行だけを読む
+ccdig records --type reply --igrep deploy --context 1 --format md
+```
+
+### どのセッションがファイルを変えたかを辿る
+
+ファイルの編集や書き込みをパスで検索すると、そのファイルを変えたセッションと時刻が分かります。
+いつの、どの依頼による変更だったかを後から確かめられます。
+
+```sh
+# src/main.rs を変えた呼び出しを、セッションと時刻とツールだけで出す
+ccdig records --touched src/main.rs --fields session_id,timestamp,tool
+```
+
+### うまくいかなかった呼び出しを見直す
+
+権限ルールで止まった呼び出しや、自分で断った呼び出しを、ツールごとに数えられます。
+`settings.json` の allow / deny を調整するときの材料になります。
+失敗した呼び出しもサブエージェントの分まで拾えるので繰り返し失敗しているコマンドが見つかり、
+スキルで絞ればそのスキルの手順のどこで失敗しているかも分かります。
+
+```sh
+# 権限ルールで止まった呼び出しを、ツールごとに数える
+ccdig stats --denial permission-rule --by tool --since 2026-10-05 --until 2026-10-11
+
+# 自分で断った呼び出し
+ccdig records --denial user-rejected --format md
+
+# 失敗した Bash の呼び出しを、サブエージェントも含めて出す
 ccdig records --type result --tool Bash --status error --subagents --format md
 
+# スキル weekly-report の実行中に失敗した呼び出し
+ccdig records --type result --skill weekly-report --status error --format md
+```
+
+### 頼み方を振り返る
+
+プランの差し戻しや出し直しが多いセッションは、最初の依頼で条件が足りていなかった印です。
+差し戻したときに打ったコメントは `kind` が `rejection` の依頼文として残るので、
+後から足した条件をそのまま読めます。
+
+```sh
 # プランの承認を 2 回以上求めたセッション
 ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
 
-# LLM に貼るための、サイズ上限付きの依頼文の Markdown ダイジェスト
-ccdig digest --since 2026-10-05 --until 2026-10-11
+# プランやツールの実行を断ったときに打ったコメント
+ccdig records --kind rejection --fields session_title,text
+```
 
-# 人に渡すために 1 セッションを会話の流れで出し、メールアドレス・IP
-# アドレス・ユーザー名・ファイルに書いた値もマスクする
-ccdig records --session 1a2b --format md --mask email,ip,user \
-  --mask-values @secrets.json
+### 利用量を集計する
+
+プロジェクト・月・スキルごとに、件数・セッション数・トークン数を集計できます。
+案件ごとの AI の利用量を把握したり、よく使うスキルを見つけたりするのに使えます。
+
+```sh
+# プロジェクトごと・月ごとの件数とトークン数
+ccdig stats --by project,month --since 2026-10-01 --until 2026-10-31
+
+# 1 つの案件（blog プロジェクト）の利用量を月ごとに追う
+ccdig stats --project blog --by month
+
+# スキルごとの出力トークン数を、多い順に出す
+ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 ```
 
 ## コマンド
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
-| `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
-| `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
+| `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--format`, `--fields`, `--sort` |
+| `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--kind`, `--superseded`, `--max-prompt-chars`, `--max-session-chars` |
 | `version` | インストールされているバージョン | `--format` |
 
 どのコマンドも、「共通オプション」の節のオプションも取ります。
@@ -107,27 +189,36 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
 
-次の 5 つのオプションは、一部の種類にだけ効きます。
+次の 8 つのオプションは、一部の種類にだけ効きます。
 
 | フラグ | 効く種類 | 残すもの |
 | --- | --- | --- |
 | `--tool` | `call`, `result` | このツールの呼び出しとその結果 |
+| `--touched` | `call`, `result` | このファイル、またはこのディレクトリ以下のファイルの編集・書き込みと、それを名指す Bash のコマンド |
 | `--status` | `result` | この状態の結果。`error` か `ok` |
 | `--denial` | `result` | この理由で実行されなかった呼び出しの結果。`user-rejected` など |
 | `--skill` | `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
+| `--kind` | `prompt` | この打ち方の依頼文。`text`・`slash`・`rejection`・`answer`・`approval` のいずれか |
+| `--superseded` | `prompt` | `true` なら、代わりに別の依頼文を送り直された依頼文。`false` ならそれ以外 |
 | `--subagents` | `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
-- `--tool`・`--denial`・`--skill` は、共通の絞り込みと同じく繰り返し指定でき、
-  先頭の `!` も使えます。`--status` は `--type` と同じくカンマ区切りで並べられます。
-- `--tool`・`--status`・`--denial`・`--skill` は、調べる値を持つ種類だけを絞り、持たない
+- `--tool`・`--touched`・`--denial`・`--skill`・`--kind` は、共通の絞り込みと同じく
+  繰り返し指定でき、先頭の `!` も使えます。`--status` は `--type` と同じく
+  カンマ区切りで並べられ、`--superseded` は `true` か `false` を取ります。
+- `--tool`・`--touched`・`--status`・`--denial`・`--skill`・`--kind`・
+  `--superseded` は、調べる値を持つ種類だけを絞り、持たない
   種類はそのまま残します。そのため
   `ccdig records --type prompt,reply,call --skill tdd` は、すべての依頼文と、
   `tdd` の実行中に書かれた返答と呼び出しを残します。
 - `--type` を省略すると、`records` は付けた `--tool`・`--status`・`--denial`・`--skill` が
   すべて効く種類だけを出します。`ccdig records --tool Bash` なら、`Bash` の
   呼び出しとその結果です。
-- この 5 つのフラグは、効く種類が `--type` に無いとエラーになります。
-- `--type`・`--tool`・`--status`・`--denial`・`--skill` のどれも付けずに
+  `--touched` は呼び出しだけを出します。結果も出すと、同じ呼び出しが
+  2 回並ぶためです。`--kind` と `--superseded` は依頼文を出します。
+- この 8 つのフラグは、効く種類が `--type` に無いとエラーになります。
+  `--kind` は上の種類しか取らないので、`--kind call` は `--type` を
+  案内するエラーになります。
+- `--type` を付けず、上のフラグも `--subagents` 以外を付けずに
   検索すると、依頼文と返答だけが対象になります。
   ツールの呼び出しも読むなら `--type prompt,reply,call` を付けます。
   呼び出しの入力は長くなりがちなので、`--limit` で出力を小さく保てます。
@@ -141,6 +232,20 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   されません。出力されるのは、その返答・呼び出し・結果のうち `--type` で
   選んだ種類です。`--subagents` だけなら返答が出ます。呼び出しも読むなら
   `--type prompt,reply,call` を付けます。
+- `--touched` は、`Edit`・`MultiEdit`・`Write` の `file_path`、
+  `NotebookEdit` の `notebook_path`、`Bash` のコマンドの各語を読みます。
+  語は、空白・引用符と、`;`・`>`・`=`・`,`・`:` などの文字で区切ります。
+  値は、スラッシュかバックスラッシュで区切った要素がパスの要素の中に続けて
+  現れれば一致します。そのため `src/cli` は `/repo/src/cli/args.rs` に一致し、
+  `/repo/src/client.rs` には一致しません。`/` で始まる値はルートから照合します。
+  先頭に `!` を付けた値は、パスを変える呼び出しの中からそのパスを除くので、
+  読むだけの呼び出しは残りません。`/` と `.` 以外の要素が無い値はエラーです。
+  コマンドは書かれたまま照合するので、コマンド中の相対パスは相対パスの値に
+  しか一致せず、`cat` のように読むだけのコマンドも一致します。そうした
+  コマンドは `--tool '!Bash'` で除けます。パスは、`--project` と同じく
+  マスクする前の値で照合します。
+- `--superseded` はファイルを最後まで読まないと決まらないので、0 より大きい
+  `--around` とは併用できません。
 - `--around N` は、`--grep` か `--igrep` に一致した各レコードの前後 N 件の
   レコードも出します。一致した返答が答えた依頼文などです。対象は、
   `--type` で選んだ種類のうち、ほかの絞り込みをすべて通る、同じファイルの
@@ -209,8 +314,9 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 ### stats
 
 `records` が出すレコードを `--by` で指定したキーでまとめ、グループ 1 つに
-つき 1 レコードを出します。`--type`・`--tool`・`--status`・`--denial`・
-`--skill`・`--subagents` と絞り込みは `records` と同じくレコードを選ぶので、
+つき 1 レコードを出します。`--type`・`--tool`・`--touched`・`--status`・
+`--denial`・`--skill`・`--kind`・`--superseded`・`--subagents` と絞り込みは
+`records` と同じくレコードを選ぶので、
 ここでも `--type` の既定は `prompt,reply` です。`--format` は
 `jsonl`（既定）・`json`・表になる `md` を取ります。
 
@@ -227,7 +333,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 | フラグ | 働き |
 | --- | --- |
-| `--by KEY` | これらのキーで、指定した順にまとめる（カンマ区切りか繰り返しで指定）。キーは `session`・`project`・`branch`・`type`・`tool`・`skill`・`subagent`・`model`・`kind`・`day`・`week`・`month`。省くと全レコードで 1 グループで、レコードが無ければ何も出さない |
+| `--by KEY` | これらのキーで、指定した順にまとめる（カンマ区切りか繰り返しで指定）。キーは `session`・`project`・`branch`・`type`・`tool`・`skill`・`subagent`・`model`・`kind`・`denial`・`status`・`day`・`week`・`month`。省くと全レコードで 1 グループで、レコードが無ければ何も出さない |
 | `--min-count N` | レコードが N 件未満のグループを出さない |
 | `--sort SORT` | `count`（既定）・`chars`・`output`・`cache_read` は多い順、`key` はキーの値の順。同じ値のグループはキーの順に並ぶ |
 | `--limit N` | 並べ替えた後の先頭 N グループを残す |
@@ -235,7 +341,11 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 - `day` は `2026-11-25`、`week` は月曜始まりの ISO 8601 週で `2026-W48`、
   `month` は `2026-11` の形で書き、どれも `--tz` のタイムゾーンで決めます。
 - `kind` は `kind` キーと同じく依頼文の打ち方で、`model` は返答かツールの
-  呼び出しのモデルです。`--by tool` での依頼文のようにキーを持たない
+  呼び出しのモデルです。`denial` と `status` はツールの結果のもので、
+  `--denial` と `--status` が取る語で書きます。そのため
+  `--type result --by denial,tool` で、実行されなかった呼び出しを理由と
+  ツールごとに数えられます。`--type result` か、`--denial` のように結果を
+  選ぶフラグが必要です。`--by tool` での依頼文のようにキーを持たない
   レコードと、`--by skill` でのスキル外の返答のようにキーが空のレコードは、
   値が `null` のグループに入り、`--sort key` ではほかのグループの後に並びます。
 - キーはマスク後の値なので、`--mask-values` を使うとプロジェクトはラベルで
@@ -259,7 +369,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 ### digest
 
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
-依頼文に適用されます。ツールの呼び出しを却下したときに打ったコメントは、
+依頼文に適用され、`records` と同じく `--kind` と `--superseded` も効きます。
+`--superseded false` は、打ち直された依頼文を除きます。ツールの呼び出しを却下したときに打ったコメントは、
 前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、承認した
 プランには `(approval)` を付けます。
 
@@ -493,7 +604,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   行も読みます。
 - `stats` のレコードの `usage` は、そのレコードが運ぶトークン数の合計です。
   1 回の応答は 1 回だけ数え、記録が 1 件でも残った応答だけが入るので、
-  `sessions` の合計とは一致しません。`--by tool`・`type`・`kind` では 1 回の
+  `sessions` の合計とは一致しません。`--by tool`・`type`・`kind`・`denial`・
+  `status` では 1 回の
   応答の記録が別々のグループに入るので `usage` は `null` で、
   `--sort output` と `--sort cache_read` はエラーです。`--type prompt` の
   ようにトークン数を運ぶ記録が無いときも `null` です。

@@ -155,3 +155,114 @@ fn the_mask_report_counts_what_masking_the_title_then_hid() -> TestResult {
     check_eq(&ran.err.starts_with("ccdig: masked 1 by "), &true, &ran.err)?;
     Ok(())
 }
+
+/// The text of each record.
+fn texts(records: &[Value]) -> Vec<&str> {
+    records
+        .iter()
+        .map(|record| {
+            record
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[test]
+fn superseded_picks_the_prompts_sent_again_or_the_others() -> TestResult {
+    let history = history_with_prompts_sent_again()?;
+    for (args, want) in [
+        (
+            &["--type", "prompt", "--superseded", "false"][..],
+            vec!["start", "draft two", "go, but carefully"],
+        ),
+        (
+            &["--type", "prompt", "--superseded", "true"][..],
+            vec!["draft one", "go"],
+        ),
+        // Without --type, --superseded picks prompts alone.
+        (&["--superseded", "true"][..], vec!["draft one", "go"]),
+    ] {
+        let mut full = vec!["records"];
+        full.extend_from_slice(args);
+        check_eq(&texts(&records(&history, &full)?), &want, &args.join(" "))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn the_digest_and_stats_leave_out_the_prompts_sent_again() -> TestResult {
+    let history = history_with_prompts_sent_again()?;
+    let digest = history.run(&[
+        "digest",
+        "--session",
+        "eeee",
+        "--since",
+        "2026-10-13",
+        "--superseded",
+        "false",
+    ]);
+    check_eq(&digest.code, &0, &digest.err)?;
+    check_eq(
+        &(digest.out.contains("`draft two`") && !digest.out.contains("`draft one`")),
+        &true,
+        &digest.out,
+    )?;
+    let groups = records(&history, &["stats", "--superseded", "true"])?;
+    check_eq(
+        &groups
+            .iter()
+            .map(|group| group.get("count").and_then(Value::as_u64))
+            .collect::<Vec<_>>(),
+        &vec![Some(2)],
+        "stats",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn superseded_needs_prompts_and_no_around() -> TestResult {
+    let history = history_with_prompts_sent_again()?;
+    for (args, want) in [
+        (
+            &["records", "--type", "reply", "--superseded", "true"][..],
+            "ccdig: --superseded needs --type prompt\n",
+        ),
+        // Whether a prompt was sent again is known only at the end of its
+        // file, after --around has kept the records next to it.
+        (
+            &[
+                "records",
+                "--igrep",
+                "go",
+                "--around",
+                "1",
+                "--superseded",
+                "false",
+            ][..],
+            "ccdig: --superseded cannot be used with --around\n",
+        ),
+    ] {
+        check_eq(&history.run(args).err.as_str(), &want, &args.join(" "))?;
+    }
+    // --around 0 keeps nothing next to a match.
+    let none_around = records(
+        &history,
+        &[
+            "records",
+            "--igrep",
+            "go",
+            "--around",
+            "0",
+            "--superseded",
+            "false",
+        ],
+    )?;
+    check_eq(
+        &texts(&none_around),
+        &vec!["go, but carefully"],
+        "--around 0",
+    )?;
+    Ok(())
+}
