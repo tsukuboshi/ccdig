@@ -21,6 +21,7 @@ use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
 use crate::stats::{By, Grouping, Sort};
+use crate::text::Span;
 use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
@@ -455,15 +456,22 @@ fn fields(names: Vec<String>, known: &[&str], format: Format) -> Result<Fields, 
     })
 }
 
-/// Checks a limit of characters that `flag` gave, which must be positive,
-/// and converts it.
-fn char_limit(chars: Option<i64>, flag: &'static str) -> Result<Option<usize>, Failure> {
+/// The characters `flag` keeps: `N`, the first N, or `FROM-TO`, those
+/// from FROM to TO, both counted from 1 as `cut -c` counts.
+fn char_span(chars: Option<String>, flag: &'static str) -> Result<Option<Span>, Failure> {
     let Some(given) = chars else {
         return Ok(None);
     };
-    match usize::try_from(given) {
-        Ok(limit) if limit > 0 => Ok(Some(limit)),
-        Ok(_) | Err(_) => Err(Failure::CharLimitNotPositive(flag)),
+    let ends = match given.split_once('-') {
+        Some((from, to)) => from.parse::<usize>().ok().zip(to.parse::<usize>().ok()),
+        None => given.parse::<usize>().ok().map(|to| (1, to)),
+    };
+    match ends {
+        Some((from, to)) if from >= 1 && to >= from => Ok(Some(Span {
+            skip: from.saturating_sub(1),
+            take: to.saturating_sub(from).saturating_add(1),
+        })),
+        Some(_) | None => Err(Failure::CharRange { flag, given }),
     }
 }
 
@@ -524,17 +532,17 @@ pub fn resolve(
             around,
             common: later,
             context,
-            max_message_chars,
-            max_tool_chars,
+            message_chars,
             output,
             selection,
+            tool_chars,
         } => {
             let (kinds, picks) = picked(selection, activity)?;
             let format = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS, format)?;
             let cuts = Cuts {
-                message: char_limit(max_message_chars, "--max-message-chars")?,
-                tool: char_limit(max_tool_chars, "--max-tool-chars")?,
+                message: char_span(message_chars, "--message-chars")?,
+                tool: char_span(tool_chars, "--tool-chars")?,
             };
             let narrowing = Narrowing {
                 around,

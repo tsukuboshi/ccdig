@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::redact::Counts;
-use crate::text::cut_text;
+use crate::text::{Span, cut_span, cut_text};
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
@@ -92,14 +92,14 @@ pub const STATS_KEYS: [&str; 20] = [
     "usage",
 ];
 
-/// How many characters `--max-message-chars` and `--max-tool-chars` keep of
-/// each string, `None` for all of them.
+/// Which characters `--message-chars` and `--tool-chars` keep of each
+/// string, `None` for all of them.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Cuts {
     /// The text of a prompt, a reply, or a summary.
-    pub message: Option<usize>,
+    pub message: Option<Span>,
     /// Each string in a tool's input, and a tool result's text.
-    pub tool: Option<usize>,
+    pub tool: Option<Span>,
 }
 
 /// The keys every kind of record starts with.
@@ -719,17 +719,18 @@ impl Turn {
                 &mut result.search,
             ),
         };
-        let Some(limit) = given else {
+        let Some(span) = given else {
             return;
         };
         if let Some(text) = own_text {
-            *text = cut_text(text, limit);
+            *text = cut_span(text, span);
         }
         if let Some(input) = own_input {
-            cut_strings(input, limit);
+            cut_strings(input, span);
         }
+        // A matched line is shown for where it is, so it keeps its start.
         for line in &mut search.matches {
-            line.text = cut_text(&line.text, limit);
+            line.text = cut_text(&line.text, span.take);
         }
     }
 
@@ -814,19 +815,26 @@ impl Record for Turn {
     }
 }
 
-/// Cuts each string in `value` longer than `limit` characters to `limit`,
-/// followed by an ellipsis and how many characters were cut.
-fn cut_strings(value: &mut Value, limit: usize) {
+/// Keeps of each string in `value` the characters `span` keeps, saying
+/// what it left out. A string no longer than `span` keeps, which a cut of
+/// that many characters leaves whole, stays whole, so the part of an input
+/// a range reads on comes with the short strings that say what it is, such
+/// as its file's path.
+fn cut_strings(value: &mut Value, span: Span) {
     match *value {
-        Value::String(ref mut text) => *text = cut_text(text, limit),
+        Value::String(ref mut text) => {
+            if text.chars().nth(span.take).is_some() {
+                *text = cut_span(text, span);
+            }
+        }
         Value::Array(ref mut items) => {
             for item in items {
-                cut_strings(item, limit);
+                cut_strings(item, span);
             }
         }
         Value::Object(ref mut fields) => {
             for field in fields.values_mut() {
-                cut_strings(field, limit);
+                cut_strings(field, span);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}

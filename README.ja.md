@@ -86,7 +86,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--max-prompt-chars`, `--max-session-chars` |
@@ -131,7 +131,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
   検索すると、依頼文と返答だけが対象になります。
   ツールの呼び出しも読むなら `--type prompt,reply,call` を付けます。
   呼び出しの入力は長くなりがちなので、`--limit` で出力を小さく保てます。
-  `--max-message-chars` と `--max-tool-chars` で本文を切り、`--fields` で
+  `--message-chars` と `--tool-chars` で本文を切り、`--fields` で
   キーを省くこともできます。
 - 呼び出しは結果を持つので、`--type call` だけでも、質問への回答のような
   ツールの返したものが抜けません。`--type result` は結果を単独で並べます。
@@ -154,8 +154,8 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 | --- | --- |
 | `--context N` | 各レコードで `--grep` か `--igrep` に一致した行を、前後 N 行と一緒に `matches` に並べる。Markdown では、全文の代わりにその行を出す。付けなければ、JSON と JSON Lines は一致した行だけを並べる |
 | `--format` | `jsonl`（既定）は 1 行に 1 つの JSON オブジェクト、`json` は 1 つの文書、`md` は読むための Markdown を書く |
-| `--max-message-chars N` | 依頼文・返答・要約の本文を N 文字で切って `… (M more characters)` を付ける |
-| `--max-tool-chars N` | ツールの入力にある文字列とツールの結果の出力（呼び出しが持つ結果も含む）を、それぞれ N 文字で切る。ファイル全体を書く `Write` で出力が埋まらずに済む |
+| `--message-chars N` | 依頼文・返答・要約の本文の先頭 N 文字を残し、`… (M more characters, next: N+1-2N)` を付ける。`--message-chars FROM-TO` は、`cut -c` と同じく 1 から数えて FROM から TO までの文字を `(K characters before) …` の後に残すので、切ったときに示された範囲で続きを読める |
+| `--tool-chars N` | ツールの入力にある文字列と、ツールの結果の出力（呼び出しが持つ結果も含む）に同じことをする。ファイル全体を書く `Write` で出力が埋まらずに済む。`FROM-TO` も取る。その場合、入力の文字列のうち TO - FROM + 1 文字以下のもの（ファイルのパスのように、その文字数で切ったときに切られなかったもの）はそのまま残す |
 
 ### sessions
 
@@ -240,7 +240,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   値が `null` のグループに入り、`--sort key` ではほかのグループの後に並びます。
 - キーはマスク後の値なので、`--mask-values` を使うとプロジェクトはラベルで
   まとまります。
-- `--around`・`--context`・`--max-message-chars`・`--max-tool-chars` は、
+- `--around`・`--context`・`--message-chars`・`--tool-chars` は、
   数える対象が変わってしまうのでエラーです。`--subagents` の無い
   `--by subagent` も、サブエージェントのレコードがすべて外れるのでエラーです。
 
@@ -251,7 +251,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | `--by` のキー | その値。`--by` で指定した順に並ぶ。値が無ければ `null` |
 | `session_title`, `project`, `file` | `--by session` のときだけ、セッションの最後のタイトル・プロジェクト・transcript のファイル。空なら `null`。`records --session` にそのまま渡せる |
 | `count` | レコードの件数 |
-| `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--max-tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
+| `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
 | `sessions` | レコードを含むセッションの数。`--by session` のときは書かない |
 | `first`, `last` | 最初と最後のレコードの時刻。`timestamp` と同じ形で書く |
 | `usage` | トークン数。「トークン数」の節を参照 |

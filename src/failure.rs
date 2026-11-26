@@ -12,9 +12,17 @@ pub enum Failure {
     /// has a sub-agent.
     #[error("--by subagent needs --subagents")]
     ByNeedsSubagents,
-    /// `--max-message-chars` or `--max-tool-chars` is not positive.
-    #[error("{0} must be positive")]
-    CharLimitNotPositive(&'static str),
+    /// `--message-chars` or `--tool-chars` is neither a positive count nor
+    /// a range counted from 1.
+    #[error(
+        "{flag} takes a count of characters such as 2000, or a range such as 2001-4000 counted from 1: {given:?}"
+    )]
+    CharRange {
+        /// The flag.
+        flag: &'static str,
+        /// What it was given.
+        given: String,
+    },
     /// `--context` is given without a pattern for it to find.
     #[error("--context needs --grep or --igrep with a pattern that does not start with !")]
     ContextNeedsGrep,

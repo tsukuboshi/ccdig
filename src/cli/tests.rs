@@ -728,7 +728,7 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     for part in [
         "Without --type, --tool, --status, --denial, or --skill, a search reads\nprompts and replies",
         "add the tool calls with --type prompt,reply,call.\nA tool call's input can be long",
-        "ccdig records --type prompt,reply,call --igrep deploy \\\n    --max-message-chars 500",
+        "ccdig records --type prompt,reply,call --igrep deploy \\\n    --message-chars 500",
         "Also read sub-agent transcripts, which are left out by default",
     ] {
         check_eq(&records.contains(part), &true, &records)?;
@@ -805,8 +805,8 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "Output:\n",
                 "--format <FORMAT>",
                 "--limit <N>",
-                "--max-message-chars <N>",
-                "--max-tool-chars <N>",
+                "--message-chars <N|FROM-TO>",
+                "--tool-chars <N|FROM-TO>",
                 "--fields <KEY>",
             ],
         ),
@@ -1413,7 +1413,7 @@ fn on_skip_fail_ends_with_status_1_after_writing_the_output() -> TestResult {
 }
 
 #[test]
-fn max_tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
+fn tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
     let history = History::new("root")?;
     history.write(
         "-Users-alice-blog/wwww.jsonl",
@@ -1430,7 +1430,7 @@ fn max_tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult 
         "call",
         "--format",
         "md",
-        "--max-tool-chars",
+        "--tool-chars",
         "10",
     ]);
     check_eq(&cut.code, &0, &cut.err)?;
@@ -1441,15 +1441,75 @@ fn max_tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult 
         &true,
         &whole.out,
     )?;
-    for flag in ["--max-tool-chars", "--max-message-chars"] {
-        let ran = history.run(&["records", flag, "0"]);
-        check_eq(&ran.code, &1, flag)?;
-        check_eq(
-            ran.err.as_str(),
-            format!("ccdig: {flag} must be positive\n").as_str(),
-            flag,
-        )?;
+    for flag in ["--tool-chars", "--message-chars"] {
+        for given in ["0", "-1", "3-2", "0-4", "1-", "x"] {
+            let ran = history.run(&["records", flag, given]);
+            check_eq(&ran.code, &1, flag)?;
+            check_eq(
+                ran.err.as_str(),
+                format!(
+                    "ccdig: {flag} takes a count of characters such as 2000, or a range such as 2001-4000 counted from 1: {given:?}\n"
+                )
+                .as_str(),
+                given,
+            )?;
+        }
     }
+    Ok(())
+}
+
+#[test]
+fn tool_chars_with_a_range_reads_on_where_the_cut_left_off() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/wwww.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"assistant","uuid":"w-1","sessionId":"wwww","timestamp":"2026-10-15T00:00:10Z","message":{"content":[{"type":"tool_use","id":"toolu_w1","name":"Write","input":{"file_path":"/a.md","content":"0123456789abcdefghij"}}]}}"#,
+            r#"{"type":"user","uuid":"m-1","sessionId":"wwww","timestamp":"2026-10-15T00:00:20Z","message":{"role":"user","content":"0123456789abcdefghij"}}"#,
+        ],
+    )?;
+    let content = |args: &[&str], key: &str| -> Result<Vec<String>, Box<dyn Error>> {
+        let mut full = vec!["records", "--session", "wwww", "--type", "call,prompt"];
+        full.extend(args);
+        Ok(json_lines(history.run_week(&full))?
+            .iter()
+            .filter_map(|record| {
+                record
+                    .pointer(key)
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .collect())
+    };
+    check_eq(
+        &content(&["--tool-chars", "8"], "/input/content")?,
+        &vec!["01234567\u{2026} (12 more characters, next: 9-16)".to_owned()],
+        "the first part",
+    )?;
+    check_eq(
+        &content(&["--tool-chars", "9-16"], "/input/content")?,
+        &vec![
+            "(8 characters before) \u{2026}89abcdef\u{2026} (4 more characters, next: 17-20)"
+                .to_owned(),
+        ],
+        "the next part",
+    )?;
+    check_eq(
+        &content(&["--tool-chars", "9-16"], "/input/file_path")?,
+        &vec!["/a.md".to_owned()],
+        "a string the first part did not cut stays whole",
+    )?;
+    check_eq(
+        &content(&["--tool-chars", "9-16"], "/text")?,
+        &vec!["0123456789abcdefghij".to_owned()],
+        "the prompt is not a tool's",
+    )?;
+    check_eq(
+        &content(&["--message-chars", "17-40"], "/text")?,
+        &vec!["(16 characters before) \u{2026}ghij".to_owned()],
+        "the last part",
+    )?;
     Ok(())
 }
 
@@ -1550,7 +1610,7 @@ fn markdown_masks_a_secret_the_json_escapes_hid_once_it_is_decoded() -> TestResu
 }
 
 #[test]
-fn max_chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> TestResult {
+fn chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> TestResult {
     let history = History::new("root")?;
     history.write(
         "-Users-alice-blog/vvvv.jsonl",
@@ -1587,24 +1647,32 @@ fn max_chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> Tes
             .collect()
     };
     check_eq(
-        &texts(&["--max-tool-chars", "4"])?,
+        &texts(&["--tool-chars", "4"])?,
         &vec![
             json!(["prompt", "please write the long notes file", null]),
             json!(["reply", "Writing the notes now.", null]),
-            json!(["call", null, "0123\u{2026} (16 more characters)"]),
+            json!(["call", null, "0123\u{2026} (16 more characters, next: 5-8)"]),
             json!([
                 "result",
-                "File\u{2026} (21 more characters)",
-                "0123\u{2026} (16 more characters)"
+                "File\u{2026} (21 more characters, next: 5-8)",
+                "0123\u{2026} (16 more characters, next: 5-8)"
             ]),
         ],
-        "--max-tool-chars",
+        "--tool-chars",
     )?;
     check_eq(
-        &texts(&["--max-message-chars", "6"])?,
+        &texts(&["--message-chars", "6"])?,
         &vec![
-            json!(["prompt", "please\u{2026} (26 more characters)", null]),
-            json!(["reply", "Writin\u{2026} (16 more characters)", null]),
+            json!([
+                "prompt",
+                "please\u{2026} (26 more characters, next: 7-12)",
+                null
+            ]),
+            json!([
+                "reply",
+                "Writin\u{2026} (16 more characters, next: 7-12)",
+                null
+            ]),
             json!(["call", null, "0123456789abcdefghij"]),
             json!([
                 "result",
@@ -1612,21 +1680,36 @@ fn max_chars_cut_the_tool_side_and_the_conversation_apart_in_json_lines() -> Tes
                 "0123456789abcdefghij"
             ]),
         ],
-        "--max-message-chars",
+        "--message-chars",
     )?;
     Ok(())
 }
 
 #[test]
-fn max_input_chars_points_at_max_tool_chars() -> TestResult {
+fn the_old_names_of_the_char_flags_point_at_the_new_ones() -> TestResult {
     let history = History::new("root")?;
-    let ran = history.run(&["records", "--max-input-chars", "10"]);
-    check_eq(&ran.code, &1, &ran.err)?;
-    check_eq(
-        ran.err.as_str(),
-        "ccdig: unexpected argument '--max-input-chars' found; it is --max-tool-chars now, which cuts the tool inputs and outputs in every format\n",
-        "hint",
-    )?;
+    for (old, hint) in [
+        (
+            "--max-input-chars",
+            "it is --tool-chars now, which cuts the tool inputs and outputs in every format",
+        ),
+        (
+            "--max-tool-chars",
+            "it is --tool-chars now, which also takes a range such as 2001-4000",
+        ),
+        (
+            "--max-message-chars",
+            "it is --message-chars now, which also takes a range such as 2001-4000",
+        ),
+    ] {
+        let ran = history.run(&["records", old, "10"]);
+        check_eq(&ran.code, &1, &ran.err)?;
+        check_eq(
+            ran.err.as_str(),
+            format!("ccdig: unexpected argument '{old}' found; {hint}\n").as_str(),
+            old,
+        )?;
+    }
     Ok(())
 }
 

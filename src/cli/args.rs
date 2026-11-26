@@ -155,7 +155,7 @@ pub enum Command {
                       or cut the texts and leave out the keys every record of a session\n\
                       repeats, as in\n\
                       \x20 ccdig records --type prompt,reply,call --igrep deploy \\\n\
-                      \x20   --max-message-chars 500 --max-tool-chars 100 \\\n\
+                      \x20   --message-chars 500 --tool-chars 100 \\\n\
                       \x20   --fields '!agent,!session_title,!project,!cwd,!git_branch'"
     )]
     Records {
@@ -179,15 +179,29 @@ pub enum Command {
         /// JSON and JSON Lines, none in Markdown].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
-        /// Cut the text of each prompt, reply, and summary to this many
-        /// characters [default: no limit].
-        #[arg(long, value_name = "N", help_heading = "Output", display_order = 62)]
-        max_message_chars: Option<i64>,
-        /// Cut each string in a tool's input, and each tool result's
-        /// output, the one a call carries too, to this many characters
-        /// [default: no limit].
-        #[arg(long, value_name = "N", help_heading = "Output", display_order = 63)]
-        max_tool_chars: Option<i64>,
+        /// Keep this many characters of the text of each prompt, reply, and
+        /// summary, or with FROM-TO, those characters, counted from 1, to
+        /// read on where a cut left off [default: all of them].
+        #[arg(
+            long,
+            value_name = "N|FROM-TO",
+            allow_negative_numbers = true,
+            help_heading = "Output",
+            display_order = 62
+        )]
+        message_chars: Option<String>,
+        /// Keep this many characters of each string in a tool's input and
+        /// of each tool result's output, the one a call carries too, or
+        /// with FROM-TO, those characters, counted from 1 [default: all of
+        /// them].
+        #[arg(
+            long,
+            value_name = "N|FROM-TO",
+            allow_negative_numbers = true,
+            help_heading = "Output",
+            display_order = 63
+        )]
+        tool_chars: Option<String>,
         /// The output format.
         #[command(flatten)]
         output: Output,
@@ -747,11 +761,20 @@ fn hint(error: &clap::Error) -> Option<String> {
         return None;
     }
     let arg = error.get(ContextKind::InvalidArg)?.to_string();
-    if arg == "--max-input-chars" {
-        return Some(
-            "it is --max-tool-chars now, which cuts the tool inputs and outputs in every format"
-                .to_owned(),
-        );
+    let renamed = match arg.as_str() {
+        "--max-input-chars" => {
+            Some("it is --tool-chars now, which cuts the tool inputs and outputs in every format")
+        }
+        "--max-tool-chars" => {
+            Some("it is --tool-chars now, which also takes a range such as 2001-4000")
+        }
+        "--max-message-chars" => {
+            Some("it is --message-chars now, which also takes a range such as 2001-4000")
+        }
+        _ => None,
+    };
+    if let Some(said) = renamed {
+        return Some(said.to_owned());
     }
     KIND_FLAGS.contains(&arg.as_str()).then(|| {
         format!(

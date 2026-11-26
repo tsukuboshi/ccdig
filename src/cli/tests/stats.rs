@@ -325,12 +325,12 @@ fn stats_rejects_what_would_change_what_it_counts() -> TestResult {
             "ccdig: unexpected argument '--context'",
         ),
         (
-            &["--max-message-chars", "1"][..],
-            "ccdig: unexpected argument '--max-message-chars'",
+            &["--message-chars", "1"][..],
+            "ccdig: unexpected argument '--message-chars'",
         ),
         (
-            &["--max-tool-chars", "1"][..],
-            "ccdig: unexpected argument '--max-tool-chars'",
+            &["--tool-chars", "1"][..],
+            "ccdig: unexpected argument '--tool-chars'",
         ),
     ] {
         let mut full = vec!["stats"];

@@ -85,7 +85,7 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--max-message-chars`, `--max-tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--status`, `--denial`, `--skill`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--max-prompt-chars`, `--max-session-chars` |
@@ -131,7 +131,7 @@ Five options apply to some kinds only:
   `--skill` reads prompts and replies only: give
   `--type prompt,reply,call` to read the tool calls too. A call's input
   can be long, so keep the output small with `--limit`, or cut the texts
-  with `--max-message-chars` and `--max-tool-chars` and leave keys out
+  with `--message-chars` and `--tool-chars` and leave keys out
   with `--fields`.
 - A call carries its result, so `--type call` does not leave out what a
   tool returned, such as the answers to a question; `--type result` lists
@@ -155,8 +155,8 @@ Four options shape the output:
 | --- | --- |
 | `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
 | `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
-| `--max-message-chars N` | Cuts the text of each prompt, reply, and summary to N characters, followed by `… (M more characters)` |
-| `--max-tool-chars N` | Cuts each string in a tool's input, and each tool result's output, the one a call carries too, to N characters, so a `Write` of a whole file does not fill the output |
+| `--message-chars N` | Keeps the first N characters of the text of each prompt, reply, and summary, followed by `… (M more characters, next: N+1-2N)`. `--message-chars FROM-TO` keeps the characters from FROM to TO, counted from 1 as `cut -c` counts, after `(K characters before) …`, so the range a cut names reads on where it left off |
+| `--tool-chars N` | Does the same to each string in a tool's input, and to each tool result's output, the one a call carries too, so a `Write` of a whole file does not fill the output. It also takes `FROM-TO`, which leaves whole a string of an input no longer than TO - FROM + 1 characters, one the cut of that many left whole, such as a file's path |
 
 ### sessions
 
@@ -244,7 +244,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   others with `--sort key`.
 - The keys hold the values after masking, so with `--mask-values` the
   projects are grouped by their labels.
-- `--around`, `--context`, `--max-message-chars`, and `--max-tool-chars`
+- `--around`, `--context`, `--message-chars`, and `--tool-chars`
   are errors, as they would change what is counted. So is `--by subagent`
   without `--subagents`, which leaves out every sub-agent's record.
 
@@ -255,7 +255,7 @@ A record has these keys, in this order:
 | The `--by` keys | Their values, in the order `--by` names them, or `null` |
 | `session_title`, `project`, `file` | With `--by session`, the session's last title, project, and transcript file, each `null` when empty, so it can be passed on to `records --session` |
 | `count` | How many records |
-| `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--max-tool-chars` cuts each string in an input, so it measures something else |
+| `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--tool-chars` cuts each string in an input, so it measures something else |
 | `sessions` | How many sessions the records are in; not written with `--by session` |
 | `first`, `last` | The times of the first and the last record, written as `timestamp` is |
 | `usage` | The tokens; see Tokens |

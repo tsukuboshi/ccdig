@@ -22,6 +22,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `sessions --type` picks the types of record `--grep` and `--igrep`
   search and count, `prompt,reply` by default, and `sessions --subagents`
   counts the matches in a session's sub-agents toward the session.
+- `--tool-chars` and `--message-chars` take a range such as `2001-4000`,
+  and a cut names the range that comes next, so a long text can be read
+  part by part.
 - Markdown starts with how many records, sessions, or groups it lists,
   by type, so an empty list reads `- Records: 0`, and the sessions table
   has a `Session` and a `Cwd` column.
@@ -30,6 +33,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `--max-tool-chars` is now `--tool-chars`, and `--max-message-chars`
+  `--message-chars`; the old names fail with a line that names the new
+  ones.
+- A cut ends with the range that comes next, as in
+  `… (12 more characters, next: 9-16)`.
 - The JSON schema is 6: calls have `result`, and a prompt's `kind` can be
   `answer` or `approval`.
 - The filter is `strict-v4`: a tool result that answers an

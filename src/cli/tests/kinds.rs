@@ -352,11 +352,11 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
 fn kind_filters_without_type_list_the_kinds_they_apply_to() -> TestResult {
     let history = History::new("kinds/root")?;
     for (args, want) in [
-        // With none of them, prompts and replies; --max-tool-chars and
+        // With none of them, prompts and replies; --tool-chars and
         // --subagents pick no kinds of their own.
         (&["records"][..], vec!["prompt", "reply", "reply"]),
         (
-            &["records", "--max-tool-chars", "5"][..],
+            &["records", "--tool-chars", "5"][..],
             vec!["prompt", "reply", "reply"],
         ),
         (
@@ -533,7 +533,7 @@ fn markdown_says_when_a_call_has_no_result() -> TestResult {
 }
 
 #[test]
-fn max_tool_chars_cuts_the_result_a_call_carries() -> TestResult {
+fn tool_chars_cuts_the_result_a_call_carries() -> TestResult {
     let history = History::new("kinds/root")?;
     let calls = records(
         &history,
@@ -543,7 +543,7 @@ fn max_tool_chars_cuts_the_result_a_call_carries() -> TestResult {
             "call",
             "--tool",
             "Bash",
-            "--max-tool-chars",
+            "--tool-chars",
             "5",
         ],
     )?;
@@ -552,7 +552,7 @@ fn max_tool_chars_cuts_the_result_a_call_carries() -> TestResult {
             .first()
             .and_then(|call| call.get("result"))
             .and_then(|result| result.get("text")),
-        &Some(&json!("test \u{2026} (21 more characters)")),
+        &Some(&json!("test \u{2026} (21 more characters, next: 6-10)")),
         "cut result",
     )?;
     Ok(())

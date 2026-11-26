@@ -2,7 +2,9 @@
 
 mod properties;
 
-use super::{clean_text, code_span, escape_inline, escape_pipes, heading_text, one_line};
+use super::{
+    Span, clean_text, code_span, cut_span, escape_inline, escape_pipes, heading_text, one_line,
+};
 use crate::testing::{TestResult, check_eq};
 
 #[test]
@@ -107,6 +109,41 @@ fn escape_pipes_keeps_a_code_span_inside_one_table_cell() -> TestResult {
         escape_pipes(&code_span("p|`x`\nrow")).as_str(),
         "`` p\\|`x` row ``",
         "project cell",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn cut_span_keeps_a_range_and_says_what_is_before_and_after() -> TestResult {
+    let text = "0123456789abcdefghij";
+    for (skip, take, want) in [
+        (0, 30, "0123456789abcdefghij"),
+        (0, 20, "0123456789abcdefghij"),
+        (0, 5, "01234\u{2026} (15 more characters, next: 6-10)"),
+        (
+            5,
+            5,
+            "(5 characters before) \u{2026}56789\u{2026} (10 more characters, next: 11-15)",
+        ),
+        (15, 10, "(15 characters before) \u{2026}fghij"),
+        (
+            12,
+            5,
+            "(12 characters before) \u{2026}cdefg\u{2026} (3 more characters, next: 18-20)",
+        ),
+        (20, 5, "(20 characters before) \u{2026}"),
+        (40, 5, "(20 characters before) \u{2026}"),
+    ] {
+        check_eq(
+            &cut_span(text, Span { skip, take }),
+            &want.to_owned(),
+            &format!("{skip} {take}"),
+        )?;
+    }
+    check_eq(
+        &cut_span("\u{65e5}\u{672c}\u{8a9e}", Span { skip: 1, take: 1 }),
+        &"(1 characters before) \u{2026}\u{672c}\u{2026} (1 more characters, next: 3-3)".to_owned(),
+        "characters, not bytes",
     )?;
     Ok(())
 }
