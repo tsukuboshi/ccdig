@@ -399,7 +399,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.4","schema":6,"filter":"strict-v4"}
+{"version":"0.0.5","schema":6,"filter":"strict-v4"}
 ```
 
 ## Shared options
@@ -629,7 +629,7 @@ for a plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":6,"filter":"strict-v4","ccdig":"0.0.4",
+{"schema":6,"filter":"strict-v4","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-11-26
+
 ### Added
 
 - A call has a new `result` key, what its result in the same file says:
@@ -303,7 +305,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Slack workflow and trigger webhook URLs longer than 56 characters are
   masked to the end.
 
-[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/tsukuboshi/ccdig/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/tsukuboshi/ccdig/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/tsukuboshi/ccdig/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/tsukuboshi/ccdig/compare/v0.0.1...v0.0.2
