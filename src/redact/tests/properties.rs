@@ -27,8 +27,18 @@ const SEPARATORS: &[&str] = &[" ", "\n", "\t"];
 
 /// Pieces that put the masking rules near their edges when joined at
 /// random: names and operators of assignments, quotes, URL parts, rule
-/// prefixes, and multibyte characters.
+/// prefixes, the contexts of an AWS account ID, and multibyte characters.
 const FRAGMENTS: &[&str] = &[
+    "PS1=\"(",
+    "\u{30A2}\u{30AB}\u{30A6}\u{30F3}\u{30C8}",
+    "\u{3010}",
+    "\u{3011}",
+    "\u{FF08}",
+    "\u{FF09}",
+    "(",
+    ")",
+    "123456789012",
+    "***REDACTED***",
     "password",
     "api_key",
     "token",

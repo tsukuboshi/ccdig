@@ -779,7 +779,7 @@ comma-separated or repeated, as in `--mask email,user`:
 
 | Value | Masks |
 | --- | --- |
-| `aws-account` | 12-digit AWS account IDs in context: in an ARN, assigned to a name such as `Account`, `AWS_ACCOUNT_ID`, `OwnerId`, or an `AWS` principal, in an ECR, S3, or console sign-in host, and after `--account-id` or `--owners`; 12 digits on their own stay |
+| `aws-account` | 12-digit AWS account IDs in context: in an ARN, assigned to a name such as `Account`, `AWS_ACCOUNT_ID`, `OwnerId`, or an `AWS` principal, in an ECR, S3, or console sign-in host, after `--account-id` or `--owners`, in brackets in a `PS1` or `PROMPT`, and after the Japanese word for account, directly or as a comma-separated list, or in brackets on its line or on the line after it when it is a heading, with the profile or account name beside an ID in brackets; 12 digits on their own stay |
 | `aws-profile` | AWS profile names in context: after `--profile`, assigned to `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, or a `profile` key, in a `[profile name]` or `[sso-session name]` header or a credentials file header, and as a `source_profile`; a name in prose stays |
 | `email` | Email addresses, but not an SSH remote such as `git@github.com:` |
 | `git-user` | The `user.name` and `user.email` of git config, in any case; the command fails when either is not set |
@@ -798,6 +798,8 @@ secret used as a key, such as a token, is masked there.
   an address, so it masks that too; one after a letter or a dot, as in
   `v1.2.3.4`, stays.
 - A part of the user name alone, such as a first name, stays; add it to
+  `--mask-values`.
+- An AWS account name on its own, away from an ID, stays; add it to
   `--mask-values`.
 
 ### Labeled values

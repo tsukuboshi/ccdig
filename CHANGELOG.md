@@ -14,6 +14,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `[pasted N chars]`, and leaves out the preview of each option chosen
   from the answers to a question, so the words the user typed fit in its
   limits. `records` keeps both.
+- `--mask aws-account` also masks an account ID in brackets in a `PS1` or
+  `PROMPT` and after the Japanese word for account, and the profile or
+  account name beside it in brackets.
+
+### Fixed
+
+- Masking a text again no longer counts the AWS profiles it masked the
+  first time.
 
 ## [0.0.5] - 2026-11-26
 
