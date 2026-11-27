@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `digest` folds a paste and its `<pasted_content>` tags into
+  `[pasted N chars]`, and leaves out the preview of each option chosen
+  from the answers to a question, so the words the user typed fit in its
+  limits. `records` keeps both.
+
 ## [0.0.5] - 2026-11-26
 
 ### Added

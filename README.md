@@ -385,7 +385,10 @@ A Markdown digest of the prompts, capped in size. The filters apply to
 the prompts, and so do `--kind` and `--superseded`, as for `records`:
 `--superseded false` leaves out the prompts the user typed again. A comment the user typed when they turned a tool call down is
 listed with `(rejection)` before it, the answers to a question with
-`(answer)`, and a plan approved with `(approval)`.
+`(answer)`, and a plan approved with `(approval)`. A paste and its
+`<pasted_content>` tags become `[pasted N chars]`, so the typed words
+show, and the answers leave out the preview of each option chosen
+(`selected preview:`); `records` keeps both.
 
 | Flag | Default | Does |
 | --- | --- | --- |
@@ -571,8 +574,8 @@ for a plan approved; the record type is `type`, which `--type` picks.
   `user-rejected` is read, from the result's text. `is_error` is `true` for
   each of them too.
 - A prompt keeps pasted text where Claude Code put it, between
-  `<pasted_content id="...">` tags. To read the typed words alone, drop
-  the tags with jq:
+  `<pasted_content id="...">` tags; only `digest` folds it. To read the
+  typed words alone, drop the tags with jq:
 
   ```sh
   ccdig records --type prompt | jq '.text |= gsub(

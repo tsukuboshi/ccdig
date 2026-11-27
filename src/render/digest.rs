@@ -1,10 +1,29 @@
 //! The digest: compact Markdown of the prompts, meant as LLM input.
 
+use alloc::borrow::Cow;
+
 use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
 use crate::record::{Head, Kind, Prompt};
 use crate::text::{code_span, escape_inline, heading_text, one_line};
+
+/// Where Claude Code starts the tag it puts around pasted text, up to the
+/// paste's id.
+const PASTE_OPEN: &str = "<pasted_content id=\"";
+
+/// Where the tag that ends a paste starts, up to the paste's id.
+const PASTE_CLOSE: &str = "</pasted_content id=\"";
+
+/// What Claude Code writes after an answer, from its closing quote, before
+/// the preview of the option the user chose.
+const PREVIEW: &str = "\" selected preview:\n";
+
+/// What Claude Code writes between one answer and the next question.
+const NEXT_ANSWER: &str = ", \"";
+
+/// What Claude Code writes before the notes the user added to an answer.
+const NOTES: &str = " user notes: ";
 
 /// The size limits of a digest. Lengths count characters, not bytes, so
 /// multibyte text is cut on character boundaries.
@@ -69,6 +88,75 @@ fn project_label(head: &Head) -> String {
     head.cwd.clone()
 }
 
+/// `text` with each paste and its tags in place of a count of what was
+/// pasted, so that the words the user typed fit in the digest. A paste
+/// without a closing tag of its id stays as it is.
+fn fold_pastes(text: &str) -> Cow<'_, str> {
+    if !text.contains(PASTE_OPEN) {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some((before, tag)) = rest.split_once(PASTE_OPEN) {
+        out.push_str(before);
+        let paste = tag.split_once("\">").and_then(|(id, body)| {
+            body.match_indices(PASTE_CLOSE).find_map(|(at, _)| {
+                let after = body
+                    .get(at.saturating_add(PASTE_CLOSE.len())..)?
+                    .strip_prefix(id)?
+                    .strip_prefix("\">")?;
+                Some((body.get(..at)?, after))
+            })
+        });
+        if let Some((pasted, after)) = paste {
+            out.extend([
+                "[pasted ",
+                &pasted.trim().chars().count().to_string(),
+                " chars]",
+            ]);
+            rest = after;
+        } else {
+            out.push_str(PASTE_OPEN);
+            rest = tag;
+        }
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
+}
+
+/// The answers in `text` without the previews of the options chosen,
+/// which can be long and tell less than the answer does.
+fn without_previews(text: &str) -> Cow<'_, str> {
+    if !text.contains(PREVIEW) {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some((before, preview)) = rest.split_once(PREVIEW) {
+        out.extend([before, "\""]);
+        rest = preview.get(preview_end(preview)..).unwrap_or_default();
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
+}
+
+/// Where the preview at the start of `preview` ends. Nothing marks it, so
+/// it is taken to end at the notes the user wrote, or at the first `, "`
+/// that starts the next answer: a question on one line up to `"="`. A
+/// preview runs over lines, and a question does not.
+fn preview_end(preview: &str) -> usize {
+    let next = preview.match_indices(NEXT_ANSWER).find_map(|(at, _)| {
+        let after = preview.get(at.saturating_add(NEXT_ANSWER.len())..)?;
+        let question = after.get(..after.find("\"=\"")?)?;
+        (!question.contains('\n')).then_some(at)
+    });
+    [next, preview.find(NOTES)]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(preview.len())
+}
+
 /// Writes the section of one transcript file.
 fn session(
     out: &mut String,
@@ -90,7 +178,13 @@ fn session(
     ]);
     let mut used = 0_usize;
     for (index, prompt) in prompts.iter().enumerate() {
-        let line = one_line(&prompt.text);
+        let body = match prompt.kind {
+            Kind::Answer => without_previews(&prompt.text),
+            Kind::Approval | Kind::Rejection | Kind::Slash | Kind::Text => {
+                Cow::Borrowed(prompt.text.as_str())
+            }
+        };
+        let line = one_line(&fold_pastes(&body));
         let mut text: String = line.chars().take(limits.prompt_chars).collect();
         if line.chars().count() > limits.prompt_chars {
             text.push('\u{2026}');

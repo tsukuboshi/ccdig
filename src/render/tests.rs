@@ -351,6 +351,96 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
     )
 }
 
+/// The line the digest writes for a lone prompt of `kind` with `text`.
+fn digest_line(kind: Kind, text: &str) -> Result<String, Box<dyn Error>> {
+    let prompt = Prompt {
+        kind,
+        ..bare_prompt(blog_head("2026-10-13T01:00:00Z")?, "/a.jsonl", text)
+    };
+    let out = digest(&[prompt], &tokyo()?, Limits::default())?;
+    Ok(out.lines().last().unwrap_or_default().to_owned())
+}
+
+#[test]
+fn the_digest_folds_each_paste_into_its_length() -> TestResult {
+    for (name, text, want) in [
+        (
+            "a paste between typed words",
+            "review this```\n\n<pasted_content id=\"e002\">\nline one\nline two\n</pasted_content id=\"e002\">\n\n``` please",
+            "- ```` review this``` [pasted 17 chars] ``` please ````",
+        ),
+        (
+            "two pastes",
+            "a <pasted_content id=\"1\">xyz</pasted_content id=\"1\"> b <pasted_content id=\"2\">\nhello\n</pasted_content id=\"2\"> c",
+            "- `a [pasted 3 chars] b [pasted 5 chars] c`",
+        ),
+        (
+            "a paste without its closing tag",
+            "a <pasted_content id=\"1\">xyz",
+            "- `a <pasted_content id=\"1\">xyz`",
+        ),
+        (
+            "a closing tag of another id",
+            "a <pasted_content id=\"1\">xyz</pasted_content id=\"2\"> b",
+            "- `a <pasted_content id=\"1\">xyz</pasted_content id=\"2\"> b`",
+        ),
+    ] {
+        check_eq(&digest_line(Kind::Text, text)?, &want.to_owned(), name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn the_digest_drops_the_previews_of_the_chosen_options() -> TestResult {
+    for (name, kind, text, want) in [
+        (
+            "one answer with a preview",
+            Kind::Answer,
+            "\"Which name?\"=\"ccdig\" selected preview:\ncargo install ccdig\n--locked",
+            "- (answer) `\"Which name?\"=\"ccdig\"`",
+        ),
+        (
+            "a preview between answers",
+            Kind::Answer,
+            "\"A?\"=\"a\" selected preview:\nx, y = 1\nz, \"B?\"=\"b\", \"C?\"=\"c\" selected preview:\nw",
+            "- (answer) `\"A?\"=\"a\", \"B?\"=\"b\", \"C?\"=\"c\"`",
+        ),
+        (
+            "an answer without a preview",
+            Kind::Answer,
+            "\"A?\"=\"a\", \"B?\"=\"b\"",
+            "- (answer) `\"A?\"=\"a\", \"B?\"=\"b\"`",
+        ),
+        (
+            "a preview holding a quoted equals sign",
+            Kind::Answer,
+            "\"A?\"=\"a\" selected preview:\nsep=\"=\"\nfoo, \"B?\"=\"b\"",
+            "- (answer) `\"A?\"=\"a\", \"B?\"=\"b\"`",
+        ),
+        (
+            "a next question holding a comma and a quote",
+            Kind::Answer,
+            "\"A?\"=\"a\" selected preview:\nx, \"Use A, \"B\" or C?\"=\"b\"",
+            "- (answer) `\"A?\"=\"a\", \"Use A, \"B\" or C?\"=\"b\"`",
+        ),
+        (
+            "the notes after a preview stay",
+            Kind::Answer,
+            "\"A?\"=\"a\" selected preview:\ncode user notes: please also do X",
+            "- (answer) `\"A?\"=\"a\" user notes: please also do X`",
+        ),
+        (
+            "a typed prompt keeps the words",
+            Kind::Text,
+            "\"A?\"=\"a\" selected preview:\nx",
+            "- `\"A?\"=\"a\" selected preview: x`",
+        ),
+    ] {
+        check_eq(&digest_line(kind, text)?, &want.to_owned(), name)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     let reply = Reply {
