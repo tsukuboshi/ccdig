@@ -495,7 +495,8 @@ pub struct Common {
 /// What `--mask` can ask to mask besides the built-in rules.
 #[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
 pub enum MaskKind {
-    /// AWS account IDs in ARNs, ECR hosts, and account fields.
+    /// AWS account IDs in ARNs, ECR hosts, account fields, and a PS1, and
+    /// the names beside them there.
     AwsAccount,
     /// AWS profile names after --profile, in `AWS_PROFILE`, and in config
     /// files.

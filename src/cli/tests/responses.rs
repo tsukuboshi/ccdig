@@ -108,6 +108,42 @@ fn sessions_and_the_digest_count_the_answers_as_prompts() -> TestResult {
 }
 
 #[test]
+fn the_digest_drops_previews_and_folds_pastes_that_the_records_keep() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-plan/pppp.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"p-1","sessionId":"pppp","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"see <pasted_content id=\"a1\">\npasted words\n</pasted_content id=\"a1\"> here"}}"#,
+            r#"{"type":"assistant","uuid":"p-2","sessionId":"pppp","timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"t-v1","name":"AskUserQuestion","input":{"questions":[]}}]}}"#,
+            r#"{"type":"user","uuid":"p-3","sessionId":"pppp","timestamp":"2026-10-15T00:01:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-v1","content":"Your questions have been answered: \"Which install?\"=\"cargo\" selected preview:\ncargo install ccdig, then run it, \"Which scope?\"=\"digest\". You can now continue with these answers in mind."}]}}"#,
+        ],
+    )?;
+    let digest = history.run(&["digest", "--session", "pppp"]).out;
+    check_eq(
+        &digest.contains("- `see [pasted 12 chars] here`\n"),
+        &true,
+        &digest,
+    )?;
+    check_eq(
+        &digest
+            .contains("- (answer) `\"Which install?\"=\"cargo\", \"Which scope?\"=\"digest\"`\n"),
+        &true,
+        &digest,
+    )?;
+    let prompts = json_lines(history.run(&["records", "--session", "pppp", "--type", "prompt"]))?;
+    check_eq(
+        &strings(&prompts, "text"),
+        &vec![
+            "see <pasted_content id=\"a1\">\npasted words\n</pasted_content id=\"a1\"> here",
+            "\"Which install?\"=\"cargo\" selected preview:\ncargo install ccdig, then run it, \"Which scope?\"=\"digest\"",
+        ],
+        "texts",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn answers_in_a_text_claude_code_has_not_written_are_kept_whole() -> TestResult {
     let history = History::new("root")?;
     history.write(

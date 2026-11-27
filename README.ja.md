@@ -372,7 +372,9 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 依頼文に適用され、`records` と同じく `--kind` と `--superseded` も効きます。
 `--superseded false` は、打ち直された依頼文を除きます。ツールの呼び出しを却下したときに打ったコメントは、
 前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、承認した
-プランには `(approval)` を付けます。
+プランには `(approval)` を付けます。貼り付けは `<pasted_content>` タグごと
+`[pasted N chars]` に縮め、打った文が見えるようにします。回答からは、選んだ
+選択肢のプレビュー（`selected preview:`）を除きます。`records` はどちらも残します。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -558,8 +560,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   セッションでは、結果のテキストから `user-rejected` だけを読みます。
   どの理由でも `is_error` は `true` です。
 - 依頼文は、貼り付けたテキストを Claude Code が書いた位置に
-  `<pasted_content id="...">` タグで囲んだまま持ちます。打った文だけを
-  読むときは、jq でタグごと除きます。
+  `<pasted_content id="...">` タグで囲んだまま持ちます。縮めるのは
+  `digest` だけです。打った文だけを読むときは、jq でタグごと除きます。
 
   ```sh
   ccdig records --type prompt | jq '.text |= gsub(
@@ -763,7 +765,7 @@ thinking ブロックは決して出力しません。
 
 | 値 | マスクするもの |
 | --- | --- |
-| `aws-account` | 文脈のある 12 桁の AWS アカウント ID。ARN の中、`Account`・`AWS_ACCOUNT_ID`・`OwnerId`・`AWS` のプリンシパルなどの名前への代入、ECR・S3・コンソールのサインインのホスト名、`--account-id` や `--owners` の後。単独の 12 桁は残す |
+| `aws-account` | 文脈のある 12 桁の AWS アカウント ID。ARN の中、`Account`・`AWS_ACCOUNT_ID`・`OwnerId`・`AWS` のプリンシパルなどの名前への代入、ECR・S3・コンソールのサインインのホスト名、`--account-id` や `--owners` の後、`PS1` や `PROMPT` の括弧の中、「アカウント」の直後（カンマ区切りの並びも含む）と、同じ行か、見出しならその次の行の括弧の中。括弧の中の ID の隣にあるプロファイル名やアカウント名も伏せる。単独の 12 桁は残す |
 | `aws-profile` | 文脈のある AWS のプロファイル名。`--profile` の後、`AWS_PROFILE`・`AWS_DEFAULT_PROFILE`・`profile` キーへの代入、`[profile name]`・`[sso-session name]`・認証情報ファイルの見出し、`source_profile`。文中の名前は残す |
 | `email` | メールアドレス。`git@github.com:` のような SSH のリモートは除く |
 | `git-user` | git config の `user.name` と `user.email`。大文字・小文字を問わない。どちらかが未設定ならコマンドは失敗する |
@@ -782,6 +784,8 @@ thinking ブロックは決して出力しません。
   できないため、それもマスクします。`v1.2.3.4` のように英字やドットの後に
   続くものは残ります。
 - 下の名前だけのような、ユーザー名の一部だけの形は残ります。伏せたいときは
+  `--mask-values` に書いてください。
+- ID から離れて単独で出る AWS のアカウント名は残ります。伏せたいときは
   `--mask-values` に書いてください。
 
 ### ラベル付きの値

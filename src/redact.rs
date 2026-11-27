@@ -266,15 +266,32 @@ const EMAIL: &str = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za
 
 /// AWS account IDs where the context says they are one: in an ARN, assigned
 /// to an account, owner, or `AWS` principal name, in an ECR, S3, or console
-/// sign-in host, and after an account or owner flag. The text before the ID
-/// is `${1}` and the text after it, when the pattern needs it, is `${3}`; a
-/// run of 13 digits is not an ID.
-const AWS_ACCOUNTS: [&str; 4] = [
+/// sign-in host, after an account or owner flag, in brackets in a prompt
+/// `PS1` or `PROMPT`, and after the Japanese word for account, directly or
+/// in brackets later on its line or, after a `【...】` heading, on the next
+/// line. The text before the ID is `${1}` and the text after it, when the
+/// pattern needs it, is `${3}`; a run of 13 digits is not an ID. A pattern
+/// that also masks the name beside the ID, the profile after it in a
+/// prompt or the account name of up to 64 characters before it after the
+/// Japanese word, has the name as `${4}` and the text after it as `${5}`,
+/// or the ID as `${4}` when the name comes first.
+const AWS_ACCOUNTS: [&str; 9] = [
     "(arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)([0-9]{12})(:)",
     r#"(?i)((?:^|[^A-Za-z0-9_])["']?(?:(?:aws_?)?account(?:[-_]?id)?|owner[-_]?id|aws)["']?[\t ]*[:=][\t ]*["']?)([0-9]{12})(?-u:\b)"#,
     r"(^|[^0-9A-Za-z])([0-9]{12})(\.(?:dkr\.ecr|s3-accesspoint|s3-control|signin\.aws)\.)",
     r"((?:^|[\t ])--(?:account-ids?|account|owner-id|owners|source-account)(?:=|[\t ]+))([0-9]{12})(?-u:\b)",
+    r"((?:PS1|PROMPT)=[^\n]*?\()([0-9]{12})([\t ]+)([^)\t\n *]{1,64})([\t ]*\))",
+    r"((?:PS1|PROMPT)=[^\n]*?\()([0-9]{12})(?-u:\b)",
+    r"(\x{30A2}\x{30AB}\x{30A6}\x{30F3}\x{30C8}[\t ]*(?:(?i:ID)|\x{756A}\x{53F7})?[\t ]*[\x{3011}:\x{FF1A}=]?[\t ]*(?:\*\*\*REDACTED\*\*\*[\t ]*[,\x{3001}][\t ]*)*)([0-9]{12})(?-u:\b)",
+    r"(\x{30A2}\x{30AB}\x{30A6}\x{30F3}\x{30C8}(?:\x{3011}[\t ]*\r?\n)?(?:[^\n]{0,80}?[\x{3011}:\x{FF1A}\t ,\x{3001}])?)([^\t\n (\x{FF08}\x{3011}:\x{FF1A},\x{3001}*]{1,64})([\t ]*[(\x{FF08}])([0-9]{12})([)\x{FF09}])",
+    r"(\x{30A2}\x{30AB}\x{30A6}\x{30F3}\x{30C8}(?:\x{3011}[\t ]*\r?\n)?[^\n]{0,80}?[(\x{FF08}])([0-9]{12})([)\x{FF09}])",
 ];
+
+/// The most passes of one AWS pattern over a text. A pass can open the way
+/// for another match, as for the next account in a list, so a pattern runs
+/// again while it masks something; each pass masks a value that is not a
+/// marker, so the bound only guards against a pattern that would not stop.
+const MAX_AWS_PASSES: usize = 32;
 
 /// AWS profile names where the context says they are one: after
 /// `--profile`, assigned to `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, or a
@@ -454,14 +471,17 @@ impl ExtraRules {
             );
         }
         for &(name, ref pattern) in &self.aws {
-            masked = pattern
-                .replace_all(&masked, |captures: &Captures<'_>| {
-                    counts.add(name);
-                    let mut out = String::new();
-                    captures.expand(&format!("${{1}}{MARKER}${{3}}"), &mut out);
-                    out
-                })
-                .into_owned();
+            for _ in 0..MAX_AWS_PASSES {
+                let mut more = false;
+                masked = pattern
+                    .replace_all(&masked, |captures: &Captures<'_>| {
+                        mask_aws(captures, name, counts, &mut more)
+                    })
+                    .into_owned();
+                if !more {
+                    break;
+                }
+            }
         }
         if let Some((ref values, ref replacements)) = self.values {
             masked = replace_values(values, replacements, &masked, counts);
@@ -781,6 +801,36 @@ fn is_ssh_path(after: &str) -> bool {
         path.get(head.len()..)
             .is_some_and(|rest| rest.starts_with('/'))
     })
+}
+
+/// What a match of the AWS pattern `name` becomes: the marker in place of
+/// `${2}`, and of `${4}` when the pattern has it, between the groups
+/// around them. Each value masked counts once and sets `more`; a match
+/// whose values are all markers already stays as it is, so masking a text
+/// again counts nothing.
+fn mask_aws(captures: &Captures<'_>, name: &str, counts: &mut Counts, more: &mut bool) -> String {
+    let fresh = [2, 4]
+        .into_iter()
+        .filter_map(|group| captures.get(group))
+        .filter(|value| value.as_str() != MARKER)
+        .count();
+    if fresh == 0 {
+        return captures
+            .get(0)
+            .map_or_else(String::new, |whole| whole.as_str().to_owned());
+    }
+    for _ in 0..fresh {
+        counts.add(name);
+    }
+    *more = true;
+    let template = if captures.get(4).is_some() {
+        format!("${{1}}{MARKER}${{3}}{MARKER}${{5}}")
+    } else {
+        format!("${{1}}{MARKER}${{3}}")
+    };
+    let mut out = String::new();
+    captures.expand(&template, &mut out);
+    out
 }
 
 /// Replaces each match of `values` in `text` with its entry in

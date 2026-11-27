@@ -880,6 +880,28 @@ fn extra_cases() -> Vec<Case> {
 }
 
 #[test]
+fn account_masks_count_each_value_once_and_nothing_masked_again() -> TestResult {
+    let redactor = account_redactor()?;
+    let mut counts = Counts::default();
+    let (masked, _) =
+        redactor.redact_counted("PS1='(123456789012 prod)' [profile dev]", &mut counts);
+    check_eq(
+        &counts.ranked(),
+        &vec![
+            ("aws-account".to_owned(), 2_usize),
+            ("aws-profile".to_owned(), 1),
+        ],
+        "first",
+    )?;
+    let mut again = Counts::default();
+    let (twice, changed) = redactor.redact_counted(&masked, &mut again);
+    check_eq(&twice, &masked, "twice")?;
+    check_eq(&changed, &false, "changed")?;
+    check_eq(&again.ranked(), &vec![], "again")?;
+    Ok(())
+}
+
+#[test]
 fn counts_name_each_rule_that_masked_something() -> TestResult {
     let redactor = extra_redactor()?;
     let mut counts = Counts::default();
@@ -1072,11 +1094,90 @@ fn account_cases() -> Vec<Case> {
     ]
 }
 
+/// AWS account IDs, and the account or profile name beside one, in a
+/// prompt `PS1` and after the Japanese word for account, and twelve digits
+/// out of that context that stay.
+fn account_context_cases() -> Vec<Case> {
+    let account = "\u{30A2}\u{30AB}\u{30A6}\u{30F3}\u{30C8}";
+    vec![
+        case(
+            "account and profile in a PS1",
+            r#"export PS1="\n(123456789012 my-profile)\n[\t \u@\h \W]$ ""#.to_owned(),
+            r#"export PS1="\n(***REDACTED*** ***REDACTED***)\n[\t \u@\h \W]$ ""#,
+        ),
+        case(
+            "account after the word, with ID or the word for number",
+            format!("{account} ID: 123456789012 {account}\u{756A}\u{53F7}\u{FF1A}210987654321\u{3067}\u{3059}"),
+            &format!("{account} ID: ***REDACTED*** {account}\u{756A}\u{53F7}\u{FF1A}***REDACTED***\u{3067}\u{3059}"),
+        ),
+        case(
+            "account and its name in full-width brackets after a heading",
+            format!("\u{3010}{account}\u{3011} my-account-pd\u{FF08}123456789012\u{FF09}"),
+            &format!("\u{3010}{account}\u{3011} ***REDACTED***\u{FF08}***REDACTED***\u{FF09}"),
+        ),
+        case(
+            "account and its name on the line after a heading",
+            format!("\u{3010}AWS{account}\u{3011}\nmy-account-pd\u{FF08}123456789012\u{FF09}"),
+            &format!("\u{3010}AWS{account}\u{3011}\n***REDACTED***\u{FF08}***REDACTED***\u{FF09}"),
+        ),
+        case(
+            "brackets two lines after a heading stay",
+            format!("\u{3010}{account}\u{3011}\nnote\nsee (123456789012)"),
+            &format!("\u{3010}{account}\u{3011}\nnote\nsee (123456789012)"),
+        ),
+        case(
+            "every account in brackets on the line and in a list",
+            format!("{account}: prod(111111111111)\u{3001}dev(222222222222) {account}ID: 333333333333, 444444444444"),
+            &format!("{account}: ***REDACTED***(***REDACTED***)\u{3001}***REDACTED***(***REDACTED***) {account}ID: ***REDACTED***, ***REDACTED***"),
+        ),
+        case(
+            "an account name in a list or an indented line after a heading",
+            format!("\u{3010}{account}\u{3011}\n- prod: prod-account\u{FF08}111111111111\u{FF09}\n\u{3010}{account}\u{3011}\n  dev\u{FF08}222222222222\u{FF09}"),
+            &format!("\u{3010}{account}\u{3011}\n- prod: ***REDACTED***\u{FF08}***REDACTED***\u{FF09}\n\u{3010}{account}\u{3011}\n  ***REDACTED***\u{FF08}***REDACTED***\u{FF09}"),
+        ),
+        case(
+            "only the name before the brackets after a comma",
+            format!("{account}: prod\u{3001}dev\u{FF08}123456789012\u{FF09}"),
+            &format!("{account}: prod\u{3001}***REDACTED***\u{FF08}***REDACTED***\u{FF09}"),
+        ),
+        case(
+            "a word before another rule's marker stays",
+            format!("{account} token (***REDACTED***)"),
+            &format!("{account} token (***REDACTED***)"),
+        ),
+        case(
+            "account and profile in a zsh PROMPT and before a space",
+            "PROMPT='(123456789012 prod) %~ $ ' PS1='(210987654321 dev )'".to_owned(),
+            "PROMPT='(***REDACTED*** ***REDACTED***) %~ $ ' PS1='(***REDACTED*** ***REDACTED*** )'",
+        ),
+        case(
+            "account and its name in ASCII brackets",
+            format!("{account}: dev (123456789012)"),
+            &format!("{account}: ***REDACTED*** (***REDACTED***)"),
+        ),
+        case(
+            "a job ID, digits in brackets without the word, and a PS1 without brackets stay",
+            "https://github.com/o/r/actions/runs/1/job/123456789012 see (123456789012) PS1=\"123456789012 $ \"".to_owned(),
+            "https://github.com/o/r/actions/runs/1/job/123456789012 see (123456789012) PS1=\"123456789012 $ \"",
+        ),
+        case(
+            "thirteen digits in brackets stay",
+            format!("\u{3010}{account}\u{3011} dev\u{FF08}1234567890123\u{FF09}"),
+            &format!("\u{3010}{account}\u{3011} dev\u{FF08}1234567890123\u{FF09}"),
+        ),
+        case(
+            "brackets far from the word stay",
+            format!("{account} {} (123456789012)", "x".repeat(81)),
+            &format!("{account} {} (123456789012)", "x".repeat(81)),
+        ),
+    ]
+}
+
 #[test]
 fn account_masks_apply_only_when_asked_for() -> TestResult {
     let masked = account_redactor()?;
     let plain = Redactor::new()?;
-    for row in account_cases() {
+    for row in account_cases().into_iter().chain(account_context_cases()) {
         let (got, changed) = masked.redact(&row.input);
         check_eq(got.as_str(), row.want.as_str(), row.name)?;
         check_eq(&changed, &(row.input != row.want), row.name)?;
