@@ -175,7 +175,7 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 
 | Command | Lists | Own options |
 | --- | --- | --- |
-| `records` | One record per prompt, reply, tool call, tool result, or summary, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `records` | One record per prompt, reply, tool call, tool result, summary, or thinking block, of the kinds `--type` picks, in the order they were written | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | One record per session with a selected prompt | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | One record per group of the records `records` would list, by the keys `--by` names | `--by`, `--min-count`, `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | A size-capped Markdown digest of the prompts | `--kind`, `--superseded`, `--max-prompt-chars`, `--max-session-chars` |
@@ -195,6 +195,13 @@ defaults to `prompt,reply`:
 | `call` | A tool call, with what its result says |
 | `result` | A tool result, with the call's tool and input |
 | `summary` | The summary Claude Code writes when it compacts the context |
+| `thinking` | A thinking block of the assistant that kept its text |
+
+`thinking` lists the assistant's thinking blocks, masked as the other
+kinds are. Claude Code keeps only the signature of many of them, with no
+text; those are never listed, and `stats` counts them in `empty`. A
+pattern that does not start with `!` never matches one, as it has no
+text.
 
 Eight options apply to some kinds only:
 
@@ -204,10 +211,10 @@ Eight options apply to some kinds only:
 | `--touched` | `call`, `result` | Edits and writes of this file, or of a file under this directory, and Bash commands that name it |
 | `--status` | `result` | Results with this status: `error` or `ok` |
 | `--denial` | `result` | Results of calls that did not run for this reason, such as `user-rejected` |
-| `--skill` | `reply`, `call`, `result` | Records written while the skill ran |
+| `--skill` | `reply`, `thinking`, `call`, `result` | Records written while the skill ran |
 | `--kind` | `prompt` | Prompts typed this way: `text`, `slash`, `rejection`, `answer`, `typed-answer`, or `approval` |
 | `--superseded` | `prompt` | With `true`, the prompts the user sent another in place of, and with `false`, the others |
-| `--subagents` | `reply`, `call`, `result` | Sub-agent transcripts too |
+| `--subagents` | `reply`, `thinking`, `call`, `result` | Sub-agent transcripts too |
 
 - `--tool`, `--touched`, `--denial`, `--skill`, and `--kind` are
   repeatable and take a leading `!`, as the shared filters do. `--status`
@@ -355,7 +362,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | Flag | Does |
 | --- | --- |
 | `--by KEY` | Groups by these keys, comma-separated or repeated, in that order: `session`, `project`, `branch`, `type`, `tool`, `skill`, `subagent`, `model`, `kind`, `denial`, `status`, `day`, `week`, or `month`. Without it, all the records are one group, and nothing is written when there are none |
-| `--min-count N` | Leaves out the groups with fewer than N records |
+| `--min-count N` | Leaves out the groups with fewer than N records, counting the thinking blocks without text with `--type thinking` |
 | `--sort SORT` | `count` (default), `chars`, `output`, or `cache_read`, the most first, or `key`, by the values of the keys. Groups that tie are in the order of their keys |
 | `--limit N` | Keeps the first N groups after sorting |
 
@@ -363,7 +370,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   Monday, `2026-W48`, and `month` as `2026-11`, all in the zone `--tz`
   names.
 - `kind` is how a prompt was typed, as in the `kind` key, and `model`
-  that of a reply or a tool call. `denial` and `status` are those of a
+  that of a reply, a thinking block, or a tool call. `denial` and `status` are those of a
   tool result, in the words `--denial` and `--status` take, so
   `--type result --by denial,tool` counts the calls that did not run per
   reason and tool. They need `--type result`, or a flag such as
@@ -383,7 +390,8 @@ A record has these keys, in this order:
 | --- | --- |
 | The `--by` keys | Their values, in the order `--by` names them, or `null` |
 | `session_title`, `project`, `file` | With `--by session`, the session's last title, project, and transcript file, each `null` when empty, so it can be passed on to `records --session` |
-| `count` | How many records |
+| `count` | How many records; with `--type thinking`, the thinking blocks that kept their text alone |
+| `empty` | With `--type thinking`, how many thinking blocks kept no text, which `count` and `chars` leave out; not written otherwise |
 | `chars` | How many characters of text they have, after masking: a tool call's input as compact JSON, and the text of the other kinds. Tokens depend on the model, so `usage` holds them instead. `--tool-chars` cuts each string in an input, so it measures something else |
 | `sessions` | How many sessions the records are in; not written with `--by session` |
 | `first`, `last` | The times of the first and the last record, written as `timestamp` is |
@@ -534,7 +542,7 @@ have the same keys from `type` to `turn`, and end with `redacted`,
 
 | Type | Keys in between |
 | --- | --- |
-| `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
+| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
@@ -643,12 +651,12 @@ plan approved; the record type is `type`, which `--type` picks.
 ```
 
 - A response is written over several lines, each with the same tokens, so
-  only the first reply or call that the filters keep of a response in a
-  file carries them. The others have `null`, as do lines without tokens.
+  only the first reply, thinking block, or call that the filters keep of a
+  response in a file carries them. The others have `null`, as do lines without tokens.
 - The records do not always add up to the whole. A response with no reply
   or call, such as one of thinking alone, has no record to carry its
-  tokens, and neither has one whose records `--type` or a filter all
-  leave out.
+  tokens unless `--type thinking` lists a block of it, and neither has
+  one whose records `--type` or a filter all leave out.
 - A `sessions` record ends with the same four keys in `usage`: the sum
   over the session's responses in the range, each once. For it,
   `sessions` also reads the assistant lines.
@@ -749,7 +757,8 @@ A `user` entry is dropped, with the first matching reason, when it:
 
 Rule 4 applies even when `origin.kind` is `human`, because Claude Code
 records a `!` shell escape as human input. Sessions recorded before Claude
-Code wrote `origin` skip rule 2. Thinking blocks are never printed.
+Code wrote `origin` skip rule 2. Thinking blocks are printed only with
+`--type thinking`, and only those that kept their text.
 
 ### Files
 

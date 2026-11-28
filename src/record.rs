@@ -72,7 +72,7 @@ pub const SESSION_KEYS: [&str; 16] = [
 
 /// The keys a line of `stats` can have, for `--fields`: the `--by` keys,
 /// in the order `--by` names them, then the rest in this order.
-pub const STATS_KEYS: [&str; 22] = [
+pub const STATS_KEYS: [&str; 23] = [
     "session",
     "project",
     "branch",
@@ -90,6 +90,7 @@ pub const STATS_KEYS: [&str; 22] = [
     "session_title",
     "file",
     "count",
+    "empty",
     "chars",
     "sessions",
     "first",
@@ -274,7 +275,8 @@ pub trait Record {
     fn subagent(&self) -> &str;
 }
 
-/// The assistant's text: a `reply` of `ccdig records`.
+/// The assistant's text: a `reply` of `ccdig records`; or its thinking, a
+/// `thinking`, whose keys are the same.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -284,7 +286,7 @@ pub struct Reply {
     /// The shared keys.
     #[serde(flatten)]
     pub head: Head,
-    /// The text block, masked.
+    /// The text or thinking block, masked.
     pub text: String,
     /// The model that wrote it.
     pub model: String,
@@ -399,8 +401,13 @@ pub struct Group {
     /// session's `session_title`, `project`, and `file`.
     #[serde(flatten)]
     pub keys: Map<String, Value>,
-    /// How many records.
+    /// How many records: with `--type thinking`, the thinking blocks with
+    /// text alone.
     pub count: usize,
+    /// With `--type thinking`, how many thinking blocks kept no text, which
+    /// neither `count` nor `chars` counts; not written otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty: Option<usize>,
     /// How many characters of text the records have, masked: a tool call's
     /// input as compact JSON, and the text of the other kinds.
     pub chars: usize,
@@ -578,7 +585,8 @@ pub struct ToolResult {
 }
 
 /// One line of `ccdig records`: a prompt, a reply, a tool call, a tool
-/// result, or a summary, written with a `type` key naming which.
+/// result, a summary, or the assistant's thinking, written with a `type`
+/// key naming which.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Turn {
@@ -592,6 +600,8 @@ pub enum Turn {
     Result(ToolResult),
     /// A compaction summary.
     Summary(Summary),
+    /// A thinking block of the assistant.
+    Thinking(Reply),
 }
 
 impl Group {
@@ -748,8 +758,9 @@ impl Default for Search {
 
 impl Turn {
     /// Cuts the record's texts, and the lines `matches` lists of them, to
-    /// what `cuts` keeps: a prompt's, a reply's, or a summary's to
-    /// `message`, and a tool's input and output to `tool`.
+    /// what `cuts` keeps: a prompt's, a reply's, a summary's, or a
+    /// thinking block's to `message`, and a tool's input and output to
+    /// `tool`.
     pub fn cut(&mut self, cuts: Cuts) {
         let (given, own_text, own_input, search) = match *self {
             Self::Prompt(ref mut prompt) => (
@@ -758,7 +769,7 @@ impl Turn {
                 None,
                 &mut prompt.search,
             ),
-            Self::Reply(ref mut reply) => {
+            Self::Reply(ref mut reply) | Self::Thinking(ref mut reply) => {
                 (cuts.message, Some(&mut reply.text), None, &mut reply.search)
             }
             Self::Summary(ref mut summary) => (
@@ -799,7 +810,7 @@ impl Turn {
     fn inner(&self) -> &dyn Record {
         match *self {
             Self::Prompt(ref prompt) => prompt,
-            Self::Reply(ref reply) => reply,
+            Self::Reply(ref reply) | Self::Thinking(ref reply) => reply,
             Self::Call(ref call) => call,
             Self::Result(ref result) => result,
             Self::Summary(ref summary) => summary,
@@ -813,7 +824,7 @@ impl Turn {
         match *self {
             Self::Result(ref mut result) => Some(&mut result.text),
             Self::Call(ref mut call) => call.result.as_mut().map(|result| &mut result.text),
-            Self::Prompt(_) | Self::Reply(_) | Self::Summary(_) => None,
+            Self::Prompt(_) | Self::Reply(_) | Self::Summary(_) | Self::Thinking(_) => None,
         }
     }
 
@@ -825,6 +836,7 @@ impl Turn {
             Self::Reply(_) => "reply",
             Self::Result(_) => "result",
             Self::Summary(_) => "summary",
+            Self::Thinking(_) => "thinking",
         }
     }
 }

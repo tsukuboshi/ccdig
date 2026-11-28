@@ -26,6 +26,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `resume_unavailable`, why it is `null`: `no-cwd`, `cwd-masked`, or
   `cwd-missing` when the directory is gone. Markdown leaves both out. The
   schema is now 8.
+- `--type thinking` lists the assistant's thinking blocks that kept their
+  text, masked. It is not picked by default. With it, a line of `stats`
+  has a new `empty` key, how many thinking blocks kept only their
+  signature, which `count` and `chars` leave out.
 
 ### Changed
 

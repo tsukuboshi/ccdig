@@ -343,13 +343,13 @@ fn check_kinds(
             !activity.skills.is_empty(),
             assistant,
             "--skill",
-            "reply, call, or result",
+            "reply, thinking, call, or result",
         ),
         (
             activity.subagents,
             assistant,
             "--subagents",
-            "reply, call, or result",
+            "reply, thinking, call, or result",
         ),
     ] {
         if given && !applies {
@@ -588,6 +588,7 @@ fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> 
             replies: !(tool || status),
             results: true,
             summaries: false,
+            thinking: false,
         };
     }
     Types {
@@ -596,6 +597,7 @@ fn record_types(types: &[RecordType], tool: bool, status: bool, skill: bool) -> 
         replies: types.contains(&RecordType::Reply),
         results: types.contains(&RecordType::Result),
         summaries: types.contains(&RecordType::Summary),
+        thinking: types.contains(&RecordType::Thinking),
     }
 }
 
@@ -792,6 +794,7 @@ fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, 
         format,
         grouping: Grouping {
             by: keys,
+            empty: kinds.thinking,
             limit,
             min_count: given.min_count.unwrap_or_default(),
             sort: given.sort,

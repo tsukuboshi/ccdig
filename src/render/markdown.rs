@@ -60,7 +60,11 @@ pub fn records(records: &[Turn], zone: &TimeZone, fields: &Fields) -> Result<Str
             Turn::Result(ref result) => {
                 standing.contains(&key_of(&result.source, &result.tool_use_id))
             }
-            Turn::Call(_) | Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => true,
+            Turn::Call(_)
+            | Turn::Prompt(_)
+            | Turn::Reply(_)
+            | Turn::Summary(_)
+            | Turn::Thinking(_) => true,
         })
         .collect();
     sections(
@@ -81,12 +85,15 @@ pub fn records(records: &[Turn], zone: &TimeZone, fields: &Fields) -> Result<Str
             Turn::Call(_) => "Tool call",
             Turn::Result(_) => "Tool result",
             Turn::Summary(_) => "Summary",
+            Turn::Thinking(_) => "Thinking",
         },
         |turn| match **turn {
             Turn::Prompt(ref prompt) => {
                 Ok(text_or_lines(&prompt.text, &prompt.search.matches, fields))
             }
-            Turn::Reply(ref reply) => Ok(text_or_lines(&reply.text, &reply.search.matches, fields)),
+            Turn::Reply(ref reply) | Turn::Thinking(ref reply) => {
+                Ok(text_or_lines(&reply.text, &reply.search.matches, fields))
+            }
             Turn::Call(ref call) => tool_call(
                 call,
                 !standing.contains(&key_of(&call.source, &call.tool_use_id)),
@@ -134,7 +141,7 @@ fn record_count(records: &[&Turn]) -> String {
 /// them, as ` (prompt 2, call 1)`; empty when there are none.
 fn by_type(types: &[&str]) -> String {
     /// The types in the order the count lists them.
-    const ORDER: [&str; 5] = ["prompt", "reply", "call", "result", "summary"];
+    const ORDER: [&str; 6] = ["prompt", "thinking", "reply", "call", "result", "summary"];
     let parts: Vec<String> = ORDER
         .iter()
         .filter_map(|name| {
@@ -317,8 +324,13 @@ pub fn stats(
     fields: &Fields,
 ) -> Result<String, Failure> {
     let sessions = Group::writes_sessions(columns);
+    let empty = groups.iter().any(|group| group.empty.is_some());
     let mut names: Vec<&str> = columns.to_vec();
-    names.extend(["count", "chars"]);
+    names.push("count");
+    if empty {
+        names.push("empty");
+    }
+    names.push("chars");
     if sessions {
         names.push("sessions");
     }
@@ -375,7 +387,11 @@ pub fn stats(
                 value.map_or_else(String::new, |text| escape_pipes(&code_span(text)))
             })
             .collect();
-        cells.extend([group.count.to_string(), group.chars.to_string()]);
+        cells.push(group.count.to_string());
+        if empty {
+            cells.push(group.empty.unwrap_or_default().to_string());
+        }
+        cells.push(group.chars.to_string());
         if sessions {
             cells.push(group.sessions.unwrap_or_default().to_string());
         }

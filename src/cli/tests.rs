@@ -507,6 +507,8 @@ fn type_picks_the_kinds_of_record() -> TestResult {
             vec!["reply", "call"],
         ),
         (&["--type", "call,result"][..], vec!["call", "result"]),
+        (&["--type", "thinking"][..], vec!["thinking"]),
+        (&["--type", "reply,thinking"][..], vec!["thinking", "reply"]),
     ] {
         let mut full = vec!["records", "--session", "cccc"];
         full.extend_from_slice(args);
@@ -514,12 +516,12 @@ fn type_picks_the_kinds_of_record() -> TestResult {
         check_eq(&ran.code, &0, &ran.err)?;
         check_eq(&types(&ran.out), &want, &args.join(" "))?;
     }
-    let unknown = history.run_week(&["records", "--type", "thinking"]);
+    let unknown = history.run_week(&["records", "--type", "musing"]);
     check_eq(&unknown.code, &1, "unknown type")?;
     check_eq(
         &unknown
             .err
-            .starts_with("ccdig: invalid value 'thinking' for '--type"),
+            .starts_with("ccdig: invalid value 'musing' for '--type"),
         &true,
         &unknown.err,
     )?;
@@ -637,7 +639,8 @@ fn bad_flags_fail_with_one_line() -> TestResult {
 #[test]
 fn a_flag_named_after_the_kind_key_points_at_type() -> TestResult {
     let history = History::new("root")?;
-    let pointer = "pick the record types with --type: call, prompt, reply, result, or summary";
+    let pointer =
+        "pick the record types with --type: call, prompt, reply, result, summary, or thinking";
     let elsewhere = "records, stats, and digest pick prompts by how they were typed with --kind";
     for (args, want) in [
         // Where --kind is a flag, a record type is not a kind it takes.
