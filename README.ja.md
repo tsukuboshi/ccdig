@@ -424,7 +424,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.6","schema":9,"filter":"strict-v5"}
+{"version":"0.0.6","schema":10,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -536,8 +536,8 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `ccdig records --type prompt` は 1 行に 1 つのオブジェクトを書きます。
 
 ```json
-{"type":"prompt","agent":"claude-code","session_id":"<uuid>",
- "session_title":"Weekly report draft",
+{"type":"prompt","agent":"claude-code","agent_version":"2.1.326",
+ "session_id":"<uuid>","session_title":"Weekly report draft",
  "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
@@ -631,6 +631,8 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
     "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
   ```
 
+- `agent_version` は、その行を書いた Claude Code のバージョン（`2.1.326` など）です。
+  このキーより古い履歴では空です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。
@@ -691,7 +693,7 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":9,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":10,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

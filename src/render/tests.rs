@@ -47,6 +47,7 @@ fn blog_head(time: &str) -> Result<Head, String> {
     Ok(Head {
         masked: Counts::default(),
         agent: AGENT,
+        agent_version: String::new(),
         session_id: BLOG_SESSION.to_owned(),
         session_title: "Weekly report draft".to_owned(),
         session_title_then: "Weekly report draft".to_owned(),

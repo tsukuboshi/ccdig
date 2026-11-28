@@ -147,6 +147,7 @@ fn prompts(groups: &[Group]) -> Result<Vec<Prompt>, String> {
         let head = Head {
             masked: Counts::default(),
             agent: AGENT,
+            agent_version: String::new(),
             session_id: session.clone(),
             session_title: title.clone(),
             session_title_then: title.clone(),

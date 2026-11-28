@@ -21,6 +21,7 @@ use crate::when::Stamp;
 fn head(session: &str, time: &str) -> Result<Head, String> {
     Ok(Head {
         agent: AGENT,
+        agent_version: String::new(),
         session_id: session.to_owned(),
         session_title: format!("title of {session}"),
         session_title_then: String::new(),

@@ -18,9 +18,10 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 32] = [
+pub const RECORD_KEYS: [&str; 33] = [
     "type",
     "agent",
+    "agent_version",
     "session_id",
     "session_title",
     "session_title_then",
@@ -120,6 +121,9 @@ pub struct Cuts {
 pub struct Head {
     /// Always `AGENT`.
     pub agent: &'static str,
+    /// The version of Claude Code that wrote the line, or empty when the
+    /// line does not say, as in transcripts older than the field.
+    pub agent_version: String,
     /// The session ID; a sub-agent's records carry the parent's.
     pub session_id: String,
     /// The session's last title, or empty.

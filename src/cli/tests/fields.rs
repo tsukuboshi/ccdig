@@ -5,7 +5,7 @@ use core::error::Error;
 
 use serde_json::Value;
 
-use super::History;
+use super::{History, fixture_time, json_lines, strings};
 use crate::testing::{TestResult, check_eq};
 
 /// The keys of each JSON line `args` print in the week of the history.
@@ -77,6 +77,7 @@ fn fields_with_a_leading_bang_leaves_the_keys_out() -> TestResult {
         &got.first(),
         &Some(&owned(&[
             "type",
+            "agent_version",
             "session_id",
             "session_title_then",
             "timestamp",
@@ -161,7 +162,7 @@ fn fields_names_an_unknown_key() -> TestResult {
         ),
         (
             &["records", "--fields", "txt", "--format", "md"][..],
-            "ccdig: --fields: unknown key \"txt\": use type, agent, session_id, session_title, session_title_then, project, cwd, git_branch, timestamp, turn, tool, input, tool_use_id, result, is_error, denial, text, kind, command, permission_mode, superseded, model, skill, subagent, subagent_type, subagent_description, parent_tool_use_id, usage, redacted, source, matched, or matches\n",
+            "ccdig: --fields: unknown key \"txt\": use type, agent, agent_version, session_id, session_title, session_title_then, project, cwd, git_branch, timestamp, turn, tool, input, tool_use_id, result, is_error, denial, text, kind, command, permission_mode, superseded, model, skill, subagent, subagent_type, subagent_description, parent_tool_use_id, usage, redacted, source, matched, or matches\n",
         ),
     ] {
         let ran = history.run(args);
@@ -316,6 +317,37 @@ fn markdown_leaves_out_a_table_with_no_column_and_shows_matches_on_their_own() -
         &(text.contains("```text\n/weekly-report last week\n```\n") && !text.contains("- Line 1")),
         &true,
         &text,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn records_carry_the_claude_code_version_unless_fields_leaves_it_out() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-blog/vvvv.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"v-1","sessionId":"vvvv","version":"2.1.326","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"list the posts"}}"#,
+            r#"{"type":"user","uuid":"v-2","sessionId":"vvvv","timestamp":"2026-10-15T00:01:00Z","message":{"role":"user","content":"thanks"}}"#,
+        ],
+    )?;
+    let records = json_lines(history.run_week(&["records", "--session", "vvvv"]))?;
+    check_eq(
+        &strings(&records, "agent_version"),
+        &vec!["2.1.326", ""],
+        "versions",
+    )?;
+    let left_out = keys(
+        &history,
+        &["records", "--session", "vvvv", "--fields", "!agent_version"],
+    )?;
+    check_eq(
+        &left_out
+            .iter()
+            .any(|names| names.iter().any(|name| name == "agent_version")),
+        &false,
+        "left out",
     )?;
     Ok(())
 }

@@ -26,6 +26,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each rule masked something at the top, in the words of `--lang`. It
   runs no script and loads nothing, follows dark mode, and prints with its
   folds open. `sessions` and `stats` take no `html`.
+- Every record of `records` has a new `agent_version` key, the version of
+  Claude Code that wrote its line, or empty in older transcripts. The
+  schema is now 10.
 
 ## [0.0.6] - 2026-11-28
 
