@@ -1,14 +1,14 @@
 //! Properties of the writers that hold for any records.
 
+use core::error::Error;
+
 use proptest::bool::ANY;
 use proptest::collection::vec;
 use proptest::strategy::Strategy;
 use serde_json::Value;
 
-use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
-use crate::record::{
-    AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Spawned, Turn,
-};
+use super::{BLOG_FILE, at, bare_prompt, reply_at, sample_session, tokyo};
+use crate::record::{AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Fields, Run, document, lines};
@@ -95,6 +95,18 @@ fn outside_fences(markdown: &str) -> Vec<&str> {
         }
     }
     outside
+}
+
+/// The Markdown `records` writes of `turns`, with the times in Tokyo, and
+/// its headings outside fenced code blocks.
+fn record_headings(turns: &[Turn]) -> Result<(String, Vec<String>), Box<dyn Error>> {
+    let out = markdown::records(turns, &tokyo()?, &Fields::default())?;
+    let headings = outside_fences(&out)
+        .into_iter()
+        .filter(|line| line.trim_start().starts_with('#'))
+        .map(str::to_owned)
+        .collect();
+    Ok((out, headings))
 }
 
 /// The text of a code span, or `None` when `span` is not one.
@@ -214,13 +226,9 @@ fn record_markdown_has_only_the_headings_the_writer_puts() -> TestResult {
         let all = prompts(&groups)?;
         let count = all.len();
         let turns: Vec<Turn> = all.into_iter().map(Turn::Prompt).collect();
-        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
-        let headings = outside_fences(&out)
-            .into_iter()
-            .filter(|line| line.trim_start().starts_with('#'))
-            .count();
+        let (out, headings) = record_headings(&turns)?;
         check_eq(
-            &headings,
+            &headings.len(),
             &(1_usize.saturating_add(groups.len()).saturating_add(count)),
             &out,
         )?;
@@ -234,28 +242,15 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
         let turns: Vec<Turn> = names
             .iter()
             .map(|name| {
-                blog_head("2026-10-13T01:24:00Z").map(|head| {
+                reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 1, "Drafted the report.").map(|reply| {
                     Turn::Reply(Reply {
-                        usage: None,
-                        masked: Counts::default(),
-                        head,
-                        text: "Drafted the report.".to_owned(),
-                        model: String::new(),
-                        skill: String::new(),
                         subagent: name.clone(),
-                        spawned: Spawned::default(),
-                        redacted: false,
-                        source: source(BLOG_FILE, 1, "a-1"),
-                        search: Search::default(),
+                        ..reply
                     })
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
-        let headings: Vec<&str> = outside_fences(&out)
-            .into_iter()
-            .filter(|line| line.trim_start().starts_with('#'))
-            .collect();
+        let (out, headings) = record_headings(&turns)?;
         check_eq(&headings.len(), &names.len().saturating_add(2), &out)?;
         let named = headings
             .iter()
@@ -273,18 +268,8 @@ fn matched_lines_add_no_heading() -> TestResult {
         let turns: Vec<Turn> = records
             .iter()
             .map(|lines| {
-                blog_head("2026-10-13T01:24:00Z").map(|head| {
+                reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 1, "").map(|reply| {
                     Turn::Reply(Reply {
-                        usage: None,
-                        masked: Counts::default(),
-                        head,
-                        text: String::new(),
-                        model: String::new(),
-                        skill: String::new(),
-                        subagent: String::new(),
-                        spawned: Spawned::default(),
-                        redacted: false,
-                        source: source(BLOG_FILE, 1, "a-1"),
                         search: Search {
                             matched: true,
                             matches: lines
@@ -297,16 +282,13 @@ fn matched_lines_add_no_heading() -> TestResult {
                                 })
                                 .collect(),
                         },
+                        ..reply
                     })
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
-        let headings = outside_fences(&out)
-            .into_iter()
-            .filter(|line| line.trim_start().starts_with('#'))
-            .count();
-        check_eq(&headings, &records.len().saturating_add(2), &out)?;
+        let (out, headings) = record_headings(&turns)?;
+        check_eq(&headings.len(), &records.len().saturating_add(2), &out)?;
         Ok(())
     })
 }

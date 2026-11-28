@@ -1,0 +1,160 @@
+---
+source: src/testing.rs
+---
+# Records
+
+- Records: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 2 context
+
+## Weekly report draft
+
+### Prompt
+
+```text
+plain
+```
+
+### Answer
+
+```text
+"A?"="a"
+```
+
+### Approval
+
+```text
+the plan
+```
+
+### Rejection
+
+```text
+not that
+```
+
+### Typed answer
+
+```text
+"B?"="my own"
+```
+
+### Thinking
+
+```text
+Let me think.
+```
+
+### Reply (context)
+
+```text
+Nearby.
+```
+
+### Reply
+
+- Line 1
+
+```text
+first hit
+```
+
+- Lines 3-4, matched 4
+
+```text
+before
+second hit
+```
+
+### Tool call
+
+- Tool: `Bash`
+
+```json
+{
+  "command": "ls"
+}
+```
+
+- `input.plan`
+
+```text
+step 1
+step 2
+```
+
+- Result: ok
+
+```text
+a.txt
+b.txt
+```
+
+### Tool call
+
+- Tool: `ExitPlanMode`
+- `input.plan`
+
+```text
+one
+two
+```
+
+- Result: error
+- Denial: `user-rejected`
+
+### Tool result
+
+- Tool: `ExitPlanMode`
+- Error: yes
+- Denial: `user-rejected`
+- Line 1
+
+```text
+The user said no.
+```
+
+### Tool call (context)
+
+- Tool: `Bash`
+
+```json
+{
+  "command": "false"
+}
+```
+
+- Result: error
+
+### Tool result
+
+- Tool: `Bash`
+- Error: yes
+
+```text
+exit 1
+```
+
+### Tool call
+
+- Tool: `Bash`
+- `input.command` lines 1-2
+
+```text
+git add .
+git commit
+```
+
+- Result: (none)
+
+### Summary
+
+```text
+Compacted.
+```
+
+## Weekly report draft
+
+### Reply
+
+```text
+Looked.
+```

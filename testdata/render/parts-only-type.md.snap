@@ -1,0 +1,42 @@
+---
+source: src/testing.rs
+---
+# Records
+
+- Records: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 2 context
+
+## Weekly report draft
+
+### Prompt
+
+### Answer
+
+### Approval
+
+### Rejection
+
+### Typed answer
+
+### Thinking
+
+### Reply (context)
+
+### Reply
+
+### Tool call
+
+### Tool call
+
+### Tool result
+
+### Tool call (context)
+
+### Tool result
+
+### Tool call
+
+### Summary
+
+## Weekly report draft
+
+### Reply
