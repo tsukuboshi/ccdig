@@ -89,6 +89,9 @@ pub struct Entry {
     pub usage: Option<Usage>,
     /// The line's ID, which a resumed session repeats.
     pub uuid: String,
+    /// The version of Claude Code that wrote the line (`version`); empty
+    /// when the line does not say.
+    pub version: String,
 }
 
 /// The markers on a line that the harness, not a person, wrote.
@@ -157,6 +160,8 @@ struct RawEntry<'line> {
     user_feedback: Option<String>,
     /// `uuid`.
     uuid: Option<String>,
+    /// `version`, the Claude Code that wrote the line.
+    version: Option<String>,
     /// `wireToolInputs`: the untruncated input of each tool call, by the
     /// call's ID, decoded only for a line with tool calls so that a value of
     /// another shape cannot reject the line.
@@ -320,6 +325,7 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         title: raw.ai_title.unwrap_or_default(),
         usage,
         uuid: raw.uuid.unwrap_or_default(),
+        version: raw.version.unwrap_or_default(),
     })
 }
 

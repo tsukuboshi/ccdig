@@ -75,10 +75,19 @@ pub struct Section<'records> {
 }
 
 /// Something the heading of a section says of its file.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Fact<'records> {
+    /// The versions of Claude Code that wrote the records shown, in the
+    /// order they first appear.
+    AgentVersions(Vec<&'records str>),
     /// What the caller wrote the sub-agent was for.
     Description(&'records str),
+    /// The models that wrote the records shown, in the order they first
+    /// appear.
+    Models(Vec<&'records str>),
+    /// The permission modes the prompts shown were written in, in the
+    /// order they first appear.
+    PermissionModes(Vec<&'records str>),
     /// The project directory's name.
     Project(&'records str),
     /// The session ID.
@@ -237,13 +246,25 @@ pub enum Input<'records> {
     Lines(Vec<Run<'records>>),
     /// The input.
     Shown {
-        /// The input as indented JSON, but for the strings in `texts`;
-        /// `None` when those are all there is.
+        /// What an `Edit` call changed, or `None` for the other calls.
+        change: Option<Change<'records>>,
+        /// The input as indented JSON, but for the strings in `texts` and
+        /// `change`; `None` when those are all there is.
         json: Option<String>,
         /// Each string at the top level of the input that runs over lines,
         /// such as a plan, with its key, without its final line breaks.
         texts: Vec<(&'records str, &'records str)>,
     },
+}
+
+/// What an `Edit` call changed: the text it replaced and the text it put
+/// in its place, as the call wrote them.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Change<'records> {
+    /// The text put in place, `new_string`.
+    pub new: &'records str,
+    /// The text replaced, `old_string`.
+    pub old: &'records str,
 }
 
 /// A tool result.
@@ -276,6 +297,18 @@ pub enum Ending<'records> {
         /// heading.
         output: Option<&'records str>,
     },
+}
+
+impl<'records> Change<'records> {
+    /// The lines the change takes out, each marked `-`, then the lines it
+    /// puts in, each marked `+`, as a diff shows them. Nothing is compared:
+    /// an `Edit` holds only the text it replaces. A line break at the end
+    /// shows as an empty line, so a change of it alone shows too.
+    pub fn lines(&self) -> impl Iterator<Item = (char, &'records str)> {
+        split_lines(self.old)
+            .map(|line| ('-', line))
+            .chain(split_lines(self.new).map(|line| ('+', line)))
+    }
 }
 
 /// The key that pairs a call and its result: the file and the call's ID.
@@ -317,7 +350,7 @@ pub fn records<'records>(
         sections.push(Section {
             branch: (fields.keeps("git_branch") && !head.git_branch.is_empty())
                 .then_some(head.git_branch.as_str()),
-            facts: facts(first, fields),
+            facts: facts(group, fields),
             items: group
                 .iter()
                 .map(|turn| item(turn, &standing, fields))
@@ -375,18 +408,32 @@ pub fn count_types(types: &[&str]) -> Vec<(&'static str, usize)> {
         .collect()
 }
 
-/// What the heading of the section that starts with `first` says of its
-/// file, of the keys `fields` keeps: the project, the session, and the
+/// What the heading of the section of `group` says of its file, of the
+/// keys `fields` keeps: the project, the session, the models, permission
+/// modes, and versions of Claude Code its records show, and the
 /// sub-agent, its kind, and what it was for, when it has them.
-fn facts<'records>(first: &'records Turn, fields: &Fields) -> Vec<Fact<'records>> {
-    let head = first.head();
+fn facts<'records>(group: &[&'records Turn], fields: &Fields) -> Vec<Fact<'records>> {
     let mut facts = Vec::new();
+    // `chunk_by` gives no empty group.
+    let Some(&first) = group.first() else {
+        return facts;
+    };
+    let head = first.head();
     if fields.keeps("project") {
         facts.push(Fact::Project(&head.project));
     }
     if fields.keeps("session_id") {
         facts.push(Fact::Session(&head.session_id));
     }
+    let listed = |key: &str, value: fn(&'records Turn) -> &'records str| {
+        fields
+            .keeps(key)
+            .then(|| distinct(group.iter().map(|turn| value(turn))))
+            .filter(|values| !values.is_empty())
+    };
+    facts.extend(listed("model", Turn::model).map(Fact::Models));
+    facts.extend(listed("permission_mode", permission_mode).map(Fact::PermissionModes));
+    facts.extend(listed("agent_version", agent_version).map(Fact::AgentVersions));
     if let Some(name) = subagent(first, fields) {
         facts.push(Fact::Subagent(name));
     }
@@ -401,6 +448,45 @@ fn facts<'records>(first: &'records Turn, fields: &Fields) -> Vec<Fact<'records>
         }
     }
     facts
+}
+
+/// The lines of `text`, an empty one after a final line break, and none
+/// for an empty `text`. A carriage return before a line break is left out,
+/// as the other blocks leave it out.
+fn split_lines(text: &str) -> impl Iterator<Item = &str> {
+    (!text.is_empty())
+        .then_some(text)
+        .into_iter()
+        .flat_map(|whole| whole.split('\n'))
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+}
+
+/// The values of `values` that are not empty, each once, in the order they
+/// first appear.
+fn distinct<'records>(values: impl Iterator<Item = &'records str>) -> Vec<&'records str> {
+    let mut seen = Vec::new();
+    for value in values {
+        if !value.is_empty() && !seen.contains(&value) {
+            seen.push(value);
+        }
+    }
+    seen
+}
+
+/// The permission mode a prompt was written in, or empty for the other
+/// records.
+fn permission_mode(turn: &Turn) -> &str {
+    match *turn {
+        Turn::Prompt(ref prompt) => &prompt.permission_mode,
+        Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) | Turn::Thinking(_) => {
+            ""
+        }
+    }
+}
+
+/// The version of Claude Code that wrote `turn`, or empty.
+fn agent_version(turn: &Turn) -> &str {
+    &turn.head().agent_version
 }
 
 /// The sub-agent `turn` comes from, when it does and `fields` keeps it.
@@ -577,7 +663,7 @@ fn call_body<'records>(
     let (input, gist) = if !call.search.matches.is_empty() && fields.keeps("matches") {
         (Input::Lines(runs(&call.search.matches)), None)
     } else if fields.keeps("input") {
-        (shown_input(&call.input)?, gist(&call.input))
+        (shown_input(&call.tool, &call.input)?, gist(&call.input))
     } else {
         (Input::Hidden, None)
     };
@@ -606,36 +692,55 @@ fn gist(input: &Value) -> Option<&str> {
 
 /// `input` as indented JSON, but for each string at its top level that
 /// runs over lines, such as a plan, which is kept apart so that it reads
-/// as written. The JSON is left out when those strings are all there is.
-fn shown_input(input: &Value) -> Result<Input<'_>, Failure> {
+/// as written, and for what an `Edit` call of `tool` changed, kept apart
+/// as one change. The JSON is left out when those are all there is.
+fn shown_input<'records>(tool: &str, input: &'records Value) -> Result<Input<'records>, Failure> {
+    let change = change(tool, input);
+    let apart = |key: &str| change.is_some() && matches!(key, "old_string" | "new_string");
     let texts: Vec<(&str, &str)> = input
         .as_object()
         .into_iter()
         .flatten()
+        .filter(|&(key, _)| !apart(key))
         .filter_map(|(key, value)| {
             let text = value.as_str().filter(|text| text.contains('\n'))?;
             Some((key.as_str(), text.trim_end_matches('\n')))
         })
         .collect();
-    if texts.is_empty() {
+    if texts.is_empty() && change.is_none() {
         let json = serde_json::to_string_pretty(input).map_err(Failure::Json)?;
         return Ok(Input::Shown {
+            change,
             json: Some(json),
             texts,
         });
     }
     let mut rest = input.clone();
     if let Value::Object(ref mut map) = rest {
-        for &(key, _) in &texts {
-            map.remove(key);
-        }
+        map.retain(|key, _| !apart(key) && !texts.iter().any(|&(text_key, _)| text_key == key));
     }
     let json = if rest.as_object().is_some_and(Map::is_empty) {
         None
     } else {
         Some(serde_json::to_string_pretty(&rest).map_err(Failure::Json)?)
     };
-    Ok(Input::Shown { json, texts })
+    Ok(Input::Shown {
+        change,
+        json,
+        texts,
+    })
+}
+
+/// What a call of `tool` with `input` changed, when it is an `Edit` whose
+/// input has both strings.
+fn change<'records>(tool: &str, input: &'records Value) -> Option<Change<'records>> {
+    if tool != "Edit" {
+        return None;
+    }
+    Some(Change {
+        new: input.get("new_string")?.as_str()?,
+        old: input.get("old_string")?.as_str()?,
+    })
 }
 
 /// The parts of `result` that `fields` keeps.

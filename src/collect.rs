@@ -205,6 +205,7 @@ impl Spot<'_> {
         };
         Head {
             agent: AGENT,
+            agent_version: entry.version.clone(),
             session_id,
             session_title: String::new(),
             session_title_then: self.title.to_owned(),

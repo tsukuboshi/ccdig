@@ -9,6 +9,7 @@ source: src/testing.rs
 
 - Project: `-Users-alice-shop`
 - Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+- Model: `claude-opus-5-5`
 
 ### 2026-10-13 12:00:05 JST - turn 1 - Tool call
 
@@ -38,6 +39,7 @@ The total is computed in src/cart.rs.
 
 - Project: `-Users-alice-shop`
 - Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+- Model: `claude-haiku-5-5`
 - Subagent: `agent-a1`
 - Subagent type: `Explore`
 - Description: Find the cart total
@@ -76,6 +78,7 @@ In src/cart.rs.
 
 - Project: `-Users-alice-shop`
 - Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+- Model: `claude-haiku-5-5`
 - Subagent: `agent-a2`
 - Subagent type: `general-purpose`
 - Description: Look in \*src\* and # lib

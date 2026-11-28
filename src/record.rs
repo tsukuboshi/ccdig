@@ -5,6 +5,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::classify::human::HARNESS_MODEL;
 use crate::redact::Counts;
 use crate::text::{Lang, Span, cut_span, cut_text};
 use crate::transcript::entry::Usage;
@@ -18,9 +19,10 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 32] = [
+pub const RECORD_KEYS: [&str; 33] = [
     "type",
     "agent",
+    "agent_version",
     "session_id",
     "session_title",
     "session_title_then",
@@ -120,6 +122,9 @@ pub struct Cuts {
 pub struct Head {
     /// Always `AGENT`.
     pub agent: &'static str,
+    /// The version of Claude Code that wrote the line, or empty when the
+    /// line does not say, as in transcripts older than the field.
+    pub agent_version: String,
     /// The session ID; a sub-agent's records carry the parent's.
     pub session_id: String,
     /// The session's last title, or empty.
@@ -874,6 +879,18 @@ impl Turn {
             Self::Result(ref result) => result,
             Self::Summary(ref summary) => summary,
         }
+    }
+
+    /// The model that wrote the record, or empty for a record no model
+    /// wrote: a prompt, a result, a summary, or a reply Claude Code wrote
+    /// itself, as when a request failed.
+    pub fn model(&self) -> &str {
+        let model = match *self {
+            Self::Reply(ref reply) | Self::Thinking(ref reply) => &reply.model,
+            Self::Call(ref call) => &call.model,
+            Self::Prompt(_) | Self::Result(_) | Self::Summary(_) => "",
+        };
+        if model == HARNESS_MODEL { "" } else { model }
     }
 
     /// The tool's output the record carries: a result's text, or the one

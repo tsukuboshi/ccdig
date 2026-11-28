@@ -22,7 +22,7 @@ const HARNESS_TAGS: [&str; 7] = [
 ];
 
 /// The model Claude Code names on an assistant line it wrote itself.
-const HARNESS_MODEL: &str = "<synthetic>";
+pub const HARNESS_MODEL: &str = "<synthetic>";
 
 /// What Claude Code writes as the reply to a turn that wanted none.
 const NO_RESPONSE: &str = "No response requested.";

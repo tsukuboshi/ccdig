@@ -24,6 +24,7 @@ source: src/testing.rs
 <dl class="facts">
 <dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
 <dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Model</dt><dd><code>claude-opus-5-5</code></dd>
 <dt>Branch</dt><dd><code>main</code></dd>
 <dt>Records shown</dt><dd><time datetime="2026-10-13T12:00:00+09:00">2026-10-13 12:00:00 JST</time> – <time datetime="2026-10-13T12:01:05+09:00">2026-10-13 12:01:05 JST</time></dd>
 </dl>
@@ -51,6 +52,7 @@ In src/cart.rs.</pre>
 <dl class="facts">
 <dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
 <dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Model</dt><dd><code>claude-haiku-5-5</code></dd>
 <dt>Subagent</dt><dd><code>agent-a1</code></dd>
 <dt>Subagent type</dt><dd><code>Explore</code></dd>
 <dt>Description</dt><dd>Find the cart total</dd>
@@ -82,6 +84,7 @@ src/cart.rs</pre>
 <dl class="facts">
 <dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
 <dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Model</dt><dd><code>claude-haiku-5-5</code></dd>
 <dt>Subagent</dt><dd><code>agent-a2</code></dd>
 <dt>Subagent type</dt><dd><code>general-purpose</code></dd>
 <dt>Description</dt><dd>Look in *src* and # lib</dd>

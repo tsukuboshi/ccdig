@@ -79,6 +79,7 @@ const ELEMENTS: &[&str] = &[
     "header",
     "hr",
     "html",
+    "ins",
     "li",
     "mark",
     "meta",
@@ -147,6 +148,7 @@ fn prompts(groups: &[Group]) -> Result<Vec<Prompt>, String> {
         let head = Head {
             masked: Counts::default(),
             agent: AGENT,
+            agent_version: String::new(),
             session_id: session.clone(),
             session_title: title.clone(),
             session_title_then: title.clone(),
@@ -360,6 +362,22 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
             .filter(|line| line.starts_with("### ") && line.contains(" - Reply"))
             .count();
         check_eq(&named, &names.len(), &out)?;
+        Ok(())
+    })
+}
+
+#[test]
+fn an_edit_adds_no_heading() -> TestResult {
+    for_all(&(hostile_markdown(), hostile_markdown()), |(old, new)| {
+        let turns = [Turn::Call(call_at(
+            1,
+            "Edit",
+            json!({"old_string": old, "new_string": new}),
+            "toolu_1",
+            None,
+        )?)];
+        let (out, headings) = record_headings(&turns)?;
+        check_eq(&headings.len(), &3, &out)?;
         Ok(())
     })
 }
@@ -638,6 +656,16 @@ fn hostile_turns(texts: &[String]) -> Result<Vec<Turn>, String> {
         Turn::Result(ToolResult {
             head: head("2026-10-13T01:25:00Z")?,
             ..result_at(7, &text(9), "toolu_3", &ran)?
+        }),
+        Turn::Call(ToolCall {
+            head: head("2026-10-13T01:25:00Z")?,
+            ..call_at(
+                9,
+                "Edit",
+                json!({"old_string": text(10), "new_string": text(5)}),
+                "toolu_4",
+                None,
+            )?
         }),
         Turn::Reply(Reply {
             head: head("2026-10-13T01:26:00Z")?,

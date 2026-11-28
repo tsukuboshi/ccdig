@@ -13,7 +13,8 @@ use jiff::tz::TimeZone;
 
 use super::json::Fields;
 use super::view::{
-    self, Body, CallBody, Ending, Fact, Input, Label, Passage, ResultBody, Run, Section, Tool, View,
+    self, Body, CallBody, Change, Ending, Fact, Input, Label, Passage, ResultBody, Run, Section,
+    Tool, View,
 };
 use super::words::{self, Badge, Item};
 use crate::failure::Failure;
@@ -169,6 +170,7 @@ impl Writer<'_> {
             Input::Hidden => {}
             Input::Lines(ref runs) => lines(page, runs, self.lang),
             Input::Shown {
+                change,
                 ref json,
                 ref texts,
             } => {
@@ -182,6 +184,9 @@ impl Writer<'_> {
                     page.text(key);
                     page.tag("</code></p>\n");
                     preformatted(page, value);
+                }
+                if let Some(edit) = change {
+                    diff(page, edit);
                 }
             }
         }
@@ -223,18 +228,24 @@ impl Writer<'_> {
             return Ok(());
         }
         page.tag("<dl class=\"facts\">\n");
-        for &fact in &section.facts {
+        for fact in &section.facts {
             fact_start(page, words::fact(self.lang, fact));
-            match fact {
+            match *fact {
                 Fact::Project(text)
                 | Fact::Session(text)
                 | Fact::Subagent(text)
-                | Fact::SubagentType(text) => {
-                    page.tag("<code>");
-                    page.text(text);
-                    page.tag("</code>");
-                }
+                | Fact::SubagentType(text) => code(page, text),
                 Fact::Description(text) => page.text(&one_line(text)),
+                Fact::AgentVersions(ref values)
+                | Fact::Models(ref values)
+                | Fact::PermissionModes(ref values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        if index > 0 {
+                            page.tag(", ");
+                        }
+                        code(page, value);
+                    }
+                }
             }
             page.tag("</dd>\n");
         }
@@ -615,6 +626,13 @@ fn fact_start(page: &mut Page, name: &str) {
     page.tag("</dt><dd>");
 }
 
+/// `text` as code.
+fn code(page: &mut Page, text: &str) {
+    page.tag("<code>");
+    page.text(text);
+    page.tag("</code>");
+}
+
 /// The name of `tool`, or the words for one whose call was not found.
 fn tool_name(page: &mut Page, tool: Tool<'_>, lang: Lang) {
     match tool {
@@ -668,6 +686,27 @@ fn text(page: &mut Page, passage: &Passage<'_>, label: Label, lang: Lang) {
 fn preformatted(page: &mut Page, text: &str) {
     page.tag("<pre>\n");
     page.text(text);
+    page.tag("</pre>\n");
+}
+
+/// What an `Edit` changed, under the keys it comes from: each line taken
+/// out and put in, marked `-` and `+` so that it reads without its colors.
+fn diff(page: &mut Page, change: Change<'_>) {
+    page.tag("<p class=\"key\"><code>input.old_string</code> \u{2192} <code>input.new_string</code></p>\n");
+    page.tag("<pre class=\"diff\">\n");
+    for (index, (sign, line)) in change.lines().enumerate() {
+        if index > 0 {
+            page.tag("\n");
+        }
+        let (open, close) = if sign == '-' {
+            ("<del>-", "</del>")
+        } else {
+            ("<ins>+", "</ins>")
+        };
+        page.tag(open);
+        page.text(line);
+        page.tag(close);
+    }
     page.tag("</pre>\n");
 }
 

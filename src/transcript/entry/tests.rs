@@ -72,6 +72,16 @@ fn an_unknown_type_decodes_with_no_text() -> TestResult {
 }
 
 #[test]
+fn a_line_keeps_the_claude_code_version_it_was_written_by() -> TestResult {
+    let written =
+        decode(r#"{"type":"user","version":"2.1.326","message":{"role":"user","content":"hi"}}"#)?;
+    check_eq(written.version.as_str(), "2.1.326", "with version")?;
+    let older = decode(r#"{"type":"user","message":{"role":"user","content":"hi"}}"#)?;
+    check_eq(older.version.as_str(), "", "without version")?;
+    Ok(())
+}
+
+#[test]
 fn truncated_json_and_a_top_level_array_are_undecodable() -> TestResult {
     check_eq(
         &decode_line(br#"{"type":"user","#).is_none(),

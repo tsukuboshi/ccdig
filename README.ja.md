@@ -424,7 +424,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.6","schema":9,"filter":"strict-v5"}
+{"version":"0.0.6","schema":10,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -536,8 +536,8 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `ccdig records --type prompt` は 1 行に 1 つのオブジェクトを書きます。
 
 ```json
-{"type":"prompt","agent":"claude-code","session_id":"<uuid>",
- "session_title":"Weekly report draft",
+{"type":"prompt","agent":"claude-code","agent_version":"2.1.326",
+ "session_id":"<uuid>","session_title":"Weekly report draft",
  "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
@@ -631,6 +631,8 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
     "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
   ```
 
+- `agent_version` は、その行を書いた Claude Code のバージョン（`2.1.326` など）です。
+  このキーより古い履歴では空です。
 - `permission_mode` は、Claude Code が依頼文の行に記録したモード
   （`default`・`plan`・`auto` など）です。行に記録が無ければ空で、
   スラッシュコマンドや古いセッションでは Claude Code が書きません。
@@ -691,7 +693,7 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":9,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":10,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -719,12 +721,17 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 セッションの表には、`records --session` と `--project` に渡せる
 `Session` 列と `Cwd` 列があります。
 
-`records --format md` は、履歴ファイルごとのレコードをプロジェクトと
-セッションを記した 1 つの見出しの下にまとめ、各レコードを秒までの時刻、
-依頼文の後ならターン番号、種類の見出しの下に置きます。
+`records --format md` は、履歴ファイルごとのレコードを 1 つの見出しの下にまとめ、
+見出しにはプロジェクト、セッションと、表示しているレコードに出てくるモデル・権限モード・
+Claude Code のバージョンを、初めて出た順に 1 回ずつ記します。
+各レコードは秒までの時刻、依頼文の後ならターン番号、種類の見出しの下に置きます。
 `ExitPlanMode` のプランのように、呼び出しの入力のうち複数行にわたる文字列は、
 残りの入力の後に `input.plan` のようなキー名を付けたテキストブロックで出し、
-書かれたとおりに読めるようにします。呼び出しは入力の下に結果を出し、その結果は、
+書かれたとおりに読めるようにします。
+`Edit` は `old_string` と `new_string` を 1 つの `diff` ブロックで出し、
+取り除く行に `-`、入れる行に `+` を付けます。
+`Edit` は置き換える部分のテキストしか持たないため、比較はしません。
+呼び出しは入力の下に結果を出し、その結果は、
 `--context` が一致した行を並べるときと、検索がその結果に一致して呼び出しには
 一致しなかったとき（呼び出しは前後のレコードとして出ます）を除いて、単独では
 出しません。`--limit` は JSON と同じく呼び出しの下に出した結果も数えるので、
@@ -758,7 +765,7 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 
 `records --format html` は 1 枚のページを標準出力に書きます。保存はリダイレクトで行います。
 ページの先頭には、Markdown と同じ件数行と、ルールごとにマスクした件数を出します。マスクしていないときは `Not masked (--no-mask)` に当たる文言を出します。
-transcript ファイルごとの区切りには、プロジェクト、セッション、ブランチと、表示している記録のうち最も早いものと遅いものの時刻を出します。
+transcript ファイルごとの区切りには、プロジェクト、セッション、Markdown と同じモデル・権限モード・Claude Code のバージョン、ブランチと、表示している記録のうち最も早いものと遅いものの時刻を出します。
 絞り込みで両端の記録が落ちることがあるので、これはセッションの開始と終了の時刻ではありません。
 各レコードは時刻・ターン・種類の見出しの下に置き、種類・行の ID・行の中のブロック番号から作った `id` を付けます（`reply-3f2a9c1e-…-0` など）。
 絞り込みを変えても同じレコードへのリンクは変わりません。
@@ -774,6 +781,8 @@ transcript ファイルごとの区切りには、プロジェクト、セッシ
   （`--type prompt,reply,call --subagents` のとき）その呼び出しの中に出し、
   なければ Markdown と同じくセッションの後ろの独立した区切りに出します。
 - 要約は、文脈を圧縮した位置を示す区切りとして出し、本文は折りたたみます。
+- `Edit` は Markdown と同じ形で変更を出し、取り除く行と入れる行を色分けします。
+  コピーしても読めるよう、`-` と `+` は残します。
 - 返答・思考・要約は Markdown として描画します（表と取り消し線を含む）。
   依頼文・入力・出力は書かれたままに出します。`--around` が足したレコードは
   薄く出し、`--context` が並べる行のうち一致した行を強調します。

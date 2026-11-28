@@ -443,7 +443,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.6","schema":9,"filter":"strict-v5"}
+{"version":"0.0.6","schema":10,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -553,8 +553,8 @@ Warnings, errors, the `--mask-report` line, and `--help` stay in English.
 `ccdig records --type prompt` writes one object per line:
 
 ```json
-{"type":"prompt","agent":"claude-code","session_id":"<uuid>",
- "session_title":"Weekly report draft",
+{"type":"prompt","agent":"claude-code","agent_version":"2.1.326",
+ "session_id":"<uuid>","session_title":"Weekly report draft",
  "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
@@ -653,6 +653,8 @@ plan approved; the record type is `type`, which `--type` picks.
     "<pasted_content id=\"[0-9a-f]+\">(.|\n)*?</pasted_content id=\"[0-9a-f]+\">"; "")'
   ```
 
+- `agent_version` is the version of Claude Code that wrote the line, such
+  as `2.1.326`, and empty in transcripts older than the field.
 - `permission_mode` is the mode Claude Code recorded on the prompt's line,
   such as `default`, `plan`, or `auto`. It is empty when the line does not
   say: Claude Code writes none for a slash command or in older sessions.
@@ -713,7 +715,7 @@ plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":9,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":10,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -742,11 +744,16 @@ type. The sessions table has a `Session` and a `Cwd` column, which
 `records --session` and `--project` take.
 
 `records --format md` puts the records of each transcript file under one
-heading with the project and session, and each record under a heading
+heading with the project, the session, and the models, permission modes,
+and Claude Code versions of the records shown, each once in the order it
+first appears, and each record under a heading
 with its time to the second, its turn when it follows a prompt, and its
 kind. A string in a call's input that runs over lines, such as the plan
 of `ExitPlanMode`, follows the rest of the input in a text block named
-for its key, such as `input.plan`, so it reads as written. A call shows
+for its key, such as `input.plan`, so it reads as written. An `Edit`
+shows its `old_string` and `new_string` as one `diff` block, each line
+it takes out marked `-` and each it puts in marked `+`; nothing is
+compared, as an `Edit` holds only the text it replaces. A call shows
 its result under its input, and the
 result is not shown again on its own unless `--context` lists its matched
 lines, or a search matched it and not its call, which then shows as
@@ -783,7 +790,8 @@ in code spans.
 `records --format html` writes one page on stdout, which a redirect saves.
 It starts with the count line of Markdown and how many times each rule
 masked something, or `Not masked (--no-mask)`. Each transcript file gets a
-section with the project, the session, the branch, and when the earliest
+section with the project, the session, the models, permission modes, and
+Claude Code versions, as in Markdown, the branch, and when the earliest
 and the latest record shown were written: a filter can leave out records
 at either end, so this is not when the session started and ended. Each
 record is under its time, its turn, and its kind, with an `id` made of its
@@ -802,6 +810,8 @@ keep. A record whose line has no ID gets its place on the page, such as
   has that call, as with `--type prompt,reply,call --subagents`, and in a
   section of their own after the session's otherwise, as in Markdown.
 - A summary marks where the context was compacted, with its text folded.
+- An `Edit` shows its change as in Markdown, with the lines taken out and
+  put in colored, and their `-` and `+` kept for copying.
 - Replies, thinking, and summaries are Markdown and are rendered, with
   tables and struck-through text. Prompts, inputs, and outputs show as
   written. A record `--around` added is faded, and the lines `--context`
