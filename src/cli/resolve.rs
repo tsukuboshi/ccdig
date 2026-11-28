@@ -5,8 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use super::args::{
-    Activity, Command, Common, MaskKind, Output, Prompted, RecordType, Selection, Status, listed,
-    mask_kinds, on_skip, value_names,
+    Activity, Command, Common, MaskKind, Output, Prompted, RecordType, Selection, Status,
+    env_value, listed, mask_kinds, value_names,
 };
 use super::environment::Environment;
 use super::values::{self, Values};
@@ -21,7 +21,7 @@ use crate::redact::ExtraMasks;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
 use crate::stats::{By, Grouping, Sort};
-use crate::text::Span;
+use crate::text::{Lang, Span};
 use crate::when::DayRange;
 
 /// The shared flags with the environment's defaults filled in, and what
@@ -31,6 +31,9 @@ struct Flags {
     common: Common,
     /// The git user name and email, looked up for `--mask git-user`.
     git_users: Vec<String>,
+    /// The language `CCDIG_LANG` names, kept apart from `--lang`, which
+    /// only the formats it applies to take.
+    lang: Option<Lang>,
     /// The values `--mask-values` gave.
     values: Values,
 }
@@ -143,9 +146,24 @@ impl Flags {
         Ok(PathBuf::from(home).join(".claude").join("projects"))
     }
 
-    /// What to read and how to report it, with the filters in `narrowing`.
-    /// The checks run in the order the errors are reported.
-    fn shared(self, narrowing: Narrowing, environment: &Environment) -> Result<Shared, Failure> {
+    /// What to read and how to report it, with the filters in `narrowing`,
+    /// and the language of the words when `worded`, as in Markdown and the
+    /// digest. The checks run in the order the errors are reported.
+    fn shared(
+        self,
+        narrowing: Narrowing,
+        worded: bool,
+        environment: &Environment,
+    ) -> Result<Shared, Failure> {
+        // JSON and JSON Lines get English whatever the variable says: the
+        // notes of a cut are written into the records' text before they are
+        // rendered, and the JSON values must not change with the language.
+        let lang = match (self.common.lang, worded) {
+            (Some(_), false) => return Err(Failure::LangNeedsMarkdown),
+            (Some(given), true) => given.into(),
+            (None, true) => self.lang.unwrap_or_default(),
+            (None, false) => Lang::default(),
+        };
         let zone = environment.zone(self.common.tz.as_deref().unwrap_or("Local"))?;
         let grep = patterns(&self.common.grep, &self.common.igrep)?;
         let finds = !grep.include.is_empty();
@@ -166,6 +184,7 @@ impl Flags {
         let Self {
             common,
             git_users,
+            lang: _env_lang,
             values,
         } = self;
         let has = |kind| common.masks.contains(&kind);
@@ -188,6 +207,7 @@ impl Flags {
             }
         }
         Ok(Shared {
+            lang,
             limit: common.limit,
             mask,
             mask_report: common.mask_report.map(Into::into),
@@ -211,6 +231,7 @@ impl Flags {
                 excerpt: narrowing
                     .context
                     .or_else(|| narrowing.context_by_default.filter(|_| finds)),
+                lang,
                 mentions: narrowing.mentions.filter(|_| finds),
                 spawns: narrowing.spawns,
                 subagents: narrowing.subagents,
@@ -261,11 +282,21 @@ impl Flags {
         if common.on_skip.is_none()
             && let Some(ref value) = environment.on_skip
         {
-            common.on_skip = Some(on_skip(value)?);
+            common.on_skip = Some(env_value("CCDIG_ON_SKIP", value)?);
         }
+        // As with CCDIG_ON_SKIP, the flag replaces the variable, so a bad
+        // value is reported only when the variable is read.
+        let lang = environment
+            .lang
+            .as_deref()
+            .filter(|_| common.lang.is_none())
+            .map(|value| env_value::<super::args::Lang>("CCDIG_LANG", value))
+            .transpose()?
+            .map(Into::into);
         let mut flags = Self {
             common,
             git_users: Vec::new(),
+            lang,
             values: Values::default(),
         };
         if flags.common.no_mask {
@@ -664,7 +695,11 @@ pub fn resolve(
                 fields,
                 format,
                 kinds,
-                shared: Box::new(flags.shared(narrowing, environment)?),
+                shared: Box::new(flags.shared(
+                    narrowing,
+                    format == Format::Markdown,
+                    environment,
+                )?),
             })
         }
         Command::Sessions {
@@ -732,7 +767,7 @@ fn digest_config(
     let limits = digest_limits(given.0, given.1)?;
     Ok(Config::Digest {
         limits,
-        shared: Box::new(flags.shared(narrowing, environment)?),
+        shared: Box::new(flags.shared(narrowing, true, environment)?),
     })
 }
 
@@ -748,7 +783,7 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
     };
     let format = given.output.format.into();
     let picked = fields(given.output.fields, &SESSION_KEYS)?;
-    let shared = flags.shared(narrowing, environment)?;
+    let shared = flags.shared(narrowing, format == Format::Markdown, environment)?;
     let counts = shared.reading.mentions.is_some();
     for (flagged, flag) in [
         (!given.types.is_empty(), "--type"),
@@ -792,7 +827,7 @@ fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, 
         return Err(Failure::ByNeedsSubagents);
     }
     let flags = Flags::with_env(given.common, environment)?;
-    let mut shared = flags.shared(narrowing, environment)?;
+    let mut shared = flags.shared(narrowing, format == Format::Markdown, environment)?;
     let limit = shared.limit.take();
     Ok(Config::Stats {
         fields: picked_fields,

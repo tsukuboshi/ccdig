@@ -3,7 +3,7 @@
 mod properties;
 
 use super::{
-    Span, clean_text, code_span, cut_span, escape_inline, escape_pipes, heading_text, one_line,
+    Lang, Span, clean_text, code_span, cut_span, cut_text, escape_inline, escape_pipes, one_line,
     shell_quote,
 };
 use crate::testing::{TestResult, check_eq};
@@ -49,27 +49,6 @@ fn one_line_collapses_every_kind_of_whitespace() -> TestResult {
         "a b c d e",
         "whitespace runs",
     )?;
-    Ok(())
-}
-
-#[test]
-fn heading_text_escapes_inline_markdown_on_one_line() -> TestResult {
-    let title = concat!(
-        "title | with pipe\n## fake section <img src=x onerror=alert(1)> ",
-        "[x](javascript:alert(1)) \u{202E}evil",
-    );
-    let want = concat!(
-        "title \\| with pipe ## fake section \\<img src=x onerror=alert(1)\\> ",
-        "\\[x\\](javascript:alert(1)) \u{FFFD}evil",
-    );
-    check_eq(heading_text(title).as_str(), want, "hostile title")?;
-    Ok(())
-}
-
-#[test]
-fn heading_text_names_a_blank_title_untitled() -> TestResult {
-    check_eq(heading_text("").as_str(), "(untitled)", "empty title")?;
-    check_eq(heading_text(" \n\t ").as_str(), "(untitled)", "blank title")?;
     Ok(())
 }
 
@@ -136,16 +115,53 @@ fn cut_span_keeps_a_range_and_says_what_is_before_and_after() -> TestResult {
         (40, 5, "(20 characters before) \u{2026}"),
     ] {
         check_eq(
-            &cut_span(text, Span { skip, take }),
+            &cut_span(text, Span { skip, take }, Lang::En),
             &want.to_owned(),
             &format!("{skip} {take}"),
         )?;
     }
     check_eq(
-        &cut_span("\u{65e5}\u{672c}\u{8a9e}", Span { skip: 1, take: 1 }),
+        &cut_span(
+            "\u{65e5}\u{672c}\u{8a9e}",
+            Span { skip: 1, take: 1 },
+            Lang::En,
+        ),
         &"(1 characters before) \u{2026}\u{672c}\u{2026} (1 more characters, next: 3-3)".to_owned(),
         "characters, not bytes",
     )?;
+    Ok(())
+}
+
+#[test]
+fn the_notes_of_a_cut_are_in_the_language_asked_for() -> TestResult {
+    let text = "0123456789abcdefghij";
+    // (name, what it gave, what it should give)
+    for (name, got, want) in [
+        (
+            "a span with text before and after",
+            cut_span(text, Span { skip: 5, take: 5 }, Lang::Ja),
+            // (手前に 5 文字) …56789… (残り 10 文字、次: 11-15)
+            "(\u{624b}\u{524d}\u{306b} 5 \u{6587}\u{5b57}) \u{2026}56789\u{2026} (\u{6b8b}\u{308a} 10 \u{6587}\u{5b57}\u{3001}\u{6b21}: 11-15)",
+        ),
+        (
+            "a span in English",
+            cut_span(text, Span { skip: 5, take: 5 }, Lang::En),
+            "(5 characters before) \u{2026}56789\u{2026} (10 more characters, next: 11-15)",
+        ),
+        (
+            "a cut text",
+            cut_text(text, 15, Lang::Ja),
+            // 0123456789abcde… (残り 5 文字)
+            "0123456789abcde\u{2026} (\u{6b8b}\u{308a} 5 \u{6587}\u{5b57})",
+        ),
+        (
+            "a cut text in English",
+            cut_text(text, 15, Lang::En),
+            "0123456789abcde\u{2026} (5 more characters)",
+        ),
+    ] {
+        check_eq(got.as_str(), want, name)?;
+    }
     Ok(())
 }
 

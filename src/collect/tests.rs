@@ -19,6 +19,7 @@ use crate::filter::{Filter, Query, patterns};
 use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
 use crate::testing::{TestResult, check_eq, time, write_transcript};
+use crate::text::Lang;
 use crate::transcript::entry::Usage;
 use crate::when::DayRange;
 
@@ -163,6 +164,7 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
         Reading {
             around: None,
             excerpt: None,
+            lang: Lang::En,
             mentions: None,
             spawns: false,
             subagents: true,
@@ -598,6 +600,7 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
         Reading {
             around: None,
             excerpt: None,
+            lang: Lang::En,
             mentions: None,
             spawns: false,
             subagents: false,

@@ -4,9 +4,10 @@ use alloc::borrow::Cow;
 
 use jiff::tz::TimeZone;
 
+use super::words;
 use crate::failure::Failure;
 use crate::record::{Head, Kind, Prompt};
-use crate::text::{code_span, cut_short, escape_inline, heading_text, one_line};
+use crate::text::{Lang, code_span, cut_short, escape_inline, one_line};
 
 /// Where Claude Code starts the tag it puts around pasted text, up to the
 /// paste's id.
@@ -49,12 +50,18 @@ impl Default for Limits {
 
 /// One section per transcript file, one line per prompt, cut to `limits`,
 /// each followed by the first line of the reply before it when it has one.
-/// Prompts of a file must be adjacent.
+/// Prompts of a file must be adjacent. The words around the prompts are in
+/// `lang`.
 ///
 /// # Errors
 ///
 /// When a date cannot be shown in `zone`.
-pub fn digest(prompts: &[Prompt], zone: &TimeZone, limits: Limits) -> Result<String, Failure> {
+pub fn digest(
+    prompts: &[Prompt],
+    zone: &TimeZone,
+    limits: Limits,
+    lang: Lang,
+) -> Result<String, Failure> {
     let mut out = String::new();
     for (index, group) in prompts
         .chunk_by(|left, right| left.source.file == right.source.file)
@@ -63,7 +70,7 @@ pub fn digest(prompts: &[Prompt], zone: &TimeZone, limits: Limits) -> Result<Str
         if index > 0 {
             out.push('\n');
         }
-        session(&mut out, group, zone, limits)?;
+        session(&mut out, group, zone, limits, lang)?;
     }
     Ok(out)
 }
@@ -90,9 +97,9 @@ fn project_label(head: &Head) -> String {
 }
 
 /// `text` with each paste and its tags in place of a count of what was
-/// pasted, so that the words the user typed fit in the digest. A paste
-/// without a closing tag of its id stays as it is.
-fn fold_pastes(text: &str) -> Cow<'_, str> {
+/// pasted, in `lang`, so that the words the user typed fit in the digest. A
+/// paste without a closing tag of its id stays as it is.
+fn fold_pastes(text: &str, lang: Lang) -> Cow<'_, str> {
     if !text.contains(PASTE_OPEN) {
         return Cow::Borrowed(text);
     }
@@ -110,11 +117,7 @@ fn fold_pastes(text: &str) -> Cow<'_, str> {
             })
         });
         if let Some((pasted, after)) = paste {
-            out.extend([
-                "[pasted ",
-                &pasted.trim().chars().count().to_string(),
-                " chars]",
-            ]);
+            out.push_str(&words::pasted(lang, pasted.trim().chars().count()));
             rest = after;
         } else {
             out.push_str(PASTE_OPEN);
@@ -158,12 +161,14 @@ fn preview_end(preview: &str) -> usize {
         .unwrap_or(preview.len())
 }
 
-/// Writes the section of one transcript file.
+/// Writes the section of one transcript file, with its date in `zone` and
+/// its words in `lang`.
 fn session(
     out: &mut String,
     prompts: &[Prompt],
     zone: &TimeZone,
     limits: Limits,
+    lang: Lang,
 ) -> Result<(), Failure> {
     let Some(first) = prompts.first() else {
         return Ok(());
@@ -174,7 +179,7 @@ fn session(
         " | ",
         &escape_inline(&one_line(&project_label(&first.head))),
         " | ",
-        &heading_text(&first.head.session_title),
+        &words::title(lang, &first.head.session_title),
         "\n",
     ]);
     let mut used = 0_usize;
@@ -185,30 +190,24 @@ fn session(
                 Cow::Borrowed(prompt.text.as_str())
             }
         };
-        let text = cut_short(&one_line(&fold_pastes(&body)), limits.prompt_chars);
+        let text = cut_short(&one_line(&fold_pastes(&body, lang)), limits.prompt_chars);
         let after = cut_short(&one_line(&prompt.after), limits.prompt_chars);
         let length = text.chars().count().saturating_add(after.chars().count());
         if used.saturating_add(length) > limits.session_chars {
-            out.extend([
-                "- (",
-                &prompts.len().saturating_sub(index).to_string(),
-                " more prompts omitted)\n",
-            ]);
+            out.push_str(&words::omitted(lang, prompts.len().saturating_sub(index)));
             return Ok(());
         }
         // A code span keeps the prompt literal when the digest is
         // previewed: no rendered HTML, no ![](url) fetched from a
         // transcript.
-        let mark = match prompt.kind {
-            Kind::Answer => "(answer) ",
-            Kind::Approval => "(approval) ",
-            Kind::Rejection => "(rejection) ",
-            Kind::TypedAnswer => "(typed answer) ",
-            Kind::Slash | Kind::Text => "",
-        };
-        out.extend(["- ", mark, &code_span(&text), "\n"]);
+        out.extend([
+            "- ",
+            words::prompt_mark(lang, prompt.kind),
+            &code_span(&text),
+            "\n",
+        ]);
         if !after.is_empty() {
-            out.extend(["  - after: ", &code_span(&after), "\n"]);
+            out.extend([words::after(lang), &code_span(&after), "\n"]);
         }
         used = used.saturating_add(length);
     }

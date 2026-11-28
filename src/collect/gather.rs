@@ -12,7 +12,7 @@ use super::{Corpus, Select};
 use crate::filter::Filter;
 use crate::record::{AGENT, Record, Session};
 use crate::redact::Counts;
-use crate::text::shell_quote;
+use crate::text::{Lang, shell_quote};
 use crate::transcript::entry::Usage;
 use crate::transcript::walk::{SessionFile, is_dir};
 use crate::when::Stamp;
@@ -40,13 +40,15 @@ pub struct FileRecords<'file, T> {
 /// the session records. A resumed or forked session starts with a copy of
 /// earlier entries, IDs included; the first session in order wins. A
 /// record `--around` kept as context goes too when no match it is within
-/// `around` records of is left in its file.
+/// `around` records of is left in its file. The note of a cut first match
+/// is in `lang`.
 pub fn gather<T>(
     sessions: Vec<FileRecords<'_, T>>,
     warnings: Vec<String>,
     mask: &Mask,
     around: usize,
     grep: &Filter<Regex>,
+    lang: Lang,
 ) -> Corpus<T>
 where
     T: Select,
@@ -149,7 +151,7 @@ where
             }),
             prompt_count: kept.len(),
             match_count,
-            first_match: first_match.map(|earliest| earliest.first_match(grep)),
+            first_match: first_match.map(|earliest| earliest.first_match(grep, lang)),
             usage,
             resume,
             resume_unavailable,

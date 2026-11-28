@@ -8,8 +8,16 @@
 /// entities, or a table cell in inline Markdown.
 const INLINE_SPECIAL: &str = "\\`*_[]<>!&|";
 
-/// What a heading shows for a session without a title.
-const UNTITLED: &str = "(untitled)";
+/// The language of the words ccdig writes around the records in Markdown
+/// and the digest. The records' own text and the JSON stay as they are.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Lang {
+    /// English.
+    #[default]
+    En,
+    /// Japanese.
+    Ja,
+}
 
 /// Which characters of a text to keep: `take` of them after the first
 /// `skip`.
@@ -40,44 +48,49 @@ pub fn clean_text(text: &str) -> String {
 /// The characters of `text` that `span` keeps. When it leaves some out
 /// before, they are counted before an ellipsis; when it leaves some out
 /// after, an ellipsis follows, with how many there are and the range that
-/// comes next, counted from 1 as `cut -c` counts.
-pub fn cut_span(text: &str, span: Span) -> String {
+/// comes next, counted from 1 as `cut -c` counts. The notes are in `lang`.
+#[expect(
+    clippy::non_ascii_literal,
+    reason = "the Japanese notes are written as they read"
+)]
+pub fn cut_span(text: &str, span: Span, lang: Lang) -> String {
     let length = text.chars().count();
     let skipped = span.skip.min(length);
     let mut out = String::new();
     if skipped > 0 {
-        out.extend(["(", &skipped.to_string(), " characters before) \u{2026}"]);
+        let count = skipped.to_string();
+        out.extend(match lang {
+            Lang::En => ["(", &count, " characters before) \u{2026}"],
+            Lang::Ja => ["(手前に ", &count, " 文字) \u{2026}"],
+        });
     }
     out.extend(text.chars().skip(skipped).take(span.take));
     let rest = length.saturating_sub(skipped).saturating_sub(span.take);
     if rest > 0 {
         let from = length.saturating_sub(rest).saturating_add(1);
         let to = from.saturating_add(span.take).saturating_sub(1).min(length);
-        out.extend([
-            "\u{2026} (",
-            &rest.to_string(),
-            " more characters, next: ",
-            &from.to_string(),
-            "-",
-            &to.to_string(),
-            ")",
-        ]);
+        let (count, next) = (rest.to_string(), format!("{from}-{to}"));
+        out.extend(match lang {
+            Lang::En => ["\u{2026} (", &count, " more characters, next: ", &next, ")"],
+            Lang::Ja => ["\u{2026} (残り ", &count, " 文字、次: ", &next, ")"],
+        });
     }
     out
 }
 
 /// `text`, cut to `limit` characters and followed by an ellipsis and how
-/// many characters were cut when it is longer.
-pub fn cut_text(text: &str, limit: usize) -> String {
+/// many characters were cut when it is longer, in `lang`.
+pub fn cut_text(text: &str, limit: usize, lang: Lang) -> String {
     let length = text.chars().count();
     if length <= limit {
         return text.to_owned();
     }
     let kept: String = text.chars().take(limit).collect();
-    format!(
-        "{kept}\u{2026} ({} more characters)",
-        length.saturating_sub(limit)
-    )
+    let rest = length.saturating_sub(limit);
+    match lang {
+        Lang::En => format!("{kept}\u{2026} ({rest} more characters)"),
+        Lang::Ja => format!("{kept}\u{2026} (残り {rest} 文字)"),
+    }
 }
 
 /// `text` cut to `limit` characters, the cut marked with an ellipsis
@@ -98,16 +111,6 @@ pub fn one_line(text: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Makes a session title safe for a heading, a table cell, or the digest
-/// heading: one line, with inline Markdown and HTML escaped.
-pub fn heading_text(title: &str) -> String {
-    let line = one_line(title);
-    if line.is_empty() {
-        return UNTITLED.to_owned();
-    }
-    escape_inline(&line)
 }
 
 /// Backslash-escapes the inline Markdown characters so that text from a

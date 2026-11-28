@@ -28,6 +28,8 @@ pub struct Environment {
     pub git_config: Option<fn(&str) -> Option<String>>,
     /// `HOME`, for the default root and `--mask user`.
     pub home: Option<OsString>,
+    /// `CCDIG_LANG`, for `--lang`.
+    pub lang: Option<OsString>,
     /// `CCDIG_MASK`, for `--mask`.
     pub mask: Option<OsString>,
     /// `CCDIG_MASK_VALUES`, for `--mask-values`.
@@ -67,6 +69,7 @@ impl Environment {
             claude_config_dir: var("CLAUDE_CONFIG_DIR"),
             git_config: None,
             home: var("HOME"),
+            lang: var("CCDIG_LANG"),
             mask: var("CCDIG_MASK"),
             mask_values: var("CCDIG_MASK_VALUES"),
             on_skip: var("CCDIG_ON_SKIP"),

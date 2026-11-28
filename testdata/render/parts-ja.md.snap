@@ -1,0 +1,168 @@
+---
+source: src/testing.rs
+---
+# 記録
+
+- 記録: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 前後の記録 2
+
+## Weekly report draft
+
+- プロジェクト: `-Users-alice-blog`
+- セッション: `11111111-1111-4111-8111-111111111111`
+
+### 2026-10-13 10:23:00 JST - ターン 1 - プロンプト
+
+```text
+plain
+```
+
+### 2026-10-13 10:23:00 JST - ターン 1 - 回答
+
+```text
+"A?"="a"
+```
+
+### 2026-10-13 10:23:00 JST - ターン 1 - 承認
+
+```text
+the plan
+```
+
+### 2026-10-13 10:23:00 JST - ターン 1 - 却下
+
+```text
+not that
+```
+
+### 2026-10-13 10:23:00 JST - ターン 1 - 自由記述の回答
+
+```text
+"B?"="my own"
+```
+
+### 2026-10-13 10:24:00 JST - 思考
+
+```text
+Let me think.
+```
+
+### 2026-10-13 10:24:01 JST - 返答 (前後の記録)
+
+```text
+Nearby.
+```
+
+### 2026-10-13 10:24:02 JST - 返答
+
+- 1 行目
+
+```text
+first hit
+```
+
+- 3-4 行目、一致 4
+
+```text
+before
+second hit
+```
+
+### 2026-10-13 10:25:00 JST - ターン 2 - ツール呼び出し
+
+- ツール: `Bash`
+
+```json
+{
+  "command": "ls"
+}
+```
+
+- `input.plan`
+
+```text
+step 1
+step 2
+```
+
+- 結果: 成功
+
+```text
+a.txt
+b.txt
+```
+
+### 2026-10-13 10:25:00 JST - ターン 2 - ツール呼び出し
+
+- ツール: `ExitPlanMode`
+- `input.plan`
+
+```text
+one
+two
+```
+
+- 結果: エラー
+- 却下理由: `user-rejected`
+
+### 2026-10-13 10:25:01 JST - ターン 2 - ツール結果
+
+- ツール: `ExitPlanMode`
+- エラー: あり
+- 却下理由: `user-rejected`
+- 1 行目
+
+```text
+The user said no.
+```
+
+### 2026-10-13 10:25:00 JST - ターン 2 - ツール呼び出し (前後の記録)
+
+- ツール: `Bash`
+
+```json
+{
+  "command": "false"
+}
+```
+
+- 結果: エラー
+
+### 2026-10-13 10:25:01 JST - ターン 2 - ツール結果
+
+- ツール: `Bash`
+- エラー: あり
+
+```text
+exit 1
+```
+
+### 2026-10-13 10:25:00 JST - ターン 2 - ツール呼び出し
+
+- ツール: `Bash`
+- `input.command` 1-2 行目
+
+```text
+git add .
+git commit
+```
+
+- 結果: (なし)
+
+### 2026-10-13 10:26:00 JST - 要約
+
+```text
+Compacted.
+```
+
+## Weekly report draft
+
+- プロジェクト: `-Users-alice-blog`
+- セッション: `11111111-1111-4111-8111-111111111111`
+- サブエージェント: `agent-7`
+- サブエージェントの種類: `Explore`
+
+### 2026-10-13 10:25:30 JST - 返答 - `agent-7`
+
+```text
+Looked.
+```

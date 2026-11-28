@@ -11,6 +11,7 @@ use crate::collect::{Reading, collect};
 use crate::filter::{Query, patterns};
 use crate::record::{Record as _, Session, Turn};
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
+use crate::text::Lang;
 
 /// Transcripts tried; each writes files and compiles the masking rules.
 const FILE_CASES: u32 = 32;
@@ -132,6 +133,7 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                     Reading {
                         around: None,
                         excerpt,
+                        lang: Lang::En,
                         mentions: None,
                         spawns: true,
                         subagents: true,

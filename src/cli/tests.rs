@@ -10,6 +10,7 @@ mod context;
 mod denials;
 mod fields;
 mod kinds;
+mod lang;
 mod mentions;
 mod properties;
 mod responses;
@@ -852,6 +853,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--message-chars <N|FROM-TO>",
                 "--tool-chars <N|FROM-TO>",
                 "--fields <KEY>",
+                "--lang <LANG>",
             ],
         ),
         &true,
@@ -867,6 +869,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--limit <N>",
                 "--fields <KEY>",
                 "--sort <SORT>",
+                "--lang <LANG>",
             ],
         ),
         &true,
@@ -886,6 +889,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "--limit <N>",
                 "--max-prompt-chars",
                 "--max-session-chars",
+                "--lang <LANG>",
             ],
         ),
         &true,

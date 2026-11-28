@@ -70,6 +70,10 @@ pub enum Failure {
         /// The record types.
         types: String,
     },
+    /// `--lang` is given for a format that writes no words of ccdig's
+    /// own around the records.
+    #[error("--lang needs --format md, as json and jsonl write the records alone")]
+    LangNeedsMarkdown,
     /// The history root cannot be listed.
     #[error("list projects: {0}")]
     ListProjects(#[source] io::Error),

@@ -11,6 +11,7 @@ use clap::{Args, CommandFactory as _, Parser, Subcommand, ValueEnum};
 use crate::config;
 use crate::failure::Failure;
 use crate::stats::{By, Sort};
+use crate::text;
 
 /// The flags people type for `--type`, after the `kind` key of a prompt,
 /// which is how it was typed, not its record type.
@@ -505,6 +506,11 @@ pub struct Common {
     /// Print at most this many records, or with stats, groups.
     #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
     pub limit: Option<usize>,
+    /// The language of the headings, labels, and notes that md and the
+    /// digest write around the records; the records' text stays as it is,
+    /// and json and jsonl take no --lang [default: en] [env: `CCDIG_LANG`].
+    #[arg(long, value_name = "LANG", help_heading = "Output", display_order = 66)]
+    pub lang: Option<Lang>,
 }
 
 /// What `--mask` can ask to mask besides the built-in rules.
@@ -543,6 +549,15 @@ pub enum OnSkip {
     /// Warn and go on.
     #[default]
     Warn,
+}
+
+/// The languages `--lang` takes.
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum Lang {
+    /// English.
+    En,
+    /// Japanese.
+    Ja,
 }
 
 /// What `--type` can pick.
@@ -706,6 +721,7 @@ impl Common {
             branches: self.branches,
             grep: self.grep,
             igrep: self.igrep,
+            lang: later.lang.or(self.lang),
             limit: later.limit.or(self.limit),
             mask_values: self.mask_values,
             masks: self.masks,
@@ -736,6 +752,15 @@ impl From<Format> for config::Format {
             Format::Json => Self::Json,
             Format::Jsonl => Self::Jsonl,
             Format::Markdown => Self::Markdown,
+        }
+    }
+}
+
+impl From<Lang> for text::Lang {
+    fn from(lang: Lang) -> Self {
+        match lang {
+            Lang::En => Self::En,
+            Lang::Ja => Self::Ja,
         }
     }
 }
@@ -826,17 +851,21 @@ pub fn mask_kinds(value: &OsStr) -> Result<Vec<MaskKind>, Failure> {
         .collect()
 }
 
-/// What `CCDIG_ON_SKIP` asks for.
+/// The value of `variable`, `value`, as the flag it stands for takes it,
+/// such as `CCDIG_ON_SKIP` for `--on-skip`.
 ///
 /// # Errors
 ///
-/// When it holds a value `--on-skip` does not take.
-pub fn on_skip(value: &OsStr) -> Result<OnSkip, Failure> {
+/// When it holds a value the flag does not take.
+pub fn env_value<T>(variable: &'static str, value: &OsStr) -> Result<T, Failure>
+where
+    T: ValueEnum,
+{
     let name = value.to_string_lossy();
-    OnSkip::from_str(name.trim(), false).map_err(|_unknown| Failure::EnvValue {
-        known: value_names::<OnSkip>(),
+    T::from_str(name.trim(), false).map_err(|_unknown| Failure::EnvValue {
+        known: value_names::<T>(),
         name: name.trim().to_owned(),
-        variable: "CCDIG_ON_SKIP",
+        variable,
     })
 }
 

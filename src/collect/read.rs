@@ -18,7 +18,7 @@ use crate::classify::human::{Reason, classify};
 use crate::filter::{Facts, Filter, Query, Verdict};
 use crate::record::{FIRST_MATCH_CHARS, FirstMatch};
 use crate::redact::Counts;
-use crate::text::{cut_text, one_line};
+use crate::text::{Lang, cut_text, one_line};
 use crate::transcript::entry::{Entry, Role, Usage};
 use crate::transcript::reader::{self, MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::SessionFile;
@@ -68,8 +68,9 @@ pub struct Mention {
 impl Mention {
     /// What it shows of the match: the first line a pattern of `grep`
     /// matched, or the start of its text when no single line did, on one
-    /// line and cut to `FIRST_MATCH_CHARS` characters.
-    pub fn first_match(&self, grep: &Filter<Regex>) -> FirstMatch {
+    /// line and cut to `FIRST_MATCH_CHARS` characters, the note of the cut
+    /// in `lang`.
+    pub fn first_match(&self, grep: &Filter<Regex>, lang: Lang) -> FirstMatch {
         let fields: Vec<(String, Cow<'_, str>)> = self
             .fields
             .iter()
@@ -93,7 +94,7 @@ impl Mention {
             kind: self.kind,
             timestamp: self.timestamp,
             line,
-            text: cut_text(&one_line(&text), FIRST_MATCH_CHARS),
+            text: cut_text(&one_line(&text), FIRST_MATCH_CHARS, lang),
         }
     }
 

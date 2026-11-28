@@ -13,6 +13,8 @@ use serde_json::json;
 use super::digest::{Limits, digest};
 use super::json::{Fields, Run, document, lines};
 use super::markdown;
+use super::view::Fact;
+use super::words;
 use crate::record::{
     AGENT, Group, Head, Kind, MatchLine, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS,
     STATS_KEYS, Search, Session, Source, Spawned, Summary, ToolCall, ToolResult, Touch, Turn,
@@ -20,6 +22,7 @@ use crate::record::{
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
 use crate::testing::{TestResult, check_eq, snapshot, zone};
+use crate::text::Lang;
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
@@ -246,7 +249,12 @@ fn prompts_as_markdown() -> TestResult {
     });
     snapshot(
         "render/prompts.md",
-        &markdown::records(&prompt_turns(prompts), &tokyo()?, &Fields::default())?,
+        &markdown::records(
+            &prompt_turns(prompts),
+            &tokyo()?,
+            &Fields::default(),
+            Lang::En,
+        )?,
     )
 }
 
@@ -262,7 +270,13 @@ fn sessions_as_json_lines() -> TestResult {
 fn sessions_as_a_markdown_table() -> TestResult {
     snapshot(
         "render/sessions.md",
-        &markdown::sessions(&[sample_session()?], &tokyo()?, false, &Fields::default())?,
+        &markdown::sessions(
+            &[sample_session()?],
+            &tokyo()?,
+            false,
+            &Fields::default(),
+            Lang::En,
+        )?,
     )
 }
 
@@ -277,6 +291,31 @@ fn stats_as_json_lines_and_a_markdown_table() -> TestResult {
             &columns(&[By::Session]),
             &tokyo()?,
             &Fields::default(),
+            Lang::En,
+        )?,
+    )
+}
+
+#[test]
+fn sessions_and_stats_tables_in_japanese() -> TestResult {
+    snapshot(
+        "render/sessions-ja.md",
+        &markdown::sessions(
+            &[sample_session()?],
+            &tokyo()?,
+            true,
+            &Fields::default(),
+            Lang::Ja,
+        )?,
+    )?;
+    snapshot(
+        "render/stats-ja.md",
+        &markdown::stats(
+            &sample_groups()?,
+            &columns(&[By::Session]),
+            &tokyo()?,
+            &Fields::default(),
+            Lang::Ja,
         )?,
     )
 }
@@ -295,6 +334,7 @@ fn stats_by_a_key_without_a_value_leaves_the_cell_empty_and_counts_sessions() ->
             &columns(&[By::Tool]),
             &TimeZone::UTC,
             &Fields::default(),
+            Lang::En,
         )?,
     )
 }
@@ -309,6 +349,7 @@ fn markdown_groups_by_file_not_by_session_id() -> TestResult {
         ]),
         &TimeZone::UTC,
         &Fields::default(),
+        Lang::En,
     )?;
     check_eq(&out.matches("\n## ").count(), &2, "session headings")?;
     Ok(())
@@ -323,6 +364,7 @@ fn markdown_record_headings_tell_apart_records_within_a_minute() -> TestResult {
         ]),
         &tokyo()?,
         &Fields::default(),
+        Lang::En,
     )?;
     for heading in [
         "### 2026-10-13 10:00:05 JST - Prompt\n",
@@ -385,7 +427,136 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
         prompt_chars: 10,
         session_chars: 25,
     };
-    snapshot("render/digest.md", &digest(&prompts, &tokyo()?, limits)?)
+    snapshot(
+        "render/digest.md",
+        &digest(&prompts, &tokyo()?, limits, Lang::En)?,
+    )
+}
+
+#[test]
+fn the_digest_in_japanese() -> TestResult {
+    let at = |time: &str, kind: Kind, text: &str, after: &str| -> Result<Prompt, String> {
+        Ok(Prompt {
+            kind,
+            after: after.to_owned(),
+            ..bare_prompt(
+                Head {
+                    session_title: String::new(),
+                    ..blog_head(time)?
+                },
+                "/a.jsonl",
+                text,
+            )
+        })
+    };
+    let prompts = vec![
+        at(
+            "2026-10-13T01:00:00Z",
+            Kind::Text,
+            "see <pasted_content id=\"1\">xyz</pasted_content id=\"1\">",
+            "Which one?",
+        )?,
+        at("2026-10-13T01:01:00Z", Kind::Answer, "\"A?\"=\"a\"", "")?,
+        at(
+            "2026-10-13T01:02:00Z",
+            Kind::TypedAnswer,
+            "\"B?\"=\"b\"",
+            "",
+        )?,
+        at("2026-10-13T01:03:00Z", Kind::Approval, "the plan", "")?,
+        at("2026-10-13T01:04:00Z", Kind::Rejection, "not that", "")?,
+        at("2026-10-13T01:05:00Z", Kind::Text, "one more", "")?,
+        at("2026-10-13T01:06:00Z", Kind::Text, "and another", "")?,
+    ];
+    let limits = Limits {
+        prompt_chars: 300,
+        session_chars: 70,
+    };
+    snapshot(
+        "render/digest-ja.md",
+        &digest(&prompts, &tokyo()?, limits, Lang::Ja)?,
+    )
+}
+
+#[test]
+fn every_stats_column_has_a_japanese_heading() -> TestResult {
+    let keys = STATS_KEYS.into_iter().filter(|&key| key != "usage").chain([
+        "input",
+        "output",
+        "cache_read",
+        "cache_creation",
+    ]);
+    for key in keys {
+        check_eq(&words::stats_column_ja(key).is_some(), &true, key)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_title_is_one_escaped_line_or_named_untitled() -> TestResult {
+    let title = concat!(
+        "title | with pipe\n## fake section <img src=x onerror=alert(1)> ",
+        "[x](javascript:alert(1)) \u{202E}evil",
+    );
+    let want = concat!(
+        "title \\| with pipe ## fake section \\<img src=x onerror=alert(1)\\> ",
+        "\\[x\\](javascript:alert(1)) \u{FFFD}evil",
+    );
+    check_eq(
+        words::title(Lang::En, title).as_str(),
+        want,
+        "hostile title",
+    )?;
+    for blank in ["", " \n\t "] {
+        check_eq(
+            words::title(Lang::En, blank).as_str(),
+            "(untitled)",
+            "blank title",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn the_words_no_snapshot_shows_are_in_japanese() -> TestResult {
+    // (name, what it gave, what it should give)
+    for (name, got, want) in [
+        (
+            "an unknown tool",
+            words::unknown_tool(Lang::Ja).to_owned(),
+            "(\u{4e0d}\u{660e})",
+        ),
+        (
+            "an untitled session, blank",
+            words::title(Lang::Ja, " \n "),
+            "(\u{7121}\u{984c})",
+        ),
+        (
+            "a description",
+            words::fact(Lang::Ja, Fact::Description("")).to_owned(),
+            "\u{8aac}\u{660e}",
+        ),
+        (
+            "one line of a field",
+            words::lines(Lang::Ja, Some("`input.command`"), 3, 3, &[]),
+            // - `input.command` 3 行目
+            "- `input.command` 3 \u{884c}\u{76ee}",
+        ),
+        (
+            "lines with several matched",
+            words::lines(Lang::Ja, None, 3, 6, &["4".to_owned(), "5".to_owned()]),
+            // - 3-6 行目、一致 4、5
+            "- 3-6 \u{884c}\u{76ee}\u{3001}\u{4e00}\u{81f4} 4\u{3001}5",
+        ),
+        (
+            "one line of a field in English",
+            words::lines(Lang::En, Some("`input.command`"), 3, 3, &[]),
+            "- `input.command` line 3",
+        ),
+    ] {
+        check_eq(got.as_str(), want, name)?;
+    }
+    Ok(())
 }
 
 /// The line the digest writes for a lone prompt of `kind` with `text`.
@@ -394,7 +565,7 @@ fn digest_line(kind: Kind, text: &str) -> Result<String, Box<dyn Error>> {
         kind,
         ..bare_prompt(blog_head("2026-10-13T01:00:00Z")?, "/a.jsonl", text)
     };
-    let out = digest(&[prompt], &tokyo()?, Limits::default())?;
+    let out = digest(&[prompt], &tokyo()?, Limits::default(), Lang::En)?;
     Ok(out.lines().last().unwrap_or_default().to_owned())
 }
 
@@ -557,19 +728,19 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     snapshot("kinds/replies.jsonl", &lines(&replies, &Fields::default())?)?;
     snapshot(
         "kinds/replies.md",
-        &markdown::records(&replies, &zone, &Fields::default())?,
+        &markdown::records(&replies, &zone, &Fields::default(), Lang::En)?,
     )?;
     let calls = [Turn::Call(call)];
     snapshot("kinds/tools.jsonl", &lines(&calls, &Fields::default())?)?;
     snapshot(
         "kinds/tools.md",
-        &markdown::records(&calls, &zone, &Fields::default())?,
+        &markdown::records(&calls, &zone, &Fields::default(), Lang::En)?,
     )?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
     snapshot("kinds/results.jsonl", &lines(&results, &Fields::default())?)?;
     snapshot(
         "kinds/results.md",
-        &markdown::records(&results, &zone, &Fields::default())?,
+        &markdown::records(&results, &zone, &Fields::default(), Lang::En)?,
     )
 }
 
@@ -822,10 +993,18 @@ fn record_markdown_shows_each_part_fields_keeps() -> TestResult {
     ] {
         snapshot(
             &format!("render/{name}.md"),
-            &markdown::records(&turns, &zone, &kept)?,
+            &markdown::records(&turns, &zone, &kept, Lang::En)?,
         )?;
     }
     Ok(())
+}
+
+#[test]
+fn record_markdown_in_japanese() -> TestResult {
+    snapshot(
+        "render/parts-ja.md",
+        &markdown::records(&every_part()?, &tokyo()?, &Fields::default(), Lang::Ja)?,
+    )
 }
 
 /// The keys of `item` as JSON, in the order it writes them.
@@ -947,7 +1126,7 @@ fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
 fn markdown_counts_the_records_by_type_with_the_context_apart() -> TestResult {
     let zone = TimeZone::UTC;
     check_eq(
-        &markdown::records(&[], &zone, &Fields::default())?,
+        &markdown::records(&[], &zone, &Fields::default(), Lang::En)?,
         &"# Records\n\n- Records: 0\n".to_owned(),
         "no records",
     )?;
@@ -968,7 +1147,7 @@ fn markdown_counts_the_records_by_type_with_the_context_apart() -> TestResult {
         Turn::Prompt(near),
         Turn::Prompt(bare_prompt(head, BLOG_FILE, "two")),
     ];
-    let out = markdown::records(&turns, &zone, &Fields::default())?;
+    let out = markdown::records(&turns, &zone, &Fields::default(), Lang::En)?;
     check_eq(
         &out.starts_with("# Records\n\n- Records: 3 (prompt 2, summary 1) + 1 context\n\n## "),
         &true,
@@ -984,26 +1163,37 @@ fn markdown_counts_the_sessions_the_matches_and_the_groups() -> TestResult {
         match_count: Some(3),
         ..sample_session()?
     };
-    let plain = markdown::sessions(from_ref(&session), &zone, false, &Fields::default())?;
+    let plain = markdown::sessions(
+        from_ref(&session),
+        &zone,
+        false,
+        &Fields::default(),
+        Lang::En,
+    )?;
     check_eq(
         &plain.starts_with("# Sessions\n\n- Sessions: 1\n\n| Started |"),
         &true,
         &plain,
     )?;
-    let searched =
-        markdown::sessions(&[session.clone(), session], &zone, true, &Fields::default())?;
+    let searched = markdown::sessions(
+        &[session.clone(), session],
+        &zone,
+        true,
+        &Fields::default(),
+        Lang::En,
+    )?;
     check_eq(
         &searched.starts_with("# Sessions\n\n- Sessions: 2\n- Matches: 6\n\n| Started |"),
         &true,
         &searched,
     )?;
-    let none = markdown::sessions(&[], &zone, true, &Fields::default())?;
+    let none = markdown::sessions(&[], &zone, true, &Fields::default(), Lang::En)?;
     check_eq(
         &none.starts_with("# Sessions\n\n- Sessions: 0\n- Matches: 0\n\n| Started |"),
         &true,
         &none,
     )?;
-    let stats = markdown::stats(&sample_groups()?, &[], &zone, &Fields::default())?;
+    let stats = markdown::stats(&sample_groups()?, &[], &zone, &Fields::default(), Lang::En)?;
     check_eq(
         &stats.starts_with("# Stats\n\n- Groups: 2\n\n| Count |"),
         &true,

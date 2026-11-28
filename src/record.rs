@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::redact::Counts;
-use crate::text::{Span, cut_span, cut_text};
+use crate::text::{Lang, Span, cut_span, cut_text};
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
@@ -814,8 +814,8 @@ impl Turn {
     /// Cuts the record's texts, and the lines `matches` lists of them, to
     /// what `cuts` keeps: a prompt's, a reply's, a summary's, or a
     /// thinking block's to `message`, and a tool's input and output to
-    /// `tool`.
-    pub fn cut(&mut self, cuts: Cuts) {
+    /// `tool`, with the notes of each cut in `lang`.
+    pub fn cut(&mut self, cuts: Cuts, lang: Lang) {
         let (given, own_text, own_input, search) = match *self {
             Self::Prompt(ref mut prompt) => (
                 cuts.message,
@@ -849,14 +849,14 @@ impl Turn {
             return;
         };
         if let Some(text) = own_text {
-            *text = cut_span(text, span);
+            *text = cut_span(text, span, lang);
         }
         if let Some(input) = own_input {
-            cut_strings(input, span);
+            cut_strings(input, span, lang);
         }
         // A matched line is shown for where it is, so it keeps its start.
         for line in &mut search.matches {
-            line.text = cut_text(&line.text, span.take);
+            line.text = cut_text(&line.text, span.take, lang);
         }
     }
 
@@ -954,22 +954,22 @@ impl Record for Turn {
 /// what it left out. A string no longer than `span` keeps, which a cut of
 /// that many characters leaves whole, stays whole, so the part of an input
 /// a range reads on comes with the short strings that say what it is, such
-/// as its file's path.
-fn cut_strings(value: &mut Value, span: Span) {
+/// as its file's path. The notes are in `lang`.
+fn cut_strings(value: &mut Value, span: Span, lang: Lang) {
     match *value {
         Value::String(ref mut text) => {
             if text.chars().nth(span.take).is_some() {
-                *text = cut_span(text, span);
+                *text = cut_span(text, span, lang);
             }
         }
         Value::Array(ref mut items) => {
             for item in items {
-                cut_strings(item, span);
+                cut_strings(item, span, lang);
             }
         }
         Value::Object(ref mut fields) => {
             for field in fields.values_mut() {
-                cut_strings(field, span);
+                cut_strings(field, span, lang);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}

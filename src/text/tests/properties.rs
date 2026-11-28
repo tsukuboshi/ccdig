@@ -10,7 +10,7 @@ use proptest::prop_oneof;
 
 use crate::testing::{TestResult, check_eq, drives_the_terminal, for_all, hostile_text};
 use crate::text::{
-    clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line, shell_quote,
+    clean_text, code_span, escape_inline, escape_pipes, fenced, one_line, shell_quote,
 };
 
 /// The characters `CommonMark` gives meaning in inline text, written out
@@ -110,22 +110,6 @@ fn one_line_is_idempotent_and_single_spaced() -> TestResult {
 fn escape_inline_escapes_every_special_character_and_nothing_else() -> TestResult {
     for_all(&hostile_text(), |text| {
         check_eq(&unescape(&escape_inline(&text)), &Some(text), "unescaped")?;
-        Ok(())
-    })
-}
-
-#[test]
-fn heading_text_is_one_escaped_line_that_is_never_empty() -> TestResult {
-    for_all(&hostile_text(), |title| {
-        let heading = heading_text(&title);
-        let line = one_line(&title);
-        let want = if line.is_empty() {
-            "(untitled)".to_owned()
-        } else {
-            line
-        };
-        check_eq(&heading.contains('\n'), &false, "a line break")?;
-        check_eq(&unescape(&heading), &Some(want), "unescaped heading")?;
         Ok(())
     })
 }
