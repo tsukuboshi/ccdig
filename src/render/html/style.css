@@ -17,6 +17,8 @@
   --assistant-bg: #dafbe1;
   --answer: #bc4c00;
   --answer-bg: #fff1e5;
+  --taken-out: #ffebe9;
+  --put-in: #dafbe1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -38,6 +40,8 @@
     --assistant-bg: #122119;
     --answer: #f0883e;
     --answer-bg: #2b1d12;
+    --taken-out: #4c1d1f;
+    --put-in: #12261e;
   }
 }
 
@@ -244,6 +248,21 @@ mark {
   background: var(--mark);
 }
 
+/* What an Edit changed: its signs stay, so it reads without the colors. */
+pre.diff del,
+pre.diff ins {
+  color: inherit;
+  text-decoration: none;
+}
+
+pre.diff del {
+  background: var(--taken-out);
+}
+
+pre.diff ins {
+  background: var(--put-in);
+}
+
 .prose > :first-child {
   margin-top: 0;
 }
@@ -300,5 +319,9 @@ mark {
 
   a.anchor {
     display: none;
+  }
+
+  pre.diff {
+    print-color-adjust: exact;
   }
 }

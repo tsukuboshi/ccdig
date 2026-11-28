@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::json::Fields;
 use super::view::{
-    self, Body, CallBody, Count, Ending, Fact, Input, Passage, ResultBody, Run, Tool, View,
+    self, Body, CallBody, Change, Count, Ending, Fact, Input, Passage, ResultBody, Run, Tool, View,
     count_types,
 };
 use super::words::{self, Column, Item, SESSION_COLUMNS};
@@ -376,9 +376,10 @@ fn tool_call(call: &CallBody<'_>, lang: Lang) -> String {
         Input::Hidden => String::new(),
         Input::Lines(ref runs) => lines(runs, lang),
         Input::Shown {
+            change,
             ref json,
             ref texts,
-        } => tool_input(json.as_deref(), texts),
+        } => tool_input(json.as_deref(), texts, change),
     };
     if !input.is_empty() {
         out.extend([input.as_str(), "\n"]);
@@ -390,8 +391,9 @@ fn tool_call(call: &CallBody<'_>, lang: Lang) -> String {
 }
 
 /// A call's input: `json` in a block when there is any, then each of
-/// `texts` in a text block named for its key, so that it reads as written.
-fn tool_input(json: Option<&str>, texts: &[(&str, &str)]) -> String {
+/// `texts` in a text block named for its key, so that it reads as written,
+/// then what an `Edit` changed in a diff block.
+fn tool_input(json: Option<&str>, texts: &[(&str, &str)], change: Option<Change<'_>>) -> String {
     let mut parts = Vec::new();
     if let Some(indented) = json {
         parts.push(fenced("json", &clean_text(indented)));
@@ -401,6 +403,18 @@ fn tool_input(json: Option<&str>, texts: &[(&str, &str)]) -> String {
             "- {}\n\n{}",
             code_span(&format!("input.{key}")),
             fenced("text", &clean_text(text))
+        ));
+    }
+    if let Some(edit) = change {
+        let lines: Vec<String> = edit
+            .lines()
+            .map(|(sign, line)| format!("{sign}{line}"))
+            .collect();
+        parts.push(format!(
+            "- {} \u{2192} {}\n\n{}",
+            code_span("input.old_string"),
+            code_span("input.new_string"),
+            fenced("diff", &clean_text(&lines.join("\n")))
         ));
     }
     let body = parts.join("\n");

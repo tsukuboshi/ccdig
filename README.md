@@ -750,7 +750,10 @@ first appears, and each record under a heading
 with its time to the second, its turn when it follows a prompt, and its
 kind. A string in a call's input that runs over lines, such as the plan
 of `ExitPlanMode`, follows the rest of the input in a text block named
-for its key, such as `input.plan`, so it reads as written. A call shows
+for its key, such as `input.plan`, so it reads as written. An `Edit`
+shows its `old_string` and `new_string` as one `diff` block, each line
+it takes out marked `-` and each it puts in marked `+`; nothing is
+compared, as an `Edit` holds only the text it replaces. A call shows
 its result under its input, and the
 result is not shown again on its own unless `--context` lists its matched
 lines, or a search matched it and not its call, which then shows as
@@ -807,6 +810,8 @@ keep. A record whose line has no ID gets its place on the page, such as
   has that call, as with `--type prompt,reply,call --subagents`, and in a
   section of their own after the session's otherwise, as in Markdown.
 - A summary marks where the context was compacted, with its text folded.
+- An `Edit` shows its change as in Markdown, with the lines taken out and
+  put in colored, and their `-` and `+` kept for copying.
 - Replies, thinking, and summaries are Markdown and are rendered, with
   tables and struck-through text. Prompts, inputs, and outputs show as
   written. A record `--around` added is faded, and the lines `--context`

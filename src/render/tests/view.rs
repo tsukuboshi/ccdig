@@ -12,8 +12,8 @@ use super::{
 use crate::record::{Head, Prompt, Reply, Search, Spawned, ToolCall, ToolResult, Turn};
 use crate::render::json::Fields;
 use crate::render::view::{
-    Body, CallBody, Count, Ending, Fact, Input, Label, Passage, ResultBody, Run, Tool, View,
-    records,
+    Body, CallBody, Change, Count, Ending, Fact, Input, Label, Passage, ResultBody, Run, Tool,
+    View, records,
 };
 use crate::testing::{TestResult, check_eq};
 use crate::when::Stamp;
@@ -345,6 +345,92 @@ fn a_heading_lists_the_models_modes_and_versions_its_records_show() -> TestResul
     Ok(())
 }
 
+/// The call of `tool` with `input`, alone.
+fn call_of(tool: &str, input: serde_json::Value) -> Result<[Turn; 1], String> {
+    Ok([Turn::Call(call_at(1, tool, input, "toolu_1", None)?)])
+}
+
+/// The input of the call in `turns`, as the view shows it.
+fn input_of(turns: &[Turn]) -> Result<Input<'_>, Box<dyn Error>> {
+    let body = records(turns, &Fields::default())?
+        .sections
+        .into_iter()
+        .flat_map(|section| section.items)
+        .map(|item| item.body)
+        .next()
+        .ok_or("no item")?;
+    match body {
+        Body::Call(call) => Ok(call.input),
+        Body::Result(_) | Body::Text(_) => Err("not a call".into()),
+    }
+}
+
+#[test]
+fn an_edit_shows_its_old_and_new_strings_as_one_change() -> TestResult {
+    let edited = json!({
+        "file_path": "src/a.rs",
+        "old_string": "let total = 0;",
+        "new_string": "let mut total = 0;\ntotal += 1;",
+    });
+    check_eq(
+        &input_of(&call_of("Edit", edited.clone())?)?,
+        &Input::Shown {
+            json: Some("{\n  \"file_path\": \"src/a.rs\"\n}".to_owned()),
+            texts: Vec::new(),
+            change: Some(Change {
+                new: "let mut total = 0;\ntotal += 1;",
+                old: "let total = 0;",
+            }),
+        },
+        "an edit",
+    )?;
+    check_eq(
+        &input_of(&call_of("Write", edited)?)?,
+        &Input::Shown {
+            json: Some(
+                "{\n  \"file_path\": \"src/a.rs\",\n  \"old_string\": \"let total = 0;\"\n}"
+                    .to_owned(),
+            ),
+            texts: vec![("new_string", "let mut total = 0;\ntotal += 1;")],
+            change: None,
+        },
+        "another tool",
+    )?;
+    check_eq(
+        &input_of(&call_of("Edit", json!({"old_string": "a\nb"}))?)?,
+        &Input::Shown {
+            json: None,
+            texts: vec![("old_string", "a\nb")],
+            change: None,
+        },
+        "an edit without its new string",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_change_keeps_every_line_break_it_takes_out_or_puts_in() -> TestResult {
+    for (name, old, new, want) in [
+        (
+            "a line break put in at the end",
+            "foo",
+            "foo\n",
+            vec![('-', "foo"), ('+', "foo"), ('+', "")],
+        ),
+        (
+            "a text put in where there was none",
+            "",
+            "bar",
+            vec![('+', "bar")],
+        ),
+        ("a text taken out", "a\nb", "", vec![('-', "a"), ('-', "b")]),
+    ] {
+        let lines: Vec<(char, &str)> = Change { new, old }.lines().collect();
+        check_eq(&lines, &want, name)?;
+    }
+    Ok(())
+}
+
 /// Checks that each of `cases`, a record alone with the parts its
 /// `--fields` keeps, has the body it names.
 fn check_bodies<const N: usize>(cases: [BodyCase<'_>; N]) -> TestResult {
@@ -463,6 +549,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
     let shown = Input::Shown {
         json: Some("{\n  \"command\": \"ls\"\n}".to_owned()),
         texts: vec![("plan", "step 1\nstep 2")],
+        change: None,
     };
     check_bodies([
         (
@@ -490,6 +577,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
                 input: Input::Shown {
                     json: None,
                     texts: vec![("plan", "one\ntwo")],
+                    change: None,
                 },
                 tool: Some(Tool::Unknown),
             }),

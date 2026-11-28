@@ -1250,3 +1250,26 @@ fn markdown_lists_the_models_modes_and_versions_under_the_session() -> TestResul
     check_eq(&out.contains(want), &true, &out)?;
     Ok(())
 }
+
+#[test]
+fn markdown_shows_an_edit_as_one_diff_block() -> TestResult {
+    let turns = [Turn::Call(call_at(
+        1,
+        "Edit",
+        json!({
+            "file_path": "src/a.rs",
+            "old_string": "let total = 0;",
+            "new_string": "let mut total = 0;\ntotal += 1;",
+        }),
+        "toolu_1",
+        None,
+    )?)];
+    let out = markdown::records(&turns, &tokyo()?, &Fields::default(), Lang::En)?;
+    let want = concat!(
+        "- `input.old_string` \u{2192} `input.new_string`\n\n",
+        "```diff\n-let total = 0;\n+let mut total = 0;\n+total += 1;\n```\n",
+    );
+    check_eq(&out.contains(want), &true, &out)?;
+    check_eq(&out.contains("\"old_string\""), &false, &out)?;
+    Ok(())
+}

@@ -375,6 +375,28 @@ fn a_section_lists_the_models_modes_and_versions_as_code() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn an_edit_shows_as_lines_taken_out_and_put_in() -> TestResult {
+    let turns = [Turn::Call(call_at(
+        1,
+        "Edit",
+        json!({
+            "file_path": "src/a.rs",
+            "old_string": "if a < b {",
+            "new_string": "if a <= b {\n    swap();",
+        }),
+        "toolu_1",
+        None,
+    )?)];
+    let all = page(&turns)?;
+    let want = concat!(
+        "<p class=\"key\"><code>input.old_string</code> \u{2192} <code>input.new_string</code></p>\n",
+        "<pre class=\"diff\">\n<del>-if a &lt; b {</del>\n<ins>+if a &lt;= b {</ins>\n<ins>+    swap();</ins></pre>\n",
+    );
+    check_eq(&all.contains(want), &true, &all)?;
+    Ok(())
+}
+
 /// A reply of the sub-agent that the call `parent` started.
 fn sub_agent_reply(parent: &str) -> Result<Turn, String> {
     Ok(Turn::Reply(Reply {
