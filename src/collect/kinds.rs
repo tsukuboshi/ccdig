@@ -666,7 +666,8 @@ impl Pick for Results {
                     denial: denial(Answer::of(entry, result)).kind,
                     text,
                     subagent: spot.subagent(),
-                    redacted: input_redacted || text_redacted,
+                    spawned: spot.spawned(&mut masked),
+                    redacted: input_redacted || text_redacted || spot.started.redacted,
                     source,
                     search: Search::default(),
                     skill: call.map_or_else(String::new, |found| found.skill.clone()),
@@ -730,8 +731,9 @@ impl Pick for Tools {
                     result: None,
                     skill: entry.skill.clone(),
                     subagent: spot.subagent(),
+                    spawned: spot.spawned(&mut masked),
                     usage: None,
-                    redacted,
+                    redacted: redacted || spot.started.redacted,
                     source,
                     search: Search::default(),
                     model: entry.model.clone(),
@@ -810,7 +812,12 @@ impl Select for Reply {
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
-        vec![&mut self.model, &mut self.skill, &mut self.subagent]
+        vec![
+            &mut self.model,
+            &mut self.skill,
+            &mut self.subagent,
+            &mut self.spawned.subagent_type,
+        ]
     }
 
     fn masked_mut(&mut self) -> &mut Counts {
@@ -893,6 +900,7 @@ impl Select for ToolCall {
             &mut self.model,
             &mut self.skill,
             &mut self.subagent,
+            &mut self.spawned.subagent_type,
         ];
         labels.extend(self.result.as_mut().map(|result| &mut result.denial));
         labels
@@ -992,6 +1000,7 @@ impl Select for ToolResult {
             &mut self.denial,
             &mut self.skill,
             &mut self.subagent,
+            &mut self.spawned.subagent_type,
         ]
     }
 
@@ -1051,8 +1060,9 @@ fn assistant_block(spot: &Spot<'_>, entry: &Entry, written: &str) -> Reply {
         model: entry.model.clone(),
         skill: entry.skill.clone(),
         subagent: spot.subagent(),
+        spawned: spot.spawned(&mut masked),
         usage: None,
-        redacted,
+        redacted: redacted || spot.started.redacted,
         source,
         search: Search::default(),
         masked,

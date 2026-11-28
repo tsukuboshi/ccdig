@@ -76,6 +76,9 @@ struct Narrowing {
     mentions: Option<Types>,
     /// `--skill`.
     skills: Vec<String>,
+    /// Whether to read how each sub-agent was started, for `records`,
+    /// whose records say it.
+    spawns: bool,
     /// `--subagents`.
     subagents: bool,
     /// `--superseded`.
@@ -209,6 +212,7 @@ impl Flags {
                     .context
                     .or_else(|| narrowing.context_by_default.filter(|_| finds)),
                 mentions: narrowing.mentions.filter(|_| finds),
+                spawns: narrowing.spawns,
                 subagents: narrowing.subagents,
                 usage: narrowing.usage,
             },
@@ -651,6 +655,7 @@ pub fn resolve(
                 around,
                 context,
                 context_by_default: (format != Format::Markdown).then_some(0),
+                spawns: true,
                 ..picks
             };
             let flags = Flags::with_env(earlier.merged(later), environment)?;

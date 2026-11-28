@@ -26,7 +26,7 @@ those before it.
 | `failure` | The one error type, `Failure`. |
 | `text` | Sanitizing text for the terminal and Markdown. |
 | `when` | Timestamps, the ranges of `--since` and `--until`, and named time zones. |
-| `transcript` | Producer: `walk` lists the files, `reader` streams their lines, `entry` decodes one line. |
+| `transcript` | Producer: `walk` lists the files and reads each sub-agent's `.meta.json`, which `meta` decodes; `reader` streams their lines, `entry` decodes one line. |
 | `classify` | Whether a user line is something a person typed and a reply one the harness wrote, folding slash commands back, why a tool call did not run, and what the user answered through a dialog. |
 | `redact` | The masking rules: what each replaces and with what, and what they counted. `collect::mask` decides where in the pipeline they apply. |
 | `record` | The records that flow between the stages and that the JSON schema prints. |

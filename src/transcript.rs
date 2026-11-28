@@ -1,5 +1,6 @@
 //! Reading Claude Code session transcripts (JSONL).
 
 pub mod entry;
+pub mod meta;
 pub mod reader;
 pub mod walk;

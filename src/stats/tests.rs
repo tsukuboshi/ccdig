@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 
 use super::{By, Grouping, Sort, tally};
 use crate::record::{
-    AGENT, Group, Head, Kind, Prompt, Reply, Search, Source, ToolCall, ToolResult, Touch, Turn,
+    AGENT, Group, Head, Kind, Prompt, Reply, Search, Source, Spawned, ToolCall, ToolResult, Touch,
+    Turn,
 };
 use crate::redact::Counts;
 use crate::testing::{TestResult, check_eq, zone};
@@ -78,6 +79,7 @@ fn reply(
         model: model.to_owned(),
         skill: String::new(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         usage,
         redacted: false,
         source: source(session, ""),
@@ -103,6 +105,7 @@ fn call(
         result: None,
         skill: String::new(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         usage,
         redacted: false,
         source: source(session, ""),
@@ -124,6 +127,7 @@ fn result(session: &str, time: &str, tool: &str, text: &str) -> Result<Turn, Str
         denial: String::new(),
         text: text.to_owned(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         redacted: false,
         source: source(session, ""),
         search: Search::default(),
