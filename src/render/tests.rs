@@ -1,6 +1,7 @@
 //! Tests for the writers, against snapshots.
 
 mod properties;
+mod view;
 
 use core::error::Error;
 use core::slice::from_ref;

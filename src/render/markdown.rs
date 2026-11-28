@@ -1,18 +1,18 @@
 //! Markdown for reading the records: one section per transcript file, one
 //! subsection per record.
 
-use std::collections::{HashMap, HashSet};
-
 use jiff::tz::TimeZone;
 
 use serde_json::Value;
 
 use super::json::Fields;
+use super::view::{
+    self, Body, CallBody, Count, Ending, Fact, Input, Item, Label, Passage, ResultBody, Run, Tool,
+    View, count_types,
+};
 use crate::failure::Failure;
 
-use crate::record::{
-    Group, Kind, MatchLine, Outcome, Record, Session, Source, ToolCall, ToolResult, Turn,
-};
+use crate::record::{Group, Session, Turn};
 use crate::text::{
     clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
 };
@@ -28,208 +28,23 @@ use crate::text::{
 ///
 /// When a time cannot be shown in `zone`, or an input cannot be encoded.
 pub fn records(records: &[Turn], zone: &TimeZone, fields: &Fields) -> Result<String, Failure> {
-    // The calls that carry their result, by file and ID, and whether a
-    // search matched them.
-    let mut answered: HashMap<(&str, &str), bool> = HashMap::new();
-    for turn in records {
-        if let Turn::Call(ref call) = *turn
-            && call.result.is_some()
-        {
-            answered.insert(key_of(&call.source, &call.tool_use_id), call.matched());
+    write_view(&view::records(records, fields)?, zone)
+}
+
+/// `view` under one heading per transcript file, after the count line,
+/// with times shown in `zone`. Two files that share a session ID, such as
+/// a resumed copy, get two headings.
+fn write_view(view: &View<'_>, zone: &TimeZone) -> Result<String, Failure> {
+    let mut out = format!("# Records\n\n{}", record_count(&view.count));
+    for section in &view.sections {
+        out.extend(["\n## ", &heading_text(section.title), "\n"]);
+        if !section.facts.is_empty() {
+            out.push('\n');
+            out.extend(section.facts.iter().map(|&fact| fact_line(fact)));
         }
-    }
-    // The results that show under their own heading: those whose call is
-    // not listed, those that list matched lines, and those a search matched
-    // when it did not match their call, which then shows as context.
-    let standing: HashSet<(&str, &str)> = records
-        .iter()
-        .filter_map(|turn| {
-            let Turn::Result(ref result) = *turn else {
-                return None;
-            };
-            let key = key_of(&result.source, &result.tool_use_id);
-            let alone = answered.get(&key).is_none_or(|&call_matched| {
-                !result.search.matches.is_empty() || (result.matched() && !call_matched)
-            });
-            alone.then_some(key)
-        })
-        .collect();
-    let shown: Vec<&Turn> = records
-        .iter()
-        .filter(|turn| match **turn {
-            Turn::Result(ref result) => {
-                standing.contains(&key_of(&result.source, &result.tool_use_id))
-            }
-            Turn::Call(_)
-            | Turn::Prompt(_)
-            | Turn::Reply(_)
-            | Turn::Summary(_)
-            | Turn::Thinking(_) => true,
-        })
-        .collect();
-    sections(
-        "Records",
-        &record_count(&shown),
-        &shown,
-        zone,
-        fields,
-        |turn| match **turn {
-            Turn::Prompt(ref prompt) => match prompt.kind {
-                Kind::Answer => "Answer",
-                Kind::Approval => "Approval",
-                Kind::Rejection => "Rejection",
-                Kind::Slash | Kind::Text => "Prompt",
-                Kind::TypedAnswer => "Typed answer",
-            },
-            Turn::Reply(_) => "Reply",
-            Turn::Call(_) => "Tool call",
-            Turn::Result(_) => "Tool result",
-            Turn::Summary(_) => "Summary",
-            Turn::Thinking(_) => "Thinking",
-        },
-        |turn| match **turn {
-            Turn::Prompt(ref prompt) => {
-                Ok(text_or_lines(&prompt.text, &prompt.search.matches, fields))
-            }
-            Turn::Reply(ref reply) | Turn::Thinking(ref reply) => {
-                Ok(text_or_lines(&reply.text, &reply.search.matches, fields))
-            }
-            Turn::Call(ref call) => tool_call(
-                call,
-                !standing.contains(&key_of(&call.source, &call.tool_use_id)),
-                fields,
-            ),
-            Turn::Result(ref result) => Ok(tool_result(result, fields)),
-            Turn::Summary(ref summary) => Ok(text_or_lines(
-                &summary.text,
-                &summary.search.matches,
-                fields,
-            )),
-        },
-    )
-}
-
-/// The key that pairs a call and its result: the file and the call's ID.
-fn key_of<'record>(source: &'record Source, id: &'record str) -> (&'record str, &'record str) {
-    (&source.file, id)
-}
-
-/// The line that counts `records`: those a search matched, by type in the
-/// order a conversation has them, and apart from them, those `--around`
-/// added as context.
-fn record_count(records: &[&Turn]) -> String {
-    let matched: Vec<&Turn> = records.iter().copied().filter(Record::matched).collect();
-    let mut out = format!(
-        "- Records: {}{}",
-        matched.len(),
-        by_type(
-            &matched
-                .iter()
-                .map(|turn| turn.type_name())
-                .collect::<Vec<_>>()
-        )
-    );
-    let context = records.len().saturating_sub(matched.len());
-    if context > 0 {
-        out.extend([" + ", &context.to_string(), " context"]);
-    }
-    out.push('\n');
-    out
-}
-
-/// How many of `types` are each type, in the order a conversation has
-/// them, as ` (prompt 2, call 1)`; empty when there are none.
-fn by_type(types: &[&str]) -> String {
-    /// The types in the order the count lists them.
-    const ORDER: [&str; 6] = ["prompt", "thinking", "reply", "call", "result", "summary"];
-    let parts: Vec<String> = ORDER
-        .iter()
-        .filter_map(|name| {
-            let count = types.iter().filter(|kind| **kind == *name).count();
-            (count > 0).then(|| format!("{name} {count}"))
-        })
-        .collect();
-    if parts.is_empty() {
-        return String::new();
-    }
-    format!(" ({})", parts.join(", "))
-}
-
-/// Groups `records` under one heading per transcript file, with times shown
-/// in `zone`, each record's heading followed by its `label` when that is
-/// not empty and by its sub-agent when it has one, and each record's body
-/// written by `body`, after the `count` line. The project, the session, the
-/// time, the turn, and the sub-agent show when `fields` keeps their keys.
-/// Records of a file must be adjacent. Two files that share a session ID,
-/// such as a resumed copy, get two headings.
-fn sections<T>(
-    title: &str,
-    count: &str,
-    records: &[T],
-    zone: &TimeZone,
-    fields: &Fields,
-    label: impl Fn(&T) -> &'static str,
-    body: impl Fn(&T) -> Result<String, Failure>,
-) -> Result<String, Failure>
-where
-    T: Record,
-{
-    let subagent = fields.keeps("subagent");
-    let mut out = format!("# {title}\n\n{count}");
-    for group in records.chunk_by(|left, right| left.source().file == right.source().file) {
-        if let Some(first) = group.first() {
-            let head = first.head();
-            out.extend(["\n## ", &heading_text(&head.session_title), "\n"]);
-            let mut facts = Vec::new();
-            if fields.keeps("project") {
-                facts.push(format!("- Project: {}\n", code_span(&head.project)));
-            }
-            if fields.keeps("session_id") {
-                facts.push(format!("- Session: {}\n", code_span(&head.session_id)));
-            }
-            if subagent && !first.subagent().is_empty() {
-                facts.push(format!("- Subagent: {}\n", code_span(first.subagent())));
-            }
-            if let Some(spawned) = first.spawned() {
-                if fields.keeps("subagent_type") && !spawned.subagent_type.is_empty() {
-                    facts.push(format!(
-                        "- Subagent type: {}\n",
-                        code_span(&spawned.subagent_type)
-                    ));
-                }
-                let description = one_line(&spawned.subagent_description);
-                if fields.keeps("subagent_description") && !description.is_empty() {
-                    facts.push(format!("- Description: {}\n", escape_inline(&description)));
-                }
-            }
-            if !facts.is_empty() {
-                out.push('\n');
-                out.extend(facts);
-            }
-        }
-        for record in group {
-            let mut parts = Vec::new();
-            if fields.keeps("timestamp") {
-                parts.push(record.head().timestamp.second_label(zone)?);
-            }
-            let turn = record.head().turn;
-            if turn > 0 && fields.keeps("turn") {
-                parts.push(format!("turn {turn}"));
-            }
-            let name = label(record);
-            if !name.is_empty() {
-                parts.push(name.to_owned());
-            }
-            out.extend(["\n### ", &parts.join(" - ")]);
-            if !record.matched() {
-                out.push_str(" (context)");
-            }
-            // A record of a sub-agent names it in its own heading too, as a
-            // reader searching the records may see this heading alone.
-            if subagent && !record.subagent().is_empty() {
-                out.extend([" - ", &code_span(record.subagent())]);
-            }
-            let written = body(record)?;
+        for item in &section.items {
+            out.push_str(&item_heading(item, zone)?);
+            let written = body(&item.body);
             let text = written.trim_start_matches('\n');
             if text.is_empty() {
                 out.push('\n');
@@ -239,6 +54,99 @@ where
         }
     }
     Ok(out)
+}
+
+/// The line that counts the records: those a search matched, by type, and
+/// apart from them, those `--around` added as context.
+fn record_count(count: &Count) -> String {
+    let mut out = format!("- Records: {}{}", count.matched, by_type(&count.types));
+    if count.context > 0 {
+        out.extend([" + ", &count.context.to_string(), " context"]);
+    }
+    out.push('\n');
+    out
+}
+
+/// `types` and how many of each there are, as ` (prompt 2, call 1)`;
+/// empty when there are none.
+fn by_type(types: &[(&str, usize)]) -> String {
+    if types.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = types
+        .iter()
+        .map(|&(name, count)| format!("{name} {count}"))
+        .collect();
+    format!(" ({})", parts.join(", "))
+}
+
+/// The list item that says `fact` under a section's heading.
+fn fact_line(fact: Fact<'_>) -> String {
+    match fact {
+        Fact::Project(project) => format!("- Project: {}\n", code_span(project)),
+        Fact::Session(session) => format!("- Session: {}\n", code_span(session)),
+        Fact::Subagent(name) => format!("- Subagent: {}\n", code_span(name)),
+        Fact::SubagentType(kind) => format!("- Subagent type: {}\n", code_span(kind)),
+        Fact::Description(description) => {
+            format!("- Description: {}\n", escape_inline(&one_line(description)))
+        }
+    }
+}
+
+/// The heading of `item`, with its time in `zone`, its turn, and its label,
+/// marked when it is context, and followed by its sub-agent, as a reader
+/// searching the records may see this heading alone.
+fn item_heading(item: &Item<'_>, zone: &TimeZone) -> Result<String, Failure> {
+    let mut parts = Vec::new();
+    if let Some(stamp) = item.stamp {
+        parts.push(stamp.second_label(zone)?);
+    }
+    if let Some(turn) = item.turn {
+        parts.push(format!("turn {turn}"));
+    }
+    parts.push(label(item.label).to_owned());
+    let mut out = format!("\n### {}", parts.join(" - "));
+    if !item.matched {
+        out.push_str(" (context)");
+    }
+    if let Some(name) = item.subagent {
+        out.extend([" - ", &code_span(name)]);
+    }
+    Ok(out)
+}
+
+/// The words a heading names `label` with.
+const fn label(label: Label) -> &'static str {
+    match label {
+        Label::Answer => "Answer",
+        Label::Approval => "Approval",
+        Label::Call => "Tool call",
+        Label::Prompt => "Prompt",
+        Label::Rejection => "Rejection",
+        Label::Reply => "Reply",
+        Label::Result => "Tool result",
+        Label::Summary => "Summary",
+        Label::Thinking => "Thinking",
+        Label::TypedAnswer => "Typed answer",
+    }
+}
+
+/// What follows an item's heading.
+fn body(body: &Body<'_>) -> String {
+    match *body {
+        Body::Call(ref call) => tool_call(call),
+        Body::Result(ref result) => tool_result(result),
+        Body::Text(ref passage) => passage_text(passage),
+    }
+}
+
+/// `passage`: its runs of lines, or its text in a text block.
+fn passage_text(passage: &Passage<'_>) -> String {
+    match *passage {
+        Passage::Hidden => String::new(),
+        Passage::Lines(ref runs) => lines(runs),
+        Passage::Text(text) => fenced("text", &clean_text(text)),
+    }
 }
 
 /// Sessions as a table, with how many prompts and replies a search
@@ -276,7 +184,12 @@ pub fn sessions(
             .iter()
             .flat_map(|session| session.matched_types.iter().copied())
             .collect();
-        out.extend(["- Matches: ", &total.to_string(), &by_type(&types), "\n"]);
+        out.extend([
+            "- Matches: ",
+            &total.to_string(),
+            &by_type(&count_types(&types)),
+            "\n",
+        ]);
     }
     let shown: Vec<(&str, &str, bool)> = COLUMNS
         .into_iter()
@@ -443,74 +356,54 @@ fn column_label(key: &str) -> String {
 
 /// A tool result's body: the calling tool's name, whether it failed, why
 /// the call did not run when it did not, and the output in a text block, or
-/// its matched lines, each when `fields` keeps its key.
-fn tool_result(result: &ToolResult, fields: &Fields) -> String {
+/// its matched lines, each when the view keeps it.
+fn tool_result(result: &ResultBody<'_>) -> String {
     let mut head = String::new();
-    if fields.keeps("tool") {
-        head.extend(["- Tool: ", &tool_name(&result.tool), "\n"]);
+    if let Some(tool) = result.tool {
+        head.extend(["- Tool: ", &tool_name(tool), "\n"]);
     }
-    if fields.keeps("is_error") {
-        head.extend([
-            "- Error: ",
-            if result.is_error { "yes" } else { "no" },
-            "\n",
-        ]);
+    if let Some(failed) = result.failed {
+        head.extend(["- Error: ", if failed { "yes" } else { "no" }, "\n"]);
     }
-    if !result.denial.is_empty() && fields.keeps("denial") {
-        head.extend(["- Denial: ", &code_span(&result.denial), "\n"]);
+    if let Some(denial) = result.denial {
+        head.extend(["- Denial: ", &code_span(denial), "\n"]);
     }
-    if !result.search.matches.is_empty() && fields.keeps("matches") {
-        return format!("{head}{}", lines(&result.search.matches));
+    match result.passage {
+        Passage::Hidden => head,
+        Passage::Lines(ref runs) => format!("{head}{}", lines(runs)),
+        Passage::Text(text) => format!("{head}\n{}", fenced("text", &clean_text(text))),
     }
-    if !fields.keeps("text") {
-        return head;
-    }
-    format!("{head}\n{}", fenced("text", &clean_text(&result.text)))
 }
 
-/// The lines `matches` lists of `text`, when it lists some and `fields`
-/// keeps them, or else `text` in a text block when `fields` keeps it.
-fn text_or_lines(text: &str, matches: &[MatchLine], fields: &Fields) -> String {
-    if !matches.is_empty() && fields.keeps("matches") {
-        return lines(matches);
-    }
-    if !fields.keeps("text") {
-        return String::new();
-    }
-    fenced("text", &clean_text(text))
-}
-
-/// `matches` in runs of adjacent lines of one field, each a list item that
-/// says which lines it holds, and which of them matched when it holds
-/// others too, followed by the lines in a text block. The line numbers stay
-/// out of the block, so they do not mix with numbers in the text.
-fn lines(matches: &[MatchLine]) -> String {
-    let runs = matches.chunk_by(|left, right| {
-        left.field == right.field && left.line.checked_add(1) == Some(right.line)
-    });
+/// `runs`, each a list item that says which lines it holds, and which of
+/// them matched when it holds others too, followed by the lines in a text
+/// block. The line numbers stay out of the block, so they do not mix with
+/// numbers in the text.
+fn lines(runs: &[Run<'_>]) -> String {
     let mut out = Vec::new();
-    // `chunk_by` gives no empty run.
-    for (first, last, run) in runs.filter_map(|run| Some((run.first()?, run.last()?, run))) {
-        let (single, plural) = if first.field == "text" {
-            ("Line".to_owned(), "Lines".to_owned())
+    for run in runs {
+        let (single, plural) = run.field.map_or_else(
+            || ("Line".to_owned(), "Lines".to_owned()),
+            |field| {
+                let name = code_span(field);
+                (format!("{name} line"), format!("{name} lines"))
+            },
+        );
+        let mut item = if run.first == run.last {
+            format!("- {single} {}", run.first)
         } else {
-            let name = code_span(&first.field);
-            (format!("{name} line"), format!("{name} lines"))
+            format!("- {plural} {}-{}", run.first, run.last)
         };
-        let mut item = if first.line == last.line {
-            format!("- {single} {}", first.line)
-        } else {
-            format!("- {plural} {}-{}", first.line, last.line)
-        };
-        if run.iter().any(|line| !line.hit) {
+        if run.lines.iter().any(|line| !line.hit) {
             let hits: Vec<String> = run
+                .lines
                 .iter()
                 .filter(|line| line.hit)
                 .map(|line| line.line.to_string())
                 .collect();
             item.extend([", matched ", &hits.join(", ")]);
         }
-        let text: Vec<&str> = run.iter().map(|line| line.text.as_str()).collect();
+        let text: Vec<&str> = run.lines.iter().map(|line| line.text.as_str()).collect();
         out.push(format!(
             "{item}\n\n{}",
             fenced("text", &clean_text(&text.join("\n")))
@@ -520,94 +413,78 @@ fn lines(matches: &[MatchLine]) -> String {
 }
 
 /// A tool call's body: the tool's name, its input, or its matched lines,
-/// and what it came to, with the output when `output`, each when `fields`
-/// keeps its key.
-fn tool_call(call: &ToolCall, output: bool, fields: &Fields) -> Result<String, Failure> {
+/// and what it came to, each when the view keeps it.
+fn tool_call(call: &CallBody<'_>) -> String {
     let mut out = String::new();
-    if fields.keeps("tool") {
-        out.extend(["- Tool: ", &tool_name(&call.tool), "\n"]);
+    if let Some(tool) = call.tool {
+        out.extend(["- Tool: ", &tool_name(tool), "\n"]);
     }
-    let input = if !call.search.matches.is_empty() && fields.keeps("matches") {
-        lines(&call.search.matches)
-    } else if fields.keeps("input") {
-        tool_input(&call.input)?
-    } else {
-        String::new()
+    let input = match call.input {
+        Input::Hidden => String::new(),
+        Input::Lines(ref runs) => lines(runs),
+        Input::Shown {
+            ref json,
+            ref texts,
+        } => tool_input(json.as_deref(), texts),
     };
     if !input.is_empty() {
         out.extend([input.as_str(), "\n"]);
     }
-    if fields.keeps("result") {
-        out.push_str(&outcome(call.result.as_ref(), output));
+    if let Some(ending) = call.ending {
+        out.push_str(&outcome(ending));
     }
-    Ok(out)
+    out
 }
 
-/// A call's input as indented JSON, but for each string at its top level
-/// that runs over lines, such as a plan, which follows in a text block
-/// named for its key so that it reads as written. The JSON is left out
-/// when those strings are all there is.
-fn tool_input(input: &Value) -> Result<String, Failure> {
-    let mut rest = input.clone();
-    let mut texts: Vec<(String, String)> = Vec::new();
-    if let Value::Object(ref mut map) = rest {
-        let keys: Vec<String> = map
-            .iter()
-            .filter(|&(_, value)| value.as_str().is_some_and(|text| text.contains('\n')))
-            .map(|(key, _)| key.clone())
-            .collect();
-        for key in keys {
-            if let Some(Value::String(text)) = map.remove(&key) {
-                texts.push((key, text));
-            }
-        }
-    }
+/// A call's input: `json` in a block when there is any, then each of
+/// `texts` in a text block named for its key, so that it reads as written.
+fn tool_input(json: Option<&str>, texts: &[(&str, &str)]) -> String {
     let mut parts = Vec::new();
-    let only_texts = !texts.is_empty() && rest.as_object().is_some_and(serde_json::Map::is_empty);
-    if !only_texts {
-        let indented = serde_json::to_string_pretty(&rest).map_err(Failure::Json)?;
-        parts.push(fenced("json", &clean_text(&indented)));
+    if let Some(indented) = json {
+        parts.push(fenced("json", &clean_text(indented)));
     }
-    for (key, text) in texts {
+    for &(key, text) in texts {
         parts.push(format!(
             "- {}\n\n{}",
             code_span(&format!("input.{key}")),
-            fenced("text", &clean_text(text.trim_end_matches('\n')))
+            fenced("text", &clean_text(text))
         ));
     }
     let body = parts.join("\n");
-    Ok(if only_texts {
-        body
-    } else {
+    if json.is_some() {
         format!("\n{body}")
-    })
+    } else {
+        body
+    }
 }
 
 /// What a call came to: whether it failed, why it did not run when it did
-/// not, and when `output`, the output in a text block; or `(none)` when its
-/// file has no result for it.
-fn outcome(result: Option<&Outcome>, output: bool) -> String {
-    let Some(found) = result else {
+/// not, and the output in a text block when it carries it; or `(none)` when
+/// its file has no result for it.
+fn outcome(ending: Ending<'_>) -> String {
+    let Ending::Ran {
+        denial,
+        failed,
+        output,
+    } = ending
+    else {
         return "- Result: (none)\n".to_owned();
     };
-    let mut out = format!(
-        "- Result: {}\n",
-        if found.is_error { "error" } else { "ok" }
-    );
-    if !found.denial.is_empty() {
-        out.extend(["- Denial: ", &code_span(&found.denial), "\n"]);
+    let mut out = format!("- Result: {}\n", if failed { "error" } else { "ok" });
+    if let Some(reason) = denial {
+        out.extend(["- Denial: ", &code_span(reason), "\n"]);
     }
-    if output {
-        out.extend(["\n", &fenced("text", &clean_text(&found.text))]);
+    if let Some(text) = output {
+        out.extend(["\n", &fenced("text", &clean_text(text))]);
     }
     out
 }
 
 /// The tool's name as a code span, or `(unknown)` when the call was not
 /// found.
-fn tool_name(name: &str) -> String {
-    if name.is_empty() {
-        return "(unknown)".to_owned();
+fn tool_name(tool: Tool<'_>) -> String {
+    match tool {
+        Tool::Named(name) => code_span(name),
+        Tool::Unknown => "(unknown)".to_owned(),
     }
-    code_span(name)
 }
