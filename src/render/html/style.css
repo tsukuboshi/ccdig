@@ -11,6 +11,12 @@
   --error: #cf222e;
   --denied: #9a6700;
   --missing: #59636e;
+  --user: #0969da;
+  --user-bg: #ddf4ff;
+  --assistant: #1a7f37;
+  --assistant-bg: #dafbe1;
+  --answer: #bc4c00;
+  --answer-bg: #fff1e5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,6 +32,12 @@
     --error: #f85149;
     --denied: #d29922;
     --missing: #9198a1;
+    --user: #4493f8;
+    --user-bg: #121d2f;
+    --assistant: #3fb950;
+    --assistant-bg: #122119;
+    --answer: #f0883e;
+    --answer-bg: #2b1d12;
   }
 }
 
@@ -124,12 +136,25 @@ article {
   border-radius: 6px;
 }
 
-article.prompt,
+article.prompt {
+  border-left-color: var(--user);
+  background: var(--user-bg);
+}
+
+/* How the user answered what the assistant asked. */
 article.answer,
 article.approval,
 article.rejection,
 article.typed-answer {
-  border-left-color: var(--accent);
+  border-left-color: var(--answer);
+  background: var(--answer-bg);
+}
+
+/* What the assistant wrote, apart from its tool calls. */
+article.reply,
+article.thinking {
+  border-left-color: var(--assistant);
+  background: var(--assistant-bg);
 }
 
 article.summary {
