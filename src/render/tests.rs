@@ -45,6 +45,7 @@ fn blog_head(time: &str) -> Result<Head, String> {
         cwd: "/Users/alice/blog".to_owned(),
         git_branch: "main".to_owned(),
         timestamp: at(time)?,
+        turn: 0,
     })
 }
 
@@ -54,6 +55,7 @@ fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
         permission_mode: String::new(),
         superseded: false,
         parent_uuid: String::new(),
+        after: String::new(),
         masked: Counts::default(),
         head,
         text: text.to_owned(),
@@ -81,6 +83,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             permission_mode: String::new(),
             superseded: false,
             parent_uuid: String::new(),
+        after: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:23:45.678Z")?,
             text: "/weekly-report last week".to_owned(),
@@ -94,6 +97,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             permission_mode: String::new(),
             superseded: false,
             parent_uuid: String::new(),
+        after: String::new(),
             masked: Counts::default(),
             head: blog_head("2026-10-13T01:30:00Z")?,
             text: "keep <b> tags & \u{65e5}\u{672c}\u{8a9e} as is\nexport AWS_SECRET_ACCESS_KEY=***REDACTED***".to_owned(),
@@ -233,7 +237,7 @@ fn prompts_as_markdown() -> TestResult {
     });
     golden(
         "render/prompts.md.golden",
-        &markdown::records(&prompt_turns(prompts), &tokyo()?)?,
+        &markdown::records(&prompt_turns(prompts), &tokyo()?, &Fields::default())?,
     )
 }
 
@@ -249,7 +253,7 @@ fn sessions_as_json_lines() -> TestResult {
 fn sessions_as_a_markdown_table() -> TestResult {
     golden(
         "render/sessions.md.golden",
-        &markdown::sessions(&[sample_session()?], &tokyo()?, false)?,
+        &markdown::sessions(&[sample_session()?], &tokyo()?, false, &Fields::default())?,
     )
 }
 
@@ -262,7 +266,12 @@ fn stats_as_json_lines_and_a_markdown_table() -> TestResult {
     )?;
     golden(
         "render/stats.md.golden",
-        &markdown::stats(&groups, &columns(&[By::Session]), &tokyo()?)?,
+        &markdown::stats(
+            &groups,
+            &columns(&[By::Session]),
+            &tokyo()?,
+            &Fields::default(),
+        )?,
     )
 }
 
@@ -275,7 +284,12 @@ fn stats_by_a_key_without_a_value_leaves_the_cell_empty_and_counts_sessions() ->
     };
     golden(
         "render/stats-tool.md.golden",
-        &markdown::stats(&[group], &columns(&[By::Tool]), &TimeZone::UTC)?,
+        &markdown::stats(
+            &[group],
+            &columns(&[By::Tool]),
+            &TimeZone::UTC,
+            &Fields::default(),
+        )?,
     )
 }
 
@@ -288,8 +302,28 @@ fn markdown_groups_by_file_not_by_session_id() -> TestResult {
             bare_prompt(head, "/b.jsonl", "two"),
         ]),
         &TimeZone::UTC,
+        &Fields::default(),
     )?;
     check_eq(&out.matches("\n## ").count(), &2, "session headings")?;
+    Ok(())
+}
+
+#[test]
+fn markdown_record_headings_tell_apart_records_within_a_minute() -> TestResult {
+    let out = markdown::records(
+        &prompt_turns(vec![
+            bare_prompt(blog_head("2026-10-13T01:00:05Z")?, BLOG_FILE, "one"),
+            bare_prompt(blog_head("2026-10-13T01:00:40Z")?, BLOG_FILE, "two"),
+        ]),
+        &tokyo()?,
+        &Fields::default(),
+    )?;
+    for heading in [
+        "### 2026-10-13 10:00:05 JST - Prompt\n",
+        "### 2026-10-13 10:00:40 JST - Prompt\n",
+    ] {
+        check_eq(&out.contains(heading), &true, heading)?;
+    }
     Ok(())
 }
 
@@ -520,14 +554,17 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     )?;
     golden(
         "kinds/replies.md.golden",
-        &markdown::records(&replies, &zone)?,
+        &markdown::records(&replies, &zone, &Fields::default())?,
     )?;
     let calls = [Turn::Call(call)];
     golden(
         "kinds/tools.jsonl.golden",
         &lines(&calls, &Fields::default())?,
     )?;
-    golden("kinds/tools.md.golden", &markdown::records(&calls, &zone)?)?;
+    golden(
+        "kinds/tools.md.golden",
+        &markdown::records(&calls, &zone, &Fields::default())?,
+    )?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
     golden(
         "kinds/results.jsonl.golden",
@@ -535,7 +572,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     )?;
     golden(
         "kinds/results.md.golden",
-        &markdown::records(&results, &zone)?,
+        &markdown::records(&results, &zone, &Fields::default())?,
     )
 }
 
@@ -696,7 +733,7 @@ fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
 fn markdown_counts_the_records_by_type_with_the_context_apart() -> TestResult {
     let zone = TimeZone::UTC;
     check_eq(
-        &markdown::records(&[], &zone)?,
+        &markdown::records(&[], &zone, &Fields::default())?,
         &"# Records\n\n- Records: 0\n".to_owned(),
         "no records",
     )?;
@@ -717,7 +754,7 @@ fn markdown_counts_the_records_by_type_with_the_context_apart() -> TestResult {
         Turn::Prompt(near),
         Turn::Prompt(bare_prompt(head, BLOG_FILE, "two")),
     ];
-    let out = markdown::records(&turns, &zone)?;
+    let out = markdown::records(&turns, &zone, &Fields::default())?;
     check_eq(
         &out.starts_with("# Records\n\n- Records: 3 (prompt 2, summary 1) + 1 context\n\n## "),
         &true,
@@ -733,25 +770,26 @@ fn markdown_counts_the_sessions_the_matches_and_the_groups() -> TestResult {
         match_count: Some(3),
         ..sample_session()?
     };
-    let plain = markdown::sessions(from_ref(&session), &zone, false)?;
+    let plain = markdown::sessions(from_ref(&session), &zone, false, &Fields::default())?;
     check_eq(
         &plain.starts_with("# Sessions\n\n- Sessions: 1\n\n| Started |"),
         &true,
         &plain,
     )?;
-    let searched = markdown::sessions(&[session.clone(), session], &zone, true)?;
+    let searched =
+        markdown::sessions(&[session.clone(), session], &zone, true, &Fields::default())?;
     check_eq(
         &searched.starts_with("# Sessions\n\n- Sessions: 2\n- Matches: 6\n\n| Started |"),
         &true,
         &searched,
     )?;
-    let none = markdown::sessions(&[], &zone, true)?;
+    let none = markdown::sessions(&[], &zone, true, &Fields::default())?;
     check_eq(
         &none.starts_with("# Sessions\n\n- Sessions: 0\n- Matches: 0\n\n| Started |"),
         &true,
         &none,
     )?;
-    let stats = markdown::stats(&sample_groups()?, &[], &zone)?;
+    let stats = markdown::stats(&sample_groups()?, &[], &zone, &Fields::default())?;
     check_eq(
         &stats.starts_with("# Stats\n\n- Groups: 2\n\n| Count |"),
         &true,

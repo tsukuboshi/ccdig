@@ -185,11 +185,11 @@ fn markdown_marks_a_record_of_context() -> TestResult {
     check_eq(
         &headings,
         &vec![
-            "Prompt",
-            "Reply (context)",
-            "Reply (context)",
-            "Reply",
-            "Prompt (context)",
+            "turn 1 - Prompt",
+            "turn 1 - Reply (context)",
+            "turn 2 - Reply (context)",
+            "turn 3 - Reply",
+            "turn 4 - Prompt (context)",
         ],
         &ran.out,
     )?;

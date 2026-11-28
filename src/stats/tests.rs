@@ -27,6 +27,7 @@ fn head(session: &str, time: &str) -> Result<Head, String> {
         cwd: String::new(),
         git_branch: "main".to_owned(),
         timestamp: Stamp::parse_rfc3339(time).ok_or_else(|| format!("not RFC 3339: {time}"))?,
+        turn: 0,
         masked: Counts::default(),
     })
 }
@@ -59,6 +60,7 @@ fn prompt(session: &str, time: &str, text: &str) -> Result<Turn, String> {
         search: Search::default(),
         masked: Counts::default(),
         parent_uuid: String::new(),
+        after: String::new(),
     }))
 }
 

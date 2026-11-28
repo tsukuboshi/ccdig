@@ -642,16 +642,22 @@ fn a_flag_named_after_the_kind_key_points_at_type() -> TestResult {
         // Where --kind is a flag, a record type is not a kind it takes.
         (
             &["records", "--kind", "prompt"][..],
-            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+            format!(
+                "ccdig: --kind takes text, slash, rejection, answer, typed-answer, or approval; {pointer}\n"
+            ),
         ),
         // Even with a flag that needs another type.
         (
             &["records", "--type", "call", "--kind", "call"][..],
-            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+            format!(
+                "ccdig: --kind takes text, slash, rejection, answer, typed-answer, or approval; {pointer}\n"
+            ),
         ),
         (
             &["records", "--kind=!call"][..],
-            format!("ccdig: --kind takes text, slash, rejection, answer, or approval; {pointer}\n"),
+            format!(
+                "ccdig: --kind takes text, slash, rejection, answer, typed-answer, or approval; {pointer}\n"
+            ),
         ),
         (
             &["records", "--kinds", "prompt"][..],
@@ -711,7 +717,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":6,\"filter\":\"strict-v4\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":7,\"filter\":\"strict-v5\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -760,6 +766,13 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
         check_eq(&sessions.contains(part), &true, &sessions)?;
     }
     let top = history.run(&["--help"]).out;
+    check_eq(
+        &top.contains(
+            "Your user name and other personal data stay unless you\nadd them, as with --mask user",
+        ),
+        &true,
+        &top,
+    )?;
     check_eq(&top.contains("kind of record"), &false, &top)?;
     check_eq(&top.contains("record type"), &true, &top)?;
     check_eq(
@@ -809,8 +822,8 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
                 "Records:\n",
                 "--type <TYPE>",
                 "Filters:\n",
-                "--since <DAY>",
-                "--until <DAY>",
+                "--since <WHEN>",
+                "--until <WHEN>",
                 "--tz <ZONE>",
                 "--project <SUBSTRING>",
                 "--session <PREFIX>",
@@ -2098,7 +2111,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(6_i32)),
+        &Some(&serde_json::json!(7_i32)),
         "schema",
     )?;
     check_eq(
@@ -2330,8 +2343,11 @@ fn the_local_zone_comes_from_tz_in_the_environment() -> TestResult {
         "2026-10-19",
     ];
     for (value, want) in [
-        ("Asia/Tokyo", "### 2026-10-13 10:00 JST - Prompt"),
-        ("", "### 2026-10-13 01:00 UTC - Prompt"),
+        (
+            "Asia/Tokyo",
+            "### 2026-10-13 10:00:01 JST - turn 1 - Prompt",
+        ),
+        ("", "### 2026-10-13 01:00:01 UTC - turn 1 - Prompt"),
     ] {
         let ran = history.run_in(&tz(value), &args);
         check_eq(&ran.code, &0, &ran.err)?;

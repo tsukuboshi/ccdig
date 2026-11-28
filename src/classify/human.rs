@@ -1,11 +1,12 @@
-//! Typed prompts versus harness traffic recorded under the user role.
+//! Typed prompts versus harness traffic recorded under the user role, and
+//! the replies the harness wrote in place of the model's.
 
 use super::denial::comment_in;
 use crate::transcript::entry::{Entry, Role};
 
 /// Names the rule set `classify` applies. It changes whenever a rule change
 /// can change which entries are kept.
-pub const FILTER_VERSION: &str = "strict-v4";
+pub const FILTER_VERSION: &str = "strict-v5";
 
 /// Tags the harness writes at the start of a body under the user role.
 /// `local-command` also covers `<local-command-caveat>` and
@@ -19,6 +20,12 @@ const HARNESS_TAGS: [&str; 7] = [
     "bash-stderr",
     "user-prompt-submit-hook",
 ];
+
+/// The model Claude Code names on an assistant line it wrote itself.
+const HARNESS_MODEL: &str = "<synthetic>";
+
+/// What Claude Code writes as the reply to a turn that wanted none.
+const NO_RESPONSE: &str = "No response requested.";
 
 /// The marker Claude Code writes when the user interrupts a turn.
 const INTERRUPTED_PREFIX: &str = "[Request interrupted by user";
@@ -110,3 +117,10 @@ fn starts_with_harness_tag(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+/// Whether `text`, a text block of an assistant line by `model`, is the
+/// placeholder Claude Code writes when a turn wants no reply. Other text
+/// on its own lines stays: a reply cut short is written that way too.
+pub fn is_no_response(model: &str, text: &str) -> bool {
+    model == HARNESS_MODEL && text.trim() == NO_RESPONSE
+}

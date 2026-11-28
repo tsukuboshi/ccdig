@@ -1,6 +1,7 @@
 //! The kinds of record and how each is picked out of a line.
 
 use alloc::borrow::Cow;
+use core::mem;
 use std::collections::HashMap;
 
 use serde_json::Value;
@@ -8,8 +9,8 @@ use serde_json::Value;
 use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::denial::{Answer, comment_in, denial};
-use crate::classify::human::{Reason, classify};
-use crate::classify::response::{ASK, DIALOGS, PLAN, Response, response};
+use crate::classify::human::{Reason, classify, is_no_response};
+use crate::classify::response::{ASK, DIALOGS, PLAN, Response, response, without_repeated_plan};
 use crate::classify::slash::fold;
 use crate::record::{
     Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Touch, Turn,
@@ -35,10 +36,18 @@ pub struct Records {
     /// the file, by its ID, what it came to, unmasked, once its result is
     /// seen.
     outcomes: Option<HashMap<String, Option<Outcome>>>,
+    /// When the calls carry their results: the plans shown for approval so
+    /// far in the file, by the call's ID, so a result does not repeat one.
+    plans: HashMap<String, String>,
     /// Notes which prompts were sent again.
     prompts: Prompts,
     /// Pairs the results with their calls.
     results: Results,
+    /// The prompts typed so far in the file, which numbers the records.
+    turn: usize,
+    /// Whether the records are numbered with their turn, which reads the
+    /// user lines whatever the kinds.
+    turns: bool,
     /// The kinds to pick.
     types: Types,
 }
@@ -66,6 +75,15 @@ pub struct Types {
 /// dialog.
 #[derive(Default)]
 pub struct Prompts {
+    /// The first line of the last reply seen since the last prompt picked,
+    /// unmasked, when `replies` is set: what a prompt follows when the line
+    /// it follows is not known.
+    after: String,
+    /// When `replies` is set, for each line seen so far in the file, by its
+    /// ID, the first line of the last reply on its branch, unmasked, or
+    /// empty after a prompt: a prompt sent again in place of another
+    /// follows the reply the other followed, not the replies after it.
+    branch: HashMap<String, String>,
     /// The calls seen so far in the file that show the user a dialog, by
     /// ID: the tool's name.
     dialogs: HashMap<String, String>,
@@ -73,6 +91,9 @@ pub struct Prompts {
     /// line, by the line's ID: a prompt sent again in place of another
     /// follows the same line.
     last: HashMap<String, String>,
+    /// Whether each prompt carries the first line of the reply before it,
+    /// which reads every assistant line.
+    replies: bool,
 }
 
 /// Picks the compaction summaries.
@@ -127,8 +148,11 @@ impl Records {
     pub fn new(types: Types) -> Self {
         Self {
             outcomes: None,
+            plans: HashMap::new(),
             prompts: Prompts::default(),
             results: Results::default(),
+            turn: 0,
+            turns: false,
             types,
         }
     }
@@ -142,21 +166,36 @@ impl Records {
             if let Block::ToolResult(ref result) = *block
                 && let Some(slot) = outcomes.get_mut(&result.tool_use_id)
             {
+                let plan = self.plans.get(&result.tool_use_id).map(String::as_str);
                 *slot = Some(Outcome {
                     is_error: result.is_error,
                     // As for the result itself, in `Results::pick`.
                     denial: denial(Answer::of(entry, result)).kind,
-                    text: result.text.clone(),
+                    text: without_repeated_plan(PLAN, plan, &result.text)
+                        .unwrap_or_else(|| result.text.clone()),
                 });
             }
         }
     }
 
-    /// Picks the kinds in `types`, each call with its result, for printing
-    /// them.
+    /// Notes the plans the calls on `entry` show for approval.
+    fn note_plans(&mut self, entry: &Entry) {
+        for block in &entry.content.blocks {
+            if let Block::ToolUse(ref call) = *block
+                && call.name == PLAN
+                && let Some(plan) = plan_of(&call.input)
+            {
+                self.plans.insert(call.id.clone(), plan.to_owned());
+            }
+        }
+    }
+
+    /// Picks the kinds in `types`, each call with its result and each
+    /// record numbered with its turn, for printing them.
     pub fn with_results(types: Types) -> Self {
         Self {
             outcomes: types.calls.then(HashMap::new),
+            turns: true,
             ..Self::new(types)
         }
     }
@@ -221,6 +260,11 @@ impl Pick for Records {
             Role::AiTitle | Role::Other => {}
         }
         turns.sort_by_key(|pair| pair.0);
+        if self.turns {
+            for pair in &mut turns {
+                pair.1.set_turn(self.turn);
+            }
+        }
         turns
     }
 
@@ -229,8 +273,10 @@ impl Pick for Records {
             assistant: self.types.reads_assistant(),
             // A prompt can answer the dialog of a call.
             calls_to: if self.types.prompts { &DIALOGS } else { &[] },
-            // A call's result is on a user line.
-            user: self.types.prompts
+            // A call's result is on a user line, and so is a prompt that
+            // starts a turn.
+            user: self.turns
+                || self.types.prompts
                 || self.types.results
                 || self.types.summaries
                 || self.outcomes.is_some(),
@@ -247,13 +293,23 @@ impl Pick for Records {
     fn wants(&mut self, entry: &Entry) -> bool {
         // Always called, so the results see every call before its result,
         // and the prompts every prompt sent again.
+        let reason = classify(entry);
         let result = self.types.results && self.results.wants(entry);
-        let prompt = self.types.prompts && self.prompts.wants(entry);
-        if entry.role == Role::User {
-            self.note_outcomes(entry);
+        let prompt = self.types.prompts && self.prompts.wants_as(entry, reason);
+        match entry.role {
+            Role::User => {
+                if self.turns && reason == Reason::Human {
+                    self.turn = self.turn.saturating_add(1);
+                }
+                self.note_outcomes(entry);
+            }
+            Role::Assistant if self.outcomes.is_some() => self.note_plans(entry),
+            Role::AiTitle | Role::Assistant | Role::Other => {}
         }
         match entry.role {
-            Role::User => result || prompt || (self.types.summaries && Summaries.wants(entry)),
+            Role::User => {
+                result || prompt || (self.types.summaries && reason == Reason::CompactSummary)
+            }
             Role::Assistant => self.types.replies || self.types.calls,
             Role::AiTitle | Role::Other => false,
         }
@@ -266,6 +322,8 @@ impl Pick for Prompts {
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Prompt>)> {
         let reason = classify(entry);
         let mut picked = Vec::new();
+        // Only the first prompt on the line follows the reply.
+        let mut after = Some(self.take_after(entry));
         if reason != Reason::ToolResult {
             // A rejection is on the line of its tool result: its index
             // comes after the line's blocks.
@@ -280,7 +338,8 @@ impl Pick for Prompts {
                     )
                 },
             );
-            picked.push((index, drafted(spot, entry, &typed, kind, command)));
+            let reply = after.take().unwrap_or_default();
+            picked.push((index, drafted(spot, entry, &typed, kind, command, &reply)));
         }
         // An answer can be on the line of a comment on another call, when
         // the calls were made together.
@@ -289,7 +348,11 @@ impl Pick for Prompts {
                 self.responses(entry)
                     .into_iter()
                     .map(|(index, typed, kind)| {
-                        (index, drafted(spot, entry, &typed, kind, String::new()))
+                        let reply = after.take().unwrap_or_default();
+                        (
+                            index,
+                            drafted(spot, entry, &typed, kind, String::new(), &reply),
+                        )
                     }),
             );
         }
@@ -297,8 +360,10 @@ impl Pick for Prompts {
     }
 
     fn roles(&self) -> Roles {
-        // The calls that show a dialog are on assistant lines.
+        // The calls that show a dialog are on assistant lines, and so are
+        // the replies.
         Roles {
+            assistant: self.replies,
             calls_to: &DIALOGS,
             ..Roles::USER
         }
@@ -313,39 +378,44 @@ impl Pick for Prompts {
     }
 
     fn wants(&mut self, entry: &Entry) -> bool {
-        if entry.role == Role::Assistant {
-            for block in &entry.content.blocks {
-                if let Block::ToolUse(ref call) = *block
-                    && matches!(call.name.as_str(), ASK | PLAN)
-                {
-                    self.dialogs.insert(call.id.clone(), call.name.clone());
-                }
-            }
-            return false;
-        }
-        match classify(entry) {
-            Reason::Human => {
-                if !entry.parent_uuid.is_empty() {
-                    self.last
-                        .insert(entry.parent_uuid.clone(), entry.uuid.clone());
-                }
-                true
-            }
-            Reason::Rejection => true,
-            Reason::ToolResult => !self.responses(entry).is_empty(),
-            Reason::CompactSummary
-            | Reason::Empty
-            | Reason::HarnessTag
-            | Reason::Interrupted
-            | Reason::Meta
-            | Reason::NonHumanOrigin
-            | Reason::NotUser
-            | Reason::Sidechain => false,
-        }
+        self.wants_as(entry, classify(entry))
     }
 }
 
 impl Prompts {
+    /// Notes the first line of the last reply on `entry`, an assistant
+    /// line of the session's own, leaving out what the harness wrote in
+    /// place of a reply; a line without one carries on the reply of the
+    /// line it follows.
+    fn note_reply(&mut self, entry: &Entry) {
+        if entry.flags.sidechain {
+            return;
+        }
+        let own = entry
+            .content
+            .blocks
+            .iter()
+            .rev()
+            .find_map(|block| match *block {
+                Block::Text(ref written) if !is_no_response(&entry.model, written) => {
+                    written.lines().map(str::trim).find(|line| !line.is_empty())
+                }
+                Block::Other | Block::Text(_) | Block::ToolResult(_) | Block::ToolUse(_) => None,
+            });
+        let reply = match own {
+            Some(line) => {
+                line.clone_into(&mut self.after);
+                line.to_owned()
+            }
+            None => self
+                .branch
+                .get(&entry.parent_uuid)
+                .cloned()
+                .unwrap_or_default(),
+        };
+        self.branch.insert(entry.uuid.clone(), reply);
+    }
+
     /// What the user answered through a dialog on `entry`, a line of tool
     /// results: each answer's index, after the line's blocks and its
     /// rejection's so that none clashes with a result's in the check for
@@ -367,10 +437,81 @@ impl Prompts {
                     Response::Answer(text) => (text, Kind::Answer),
                     Response::Approval(text) => (text, Kind::Approval),
                     Response::Rejection(text) => (text, Kind::Rejection),
+                    Response::TypedAnswer(text) => (text, Kind::TypedAnswer),
                 };
                 Some((after.saturating_add(index), text, kind))
             })
             .collect()
+    }
+
+    /// The first line of the reply the prompt on `entry` follows, on its
+    /// branch, or the last one seen when its branch is not known; the
+    /// lines after it follow no reply until another comes.
+    fn take_after(&mut self, entry: &Entry) -> String {
+        let seen = mem::take(&mut self.after);
+        if !self.replies {
+            return String::new();
+        }
+        let after = self.branch.get(&entry.parent_uuid).cloned().unwrap_or(seen);
+        self.branch.insert(entry.uuid.clone(), String::new());
+        after
+    }
+
+    /// What `Pick::wants` says of `entry`, which `classify` says `reason`
+    /// of, for a picker that has classified it already.
+    fn wants_as(&mut self, entry: &Entry, reason: Reason) -> bool {
+        if entry.role == Role::Assistant {
+            for block in &entry.content.blocks {
+                if let Block::ToolUse(ref call) = *block
+                    && matches!(call.name.as_str(), ASK | PLAN)
+                {
+                    self.dialogs.insert(call.id.clone(), call.name.clone());
+                }
+            }
+            if self.replies {
+                self.note_reply(entry);
+            }
+            return false;
+        }
+        if self.replies {
+            let reply = if reason == Reason::Human {
+                String::new()
+            } else {
+                self.branch
+                    .get(&entry.parent_uuid)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            self.branch.insert(entry.uuid.clone(), reply);
+        }
+        match reason {
+            Reason::Human => {
+                if !entry.parent_uuid.is_empty() {
+                    self.last
+                        .insert(entry.parent_uuid.clone(), entry.uuid.clone());
+                }
+                true
+            }
+            Reason::Rejection => true,
+            Reason::ToolResult => !self.responses(entry).is_empty(),
+            Reason::CompactSummary
+            | Reason::Empty
+            | Reason::HarnessTag
+            | Reason::Interrupted
+            | Reason::Meta
+            | Reason::NonHumanOrigin
+            | Reason::NotUser
+            | Reason::Sidechain => false,
+        }
+    }
+
+    /// Picks the prompts, each with the first line of the reply before it,
+    /// for the digest.
+    pub fn with_replies() -> Self {
+        Self {
+            replies: true,
+            ..Self::default()
+        }
     }
 }
 
@@ -408,7 +549,9 @@ impl Pick for Replies {
 
     fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Reply>)> {
         blocks(entry, |block| match *block {
-            Block::Text(ref written) if !written.trim().is_empty() => {
+            Block::Text(ref written)
+                if !written.trim().is_empty() && !is_no_response(&entry.model, written) =>
+            {
                 let mut masked = Counts::default();
                 let (text, redacted) = spot.mask.text(written.trim(), &mut masked);
                 let source = source(spot, entry, &mut masked);
@@ -448,7 +591,12 @@ impl Pick for Results {
                 let mut masked = Counts::default();
                 let mut input = call.map_or(Value::Null, |found| found.input.clone());
                 let input_redacted = spot.mask.json(&mut input, &mut masked);
-                let (text, text_redacted) = spot.mask.text(&result.text, &mut masked);
+                let shown = call.and_then(|found| {
+                    without_repeated_plan(&found.name, plan_of(&found.input), &result.text)
+                });
+                let (text, text_redacted) = spot
+                    .mask
+                    .text(shown.as_deref().unwrap_or(&result.text), &mut masked);
                 let source = source(spot, entry, &mut masked);
                 Some(ToolResult {
                     head: spot.head(entry),
@@ -798,18 +946,20 @@ impl Select for ToolResult {
     }
 }
 
-/// The prompt `typed` on `entry`, of `kind`, masked. Only a typed prompt
-/// can be sent again in place of another, so only it keeps the line it
-/// follows.
+/// The prompt `typed` on `entry`, of `kind`, after the reply whose first
+/// line is `after`, both masked. Only a typed prompt can be sent again in
+/// place of another, so only it keeps the line it follows.
 fn drafted(
     spot: &Spot<'_>,
     entry: &Entry,
     typed: &str,
     kind: Kind,
     command: String,
+    after: &str,
 ) -> Draft<Prompt> {
     let mut masked = Counts::default();
     let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
+    let (reply, _) = spot.mask.text(after, &mut masked);
     let source = source(spot, entry, &mut masked);
     Draft::new(Prompt {
         head: spot.head(entry),
@@ -827,6 +977,7 @@ fn drafted(
         } else {
             String::new()
         },
+        after: reply,
     })
 }
 
@@ -935,4 +1086,9 @@ fn touch(tool: &str, input: &Value) -> Touch {
         "Bash" => Touch::Command(text("command")),
         _ => Touch::Nothing,
     }
+}
+
+/// The plan in the input of a call that shows one for approval.
+fn plan_of(input: &Value) -> Option<&str> {
+    input.get("plan").and_then(Value::as_str)
 }

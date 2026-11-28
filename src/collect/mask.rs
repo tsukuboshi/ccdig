@@ -95,6 +95,11 @@ where
         &self.0
     }
 
+    /// Numbers the record with the turn it is in; see `Head::turn`.
+    pub fn set_turn(&mut self, turn: usize) {
+        self.0.head_mut().turn = turn;
+    }
+
     /// Whether the record can be superseded: a prompt.
     pub fn supersedable(&mut self) -> bool {
         self.0.superseded_mut().is_some()

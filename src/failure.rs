@@ -52,9 +52,6 @@ pub enum Failure {
         /// The variable.
         variable: &'static str,
     },
-    /// `--fields` is given for Markdown.
-    #[error("--fields needs --format json or jsonl")]
-    FieldsNeedJson,
     /// `--grep` is not a valid regular expression.
     #[error("parse grep: {0}")]
     Grep(#[source] regex::Error),

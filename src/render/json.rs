@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::failure::Failure;
 
 /// The version of the JSON envelope and the record keys.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// The JSON document: the records with the schema and filter versions,
 /// the ccdig version, and how the run was asked for.
@@ -68,7 +68,7 @@ impl Fields {
     }
 
     /// Whether `key` is written.
-    fn keeps(&self, key: &str) -> bool {
+    pub fn keeps(&self, key: &str) -> bool {
         (self.include.is_empty() || self.include.iter().any(|name| name == key))
             && !self.exclude.iter().any(|name| name == key)
     }

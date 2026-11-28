@@ -33,7 +33,8 @@ fn sessions_of_prompts() -> impl Strategy<Value = Vec<Group>> {
     )
 }
 
-/// The prompts of `groups`, those of a group adjacent and in one file.
+/// The prompts of `groups`, those of a group adjacent and in one file,
+/// every other one after a reply that is the text of the one before.
 fn prompts(groups: &[Group]) -> Result<Vec<Prompt>, String> {
     let mut all = Vec::new();
     for (index, group) in groups.iter().enumerate() {
@@ -48,13 +49,23 @@ fn prompts(groups: &[Group]) -> Result<Vec<Prompt>, String> {
             cwd: project.clone(),
             git_branch: String::new(),
             timestamp: at("2026-10-13T01:00:00Z")?,
+            turn: 0,
         };
         let file = format!("/sessions/{index}.jsonl");
-        all.extend(
-            texts
-                .iter()
-                .map(|text| bare_prompt(head.clone(), &file, text)),
-        );
+        let mut before = "";
+        let mut odd = false;
+        for text in texts {
+            all.push(Prompt {
+                after: if odd {
+                    before.to_owned()
+                } else {
+                    String::new()
+                },
+                ..bare_prompt(head.clone(), &file, text)
+            });
+            before = text;
+            odd = !odd;
+        }
     }
     Ok(all)
 }
@@ -157,6 +168,16 @@ fn the_digest_lists_or_counts_every_prompt_within_the_limits() -> TestResult {
             let mut omitted = 0_usize;
             let mut used = 0_usize;
             for line in section.lines().skip(1) {
+                if let Some(after) = line.strip_prefix("  - after: ") {
+                    let length = span_text(after).ok_or("not a code span")?.chars().count();
+                    check_eq(
+                        &(length <= limits.prompt_chars.saturating_add(1)),
+                        &true,
+                        after,
+                    )?;
+                    used = used.saturating_add(length);
+                    continue;
+                }
                 let item = line.strip_prefix("- ").ok_or("not a list item")?;
                 if let Some(count) = item
                     .strip_prefix('(')
@@ -191,7 +212,7 @@ fn record_markdown_has_only_the_headings_the_writer_puts() -> TestResult {
         let all = prompts(&groups)?;
         let count = all.len();
         let turns: Vec<Turn> = all.into_iter().map(Turn::Prompt).collect();
-        let out = markdown::records(&turns, &tokyo()?)?;
+        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
         let headings = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))
@@ -227,7 +248,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?)?;
+        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
         let headings: Vec<&str> = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))
@@ -276,7 +297,7 @@ fn matched_lines_add_no_heading() -> TestResult {
                 })
             })
             .collect::<Result<_, _>>()?;
-        let out = markdown::records(&turns, &tokyo()?)?;
+        let out = markdown::records(&turns, &tokyo()?, &Fields::default())?;
         let headings = outside_fences(&out)
             .into_iter()
             .filter(|line| line.trim_start().starts_with('#'))
@@ -321,7 +342,7 @@ fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
                     })
                 })
                 .collect::<Result<_, _>>()?;
-            let out = markdown::sessions(&sessions, &tokyo()?, matches)?;
+            let out = markdown::sessions(&sessions, &tokyo()?, matches, &Fields::default())?;
             let table: Vec<&str> = out.lines().filter(|line| line.starts_with('|')).collect();
             check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
             for row in table {

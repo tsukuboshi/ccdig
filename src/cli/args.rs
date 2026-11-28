@@ -27,7 +27,9 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   down, and stats counts what they keep. records, sessions, and stats write\n\
                   JSON Lines by default, on a terminal and in a pipe alike; give\n\
                   --format md for Markdown to read. Harness noise is dropped, slash\n\
-                  commands are folded back, and common secrets are masked by default.",
+                  commands are folded back, and common secrets are masked by default.\n\
+                  Your user name and other personal data stay unless you\n\
+                  add them, as with --mask user, before you share the logs.",
     after_help = "Examples:\n\
                   \x20 ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
@@ -70,8 +72,9 @@ pub struct Activity {
 /// how they were typed and whether another was sent in their place.
 #[derive(Args)]
 pub struct Prompted {
-    /// Keep prompts of this kind: text, slash, rejection, answer, or
-    /// approval, or with a leading !, leave them out (repeatable).
+    /// Keep prompts of this kind: text, slash, rejection, answer,
+    /// typed-answer, or approval, or with a leading !, leave them out
+    /// (repeatable).
     #[arg(
         long = "kind",
         value_name = "KIND",
@@ -377,11 +380,23 @@ pub enum Command {
     reason = "clap lists the help headings in the order their flags are declared"
 )]
 pub struct Common {
-    /// First day to include, YYYY-MM-DD (record time, in --tz).
-    #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 20)]
+    /// First day or time to include, YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS]
+    /// (record time, in --tz).
+    #[arg(
+        long,
+        value_name = "WHEN",
+        help_heading = "Filters",
+        display_order = 20
+    )]
     pub since: Option<String>,
-    /// Last day to include, YYYY-MM-DD (record time, in --tz).
-    #[arg(long, value_name = "DAY", help_heading = "Filters", display_order = 21)]
+    /// Last day, minute, or second to include, YYYY-MM-DD or
+    /// YYYY-MM-DDTHH:MM[:SS] (record time, in --tz).
+    #[arg(
+        long,
+        value_name = "WHEN",
+        help_heading = "Filters",
+        display_order = 21
+    )]
     pub until: Option<String>,
     /// IANA time zone for --since, --until, and the times in the output
     /// [default: Local, the system zone; set TZ to override].
@@ -584,8 +599,8 @@ pub enum StatsKey {
     Day,
     /// Why a tool call did not run, from its result.
     Denial,
-    /// How a prompt was typed: text, slash, rejection, answer, or
-    /// approval.
+    /// How a prompt was typed: text, slash, rejection, answer,
+    /// typed-answer, or approval.
     Kind,
     /// The model of a reply or a tool call.
     Model,
@@ -637,8 +652,9 @@ pub enum VersionFormat {
 /// The `--format` and `--fields` flags.
 #[derive(Args)]
 pub struct Output {
-    /// In JSON and JSON Lines, write only these keys, or with a leading !,
-    /// leave them out (comma-separated, repeatable) [default: every key].
+    /// Write only these keys, or with a leading !, leave them out
+    /// (comma-separated, repeatable); in md, the parts and columns they
+    /// name [default: every key].
     #[arg(
         long = "fields",
         value_name = "KEY",

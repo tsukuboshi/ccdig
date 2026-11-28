@@ -18,7 +18,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 28] = [
+pub const RECORD_KEYS: [&str; 29] = [
     "type",
     "agent",
     "session_id",
@@ -28,6 +28,7 @@ pub const RECORD_KEYS: [&str; 28] = [
     "cwd",
     "git_branch",
     "timestamp",
+    "turn",
     "tool",
     "input",
     "tool_use_id",
@@ -131,6 +132,13 @@ pub struct Head {
     pub git_branch: String,
     /// When the line was written.
     pub timestamp: Stamp,
+    /// How many prompts of kind `text` or `slash` the transcript file has
+    /// up to the line, in the order written, those sent again in place of
+    /// another included, so a record shares the number of the prompt it
+    /// follows, and an answer to a dialog or a comment on a call turned
+    /// down that of the prompt before it: 0 before the first, and in a
+    /// sub-agent's transcript, which has none. Only `records` counts them.
+    pub turn: usize,
     /// What masking these keys counted, for `--mask-report`; not written.
     #[serde(skip)]
     pub masked: Counts,
@@ -140,7 +148,8 @@ pub struct Head {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// The answers the user picked or typed for Claude Code's questions.
+    /// The answers the user picked for Claude Code's questions from the
+    /// options it offered.
     Answer,
     /// A plan the user approved.
     Approval,
@@ -151,6 +160,10 @@ pub enum Kind {
     Slash,
     /// Plain text.
     Text,
+    /// The answers to Claude Code's questions when the user typed one of
+    /// them in their own words rather than picking an option.
+    #[serde(rename = "typed-answer")]
+    TypedAnswer,
 }
 
 /// A line of a record that `--grep` matched, or one around it, for
@@ -226,6 +239,12 @@ pub struct Prompt {
     /// written.
     #[serde(skip)]
     pub parent_uuid: String,
+    /// The first line of the last reply before the prompt, masked, which
+    /// the digest shows so a short prompt reads in context; empty when no
+    /// reply came between it and the prompt before, and for what does not
+    /// read the replies; not written.
+    #[serde(skip)]
+    pub after: String,
 }
 
 /// What the Markdown writers need of every kind of record.
@@ -577,11 +596,12 @@ impl Group {
 
 impl Kind {
     /// Every kind, in the order `--kind` lists them.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Text,
         Self::Slash,
         Self::Rejection,
         Self::Answer,
+        Self::TypedAnswer,
         Self::Approval,
     ];
 
@@ -593,6 +613,7 @@ impl Kind {
             Self::Rejection => "rejection",
             Self::Slash => "slash",
             Self::Text => "text",
+            Self::TypedAnswer => "typed-answer",
         }
     }
 }

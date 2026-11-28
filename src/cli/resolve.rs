@@ -528,13 +528,10 @@ fn digest_limits(prompt_chars: i64, session_chars: i64) -> Result<Limits, Failur
 }
 
 /// Checks the keys `--fields` names against those the command writes,
-/// `known`, and that the output is JSON, and converts them.
-fn fields(names: Vec<String>, known: &[&str], format: Format) -> Result<Fields, Failure> {
+/// `known`, and converts them.
+fn fields(names: Vec<String>, known: &[&str]) -> Result<Fields, Failure> {
     if names.is_empty() {
         return Ok(Fields::default());
-    }
-    if format == Format::Markdown {
-        return Err(Failure::FieldsNeedJson);
     }
     let mut picked = Filter::names(names);
     // A trailing comma, as in `text,`, names no key.
@@ -643,7 +640,7 @@ pub fn resolve(
             }
             let (kinds, picks) = picked(selection, activity, prompted)?;
             let format = output.format.into();
-            let fields = fields(output.fields, &RECORD_KEYS, format)?;
+            let fields = fields(output.fields, &RECORD_KEYS)?;
             let cuts = Cuts {
                 message: char_span(message_chars, "--message-chars")?,
                 tool: char_span(tool_chars, "--tool-chars")?,
@@ -743,7 +740,7 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
         ..Narrowing::default()
     };
     let format = given.output.format.into();
-    let picked = fields(given.output.fields, &SESSION_KEYS, format)?;
+    let picked = fields(given.output.fields, &SESSION_KEYS)?;
     let shared = flags.shared(narrowing, environment)?;
     let counts = shared.reading.mentions.is_some();
     for (flagged, flag) in [
@@ -771,7 +768,7 @@ fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, 
     let subagents = given.activity.subagents;
     let (kinds, narrowing) = picked(given.selection, given.activity, given.prompted)?;
     let format = given.output.format.into();
-    let picked_fields = fields(given.output.fields, &STATS_KEYS, format)?;
+    let picked_fields = fields(given.output.fields, &STATS_KEYS)?;
     let keys = grouping_keys(given.by, given.sort)?;
     // Only a result has a denial and a status, so without one every
     // record would fall in the group whose value is null.
