@@ -5,12 +5,34 @@ use core::error::Error;
 
 use serde_json::{Value, json};
 
-use super::{History, json_lines, strings};
+use super::{History, fixture_time, json_lines, strings};
 use crate::testing::{TestResult, check_eq};
+
+/// A session of two turns: a prompt, a reply, a call and its result, then
+/// an answer to a question in the second turn.
+const TURNS: [&str; 9] = [
+    r#"{"type":"assistant","uuid":"n-0","sessionId":"nnnn","timestamp":"2026-10-15T00:00:00Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Before any prompt"}]}}"#,
+    r#"{"type":"user","uuid":"n-1","sessionId":"nnnn","timestamp":"2026-10-15T00:00:01Z","message":{"role":"user","content":"list the files"}}"#,
+    r#"{"type":"assistant","uuid":"n-2","sessionId":"nnnn","timestamp":"2026-10-15T00:00:02Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Listing"},{"type":"tool_use","id":"t-n1","name":"Bash","input":{"command":"ls"}}]}}"#,
+    r#"{"type":"user","uuid":"n-3","sessionId":"nnnn","timestamp":"2026-10-15T00:00:03Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-n1","content":"Cargo.toml"}]}}"#,
+    r#"{"type":"assistant","uuid":"n-4","sessionId":"nnnn","timestamp":"2026-10-15T00:00:04Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"One file"}]}}"#,
+    r#"{"type":"user","uuid":"n-5","sessionId":"nnnn","timestamp":"2026-10-15T00:00:05Z","message":{"role":"user","content":"which one?"}}"#,
+    r#"{"type":"assistant","uuid":"n-6","sessionId":"nnnn","timestamp":"2026-10-15T00:00:06Z","message":{"model":"claude-fable-5-2","content":[{"type":"tool_use","id":"t-n2","name":"AskUserQuestion","input":{"questions":[]}}]}}"#,
+    r#"{"type":"user","uuid":"n-7","sessionId":"nnnn","timestamp":"2026-10-15T00:00:07Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-n2","content":"Your questions have been answered: \"Which?\"=\"Cargo.toml\". You can now continue with these answers in mind."}]}}"#,
+    r#"{"type":"assistant","uuid":"n-8","sessionId":"nnnn","timestamp":"2026-10-15T00:00:08Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"Cargo.toml it is"}]}}"#,
+];
 
 /// The JSON Lines `args` print, parsed.
 fn records(history: &History, args: &[&str]) -> Result<Vec<Value>, Box<dyn Error>> {
     json_lines(history.run(args))
+}
+
+/// The `turn` of each record in `records`.
+fn turns(records: &[Value]) -> Vec<Option<u64>> {
+    records
+        .iter()
+        .map(|record| record.get("turn").and_then(Value::as_u64))
+        .collect()
 }
 
 #[test]
@@ -584,6 +606,87 @@ fn markdown_keeps_a_matched_result_whose_call_is_context() -> TestResult {
         &ran.out.contains(" - Tool call (context)\n"),
         &true,
         &ran.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_reply_the_harness_wrote_in_place_of_none_is_dropped() -> TestResult {
+    let history = History::new("root")?;
+    history.write(
+        "-Users-alice-shop/ssss.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"s-1","sessionId":"ssss","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"go"}}"#,
+            r#"{"type":"assistant","uuid":"s-2","sessionId":"ssss","timestamp":"2026-10-15T00:00:01Z","message":{"model":"<synthetic>","content":[{"type":"text","text":"No response requested."}]}}"#,
+            r#"{"type":"assistant","uuid":"s-3","sessionId":"ssss","timestamp":"2026-10-15T00:00:02Z","message":{"model":"<synthetic>","content":[{"type":"text","text":"Partly written before the stop"}]}}"#,
+            r#"{"type":"assistant","uuid":"s-4","sessionId":"ssss","timestamp":"2026-10-15T00:00:03Z","message":{"model":"claude-fable-5-2","content":[{"type":"text","text":"No response requested."}]}}"#,
+        ],
+    )?;
+    let replies = records(
+        &history,
+        &["records", "--session", "ssss", "--type", "reply"],
+    )?;
+    check_eq(
+        &strings(&replies, "text"),
+        &vec!["Partly written before the stop", "No response requested."],
+        "replies",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn every_record_names_the_turn_of_the_prompt_it_follows() -> TestResult {
+    let history = History::new("root")?;
+    history.write("-Users-alice-shop/nnnn.jsonl", fixture_time()?, &TURNS)?;
+    let base = ["records", "--session", "nnnn"];
+    let replies = records(&history, &[&base[..], &["--type", "reply"]].concat())?;
+    check_eq(
+        &turns(&replies),
+        &vec![Some(0), Some(1), Some(1), Some(2)],
+        "replies alone",
+    )?;
+    let all = records(
+        &history,
+        &[&base[..], &["--type", "prompt,reply,call,result"]].concat(),
+    )?;
+    check_eq(
+        &strings(&all, "type"),
+        &vec![
+            "reply", "prompt", "reply", "call", "result", "reply", "prompt", "call", "result",
+            "prompt", "reply",
+        ],
+        "types",
+    )?;
+    check_eq(
+        &turns(&all),
+        &vec![
+            Some(0),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(2),
+            Some(2),
+            Some(2),
+            Some(2),
+            Some(2),
+        ],
+        "every kind",
+    )?;
+    let md = history
+        .run(&[&base[..], &["--type", "reply", "--format", "md"]].concat())
+        .out;
+    check_eq(
+        &md.contains("### 2026-10-15 09:00:08 JST - turn 2 - Reply\n"),
+        &true,
+        &md,
+    )?;
+    check_eq(
+        &md.contains("### 2026-10-15 09:00:00 JST - Reply\n"),
+        &true,
+        &md,
     )?;
     Ok(())
 }

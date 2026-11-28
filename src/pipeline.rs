@@ -41,7 +41,7 @@ pub struct Printed {
 pub fn execute(config: Config) -> Result<Printed, Failure> {
     match config {
         Config::Digest { limits, shared } => {
-            let corpus = gather(&shared, SessionSort::Time, Prompts::default)?;
+            let corpus = gather(&shared, SessionSort::Time, Prompts::with_replies)?;
             printed(
                 &shared,
                 digest(&corpus.records, &shared.zone, limits)?,
@@ -65,7 +65,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                 record.cut(cuts);
             }
             let out = write(format, &fields, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone)
+                markdown::records(records, &shared.zone, &fields)
             })?;
             printed(
                 &shared,
@@ -82,7 +82,12 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
         } => {
             let corpus = gather(&shared, sort, Prompts::default)?;
             let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
-                markdown::sessions(sessions, &shared.zone, shared.reading.mentions.is_some())
+                markdown::sessions(
+                    sessions,
+                    &shared.zone,
+                    shared.reading.mentions.is_some(),
+                    &fields,
+                )
             })?;
             printed(
                 &shared,
@@ -102,7 +107,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             let groups = tally(&corpus.records, &grouping, &shared.zone)?;
             let keys = columns(&grouping.by);
             let out = write(format, &fields, &groups, &shared.run, |lines| {
-                markdown::stats(lines, &keys, &shared.zone)
+                markdown::stats(lines, &keys, &shared.zone, &fields)
             })?;
             printed(
                 &shared,
@@ -258,8 +263,8 @@ fn printed(
     })
 }
 
-/// Writes `records` in `format`, with the keys `fields` keeps in JSON,
-/// using `markdown` for Markdown and `run` in the JSON envelope.
+/// Writes `records` in `format`, with the keys `fields` keeps, using
+/// `markdown` for Markdown and `run` in the JSON envelope.
 fn write<T>(
     format: Format,
     fields: &Fields,

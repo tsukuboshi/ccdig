@@ -8,8 +8,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Every record of `records` has a new `turn` key, how many prompts of
+  kind `text` or `slash` its file has up to it, so a reply tells which
+  prompt it answers. Markdown shows it in the heading. The schema is now 7.
+- Answers that the user typed in their own words are prompts of the new
+  kind `typed-answer`, apart from the options picked, which stay
+  `answer`; `digest` marks them `(typed answer)`.
+- `digest` shows under a prompt the first line of the reply before it.
+- `--since` and `--until` take a time too, `YYYY-MM-DDTHH:MM[:SS]`, and
+  `--until` includes the whole minute or second it names.
+- `--fields` works with `--format md`, showing only the parts and the
+  columns of the keys it names, where it was an error.
+
 ### Changed
 
+- Markdown headings show the time to the second.
+- Markdown shows a string in a call's input that runs over lines, such
+  as a plan, in a text block of its own, where it was an escaped line of
+  JSON.
+- The result of an `ExitPlanMode` call no longer repeats the plan in the
+  call's input; a plan the user edited stays.
+- A reply that is only `No response requested.`, which Claude Code
+  writes for a turn that wants none, is left out. The filter is now
+  `strict-v5`.
+- `--help` says that your user name and other personal data stay unless
+  you add them, as with `--mask user`.
 - `digest` folds a paste and its `<pasted_content>` tags into
   `[pasted N chars]`, and leaves out the preview of each option chosen
   from the answers to a question, so the words the user typed fit in its

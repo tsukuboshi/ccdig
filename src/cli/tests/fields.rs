@@ -80,6 +80,7 @@ fn fields_with_a_leading_bang_leaves_the_keys_out() -> TestResult {
             "session_id",
             "session_title_then",
             "timestamp",
+            "turn",
             "text",
             "kind",
             "command",
@@ -147,7 +148,7 @@ fn fields_applies_to_the_items_of_a_json_document_only() -> TestResult {
 }
 
 #[test]
-fn fields_names_an_unknown_key_and_needs_json() -> TestResult {
+fn fields_names_an_unknown_key() -> TestResult {
     let history = History::new("root")?;
     for (args, want) in [
         (
@@ -159,8 +160,8 @@ fn fields_names_an_unknown_key_and_needs_json() -> TestResult {
             "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, first_match, or usage\n",
         ),
         (
-            &["records", "--fields", "text", "--format", "md"][..],
-            "ccdig: --fields needs --format json or jsonl\n",
+            &["records", "--fields", "txt", "--format", "md"][..],
+            "ccdig: --fields: unknown key \"txt\": use type, agent, session_id, session_title, session_title_then, project, cwd, git_branch, timestamp, turn, tool, input, tool_use_id, result, is_error, denial, text, kind, command, permission_mode, superseded, model, skill, subagent, usage, redacted, source, matched, or matches\n",
         ),
     ] {
         let ran = history.run(args);
@@ -197,5 +198,122 @@ fn an_empty_key_in_fields_is_skipped() -> TestResult {
         )?;
         check_eq(&got.first(), &Some(&owned(&["text"])), value)?;
     }
+    Ok(())
+}
+
+#[test]
+fn fields_picks_what_markdown_shows_by_the_same_keys() -> TestResult {
+    let history = History::new("root")?;
+    let base = [
+        "records",
+        "--session",
+        "aaaa",
+        "--type",
+        "prompt",
+        "--format",
+        "md",
+    ];
+    let only_text = history.run(&[&base[..], &["--fields", "text"]].concat());
+    check_eq(&only_text.code, &0, &only_text.err)?;
+    check_eq(
+        &only_text
+            .out
+            .contains("\n### Prompt\n\n```text\n/weekly-report last week\n```\n"),
+        &true,
+        &only_text.out,
+    )?;
+    for gone in ["- Project:", "- Session:", "JST"] {
+        check_eq(&only_text.out.contains(gone), &false, gone)?;
+    }
+    let no_text = history
+        .run(&[&base[..], &["--fields", "!text,!turn"]].concat())
+        .out;
+    check_eq(
+        &no_text.contains("### 2026-10-13 10:00:01 JST - Prompt\n"),
+        &true,
+        &no_text,
+    )?;
+    check_eq(&no_text.contains("```text"), &false, &no_text)?;
+    let sessions = history.run(&[
+        "sessions",
+        "--session",
+        "aaaa",
+        "--format",
+        "md",
+        "--fields",
+        "session_id,title",
+    ]);
+    check_eq(&sessions.code, &0, &sessions.err)?;
+    check_eq(
+        &sessions
+            .out
+            .contains("\n| Session | Title |\n| --- | --- |\n| `aaaaaaaa-"),
+        &true,
+        &sessions.out,
+    )?;
+    let stats = history.run(&[
+        "stats",
+        "--session",
+        "aaaa",
+        "--by",
+        "type",
+        "--format",
+        "md",
+        "--fields",
+        "type,count",
+    ]);
+    check_eq(&stats.code, &0, &stats.err)?;
+    check_eq(
+        &stats
+            .out
+            .contains("\n| Type | Count |\n| --- | ---: |\n| `prompt` | "),
+        &true,
+        &stats.out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_leaves_out_a_table_with_no_column_and_shows_matches_on_their_own() -> TestResult {
+    let history = History::new("root")?;
+    for args in [
+        &["sessions", "--fields", "usage", "--format", "md"][..],
+        &[
+            "stats", "--by", "type", "--fields", "file", "--format", "md",
+        ][..],
+    ] {
+        let ran = history.run(args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&ran.out.contains('|'), &false, &ran.out)?;
+    }
+    let base = [
+        "records",
+        "--session",
+        "aaaa",
+        "--type",
+        "prompt",
+        "--igrep",
+        "weekly",
+        "--context",
+        "0",
+        "--format",
+        "md",
+    ];
+    let matches = history
+        .run(&[&base[..], &["--fields", "matches"]].concat())
+        .out;
+    check_eq(
+        &matches.contains("- Line 1\n\n```text\n/weekly-report last week\n```\n"),
+        &true,
+        &matches,
+    )?;
+    let text = history
+        .run(&[&base[..], &["--fields", "text"]].concat())
+        .out;
+    check_eq(
+        &(text.contains("```text\n/weekly-report last week\n```\n") && !text.contains("- Line 1")),
+        &true,
+        &text,
+    )?;
     Ok(())
 }

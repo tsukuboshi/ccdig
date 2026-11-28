@@ -205,7 +205,7 @@ Eight options apply to some kinds only:
 | `--status` | `result` | Results with this status: `error` or `ok` |
 | `--denial` | `result` | Results of calls that did not run for this reason, such as `user-rejected` |
 | `--skill` | `reply`, `call`, `result` | Records written while the skill ran |
-| `--kind` | `prompt` | Prompts typed this way: `text`, `slash`, `rejection`, `answer`, or `approval` |
+| `--kind` | `prompt` | Prompts typed this way: `text`, `slash`, `rejection`, `answer`, `typed-answer`, or `approval` |
 | `--superseded` | `prompt` | With `true`, the prompts the user sent another in place of, and with `false`, the others |
 | `--subagents` | `reply`, `call`, `result` | Sub-agent transcripts too |
 
@@ -385,10 +385,14 @@ A Markdown digest of the prompts, capped in size. The filters apply to
 the prompts, and so do `--kind` and `--superseded`, as for `records`:
 `--superseded false` leaves out the prompts the user typed again. A comment the user typed when they turned a tool call down is
 listed with `(rejection)` before it, the answers to a question with
-`(answer)`, and a plan approved with `(approval)`. A paste and its
+`(answer)`, or `(typed answer)` when the user typed one in their own
+words, and a plan approved with `(approval)`. A paste and its
 `<pasted_content>` tags become `[pasted N chars]`, so the typed words
 show, and the answers leave out the preview of each option chosen
-(`selected preview:`); `records` keeps both.
+(`selected preview:`); `records` keeps both. Under a prompt that follows
+a reply, `- after:` shows the first line of that reply, so a short prompt
+such as "keep four of them" reads in context; it is cut as the prompt is,
+and counts toward `--max-session-chars`.
 
 | Flag | Default | Does |
 | --- | --- | --- |
@@ -402,7 +406,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.5","schema":6,"filter":"strict-v4"}
+{"version":"0.0.5","schema":7,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -414,7 +418,7 @@ of a repeatable flag on both sides add up.
 
 | Flag | Keeps |
 | --- | --- |
-| `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD` |
+| `--since`, `--until` | Records from the first to the last day, `YYYY-MM-DD`, or minute or second, `YYYY-MM-DDTHH:MM[:SS]`, with a space for the `T` if you like |
 | `--tz` | Day boundaries and the times in the output, Markdown and JSON alike, in this IANA zone. Defaults to the system time zone (`TZ`, else `/etc/localtime`) |
 | `--project` | Projects whose directory name or cwd contains the value |
 | `--session` | Sessions whose ID starts with the value, or with `current`, the session ccdig runs in |
@@ -471,12 +475,14 @@ records that matched and keeps the context after the last of them. With
 
 `records`, `sessions`, and `stats` take `--fields` too: in JSON and JSON
 Lines it writes only the keys it names, comma-separated or repeated, in
-the order the records write them. A key with a leading `!` is left out instead, as
+the order the records write them, and in Markdown it shows only the parts
+and the columns of those keys. A key with a leading `!` is left out instead, as
 with the filters, so
 `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the keys
 every record of a session repeats, and `sessions --fields '!usage'` drops
-the tokens. A key the command does not write is an error, and so is
-`--fields` with `--format md`.
+the tokens. A key the command does not write is an error. In Markdown, the
+type in each heading and the session title always show, and a key it does
+not show, such as `usage` of `records`, changes nothing.
 
 ### Environment variables
 
@@ -504,7 +510,7 @@ the tokens. A key the command does not write is an error, and so is
  "session_title":"Weekly report draft",
  "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
- "timestamp":"2026-10-13T10:00:01+09:00",
+ "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
@@ -513,7 +519,7 @@ the tokens. A key the command does not write is an error, and so is
 ```
 
 Every record starts with `type`, the kind `--type` names. The other kinds
-have the same keys from `type` to `timestamp`, and end with `redacted`,
+have the same keys from `type` to `turn`, and end with `redacted`,
 `source`, `matched`, and `matches`:
 
 | Type | Keys in between |
@@ -525,12 +531,27 @@ have the same keys from `type` to `timestamp`, and end with `redacted`,
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
 `slash` or `text`, or `rejection` for what the user typed when they turned
-a tool call down, `answer` for the answers to a question, and `approval`
-for a plan approved; the record type is `type`, which `--type` picks.
+a tool call down, `answer` for the answers to a question, `typed-answer`
+when the user typed one of them in their own words, and `approval` for a
+plan approved; the record type is `type`, which `--type` picks.
 
 - `result` of a call is what its result in the same file says, masked:
   `is_error`, `denial`, and `text`, as a result has them, or `null` when
   the file has no result for it.
+- The result of an `ExitPlanMode` call leaves out the plan when it is the
+  one in the call's input, with `(the plan in the call's input)` under
+  `## Approved Plan:` in its place, in `result` and in the `text` of the
+  result alike. A plan the user edited is not the one in the input, so it
+  stays.
+- `turn` counts the prompts of kind `text` and `slash` in the transcript
+  file up to the record, in the order written, a prompt sent again in
+  place of another included, so a record has the number of the prompt it
+  follows, as a reply to the second prompt has `turn` 2. An answer to a
+  dialog and a comment on a call turned down have the number of the
+  prompt before them. It is 0 before the first prompt and in a
+  sub-agent's transcript.
+- A reply that is only `No response requested.`, which Claude Code writes
+  with the model `<synthetic>` when a turn wants no reply, is left out.
 - `matched` is `false` for a record `--around` lists next to a match, and
   `true` for every other record.
 - `matches` lists, with `--context`, the lines `--grep` or `--igrep`
@@ -559,10 +580,13 @@ for a plan approved; the record type is `type`, which `--type` picks.
   Claude Code's own text when the user picks "clarify" in a question
   dialog is not a comment. A plan turned down without a comment is a
   `rejection` too, with the first sentence of Claude Code's text.
-- A prompt of kind `answer` is what the user picked or typed in an
-  `AskUserQuestion` dialog, without Claude Code's words around it, and one
-  of kind `approval` a plan approved with `ExitPlanMode`, with the first
-  sentence of Claude Code's text. Like a `rejection`, each is on the line
+- A prompt of kind `answer` is what the user picked in an
+  `AskUserQuestion` dialog, and one of kind `typed-answer` what they
+  answered when they typed at least one answer in their own words, both
+  without Claude Code's words around them. Claude Code writes the two
+  apart from version 2.1.220; before it, every answer is an `answer`. A
+  prompt of kind `approval` is a plan approved with `ExitPlanMode`, with
+  the first sentence of Claude Code's text. Like a `rejection`, each is on the line
   of the call's result.
 - `superseded` is `true` for a prompt the user sent another prompt in
   place of, later in the file: one that follows the same line, as when
@@ -632,7 +656,7 @@ for a plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":6,"filter":"strict-v4","ccdig":"0.0.5",
+{"schema":7,"filter":"strict-v5","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -662,14 +686,18 @@ type. The sessions table has a `Session` and a `Cwd` column, which
 
 `records --format md` puts the records of each transcript file under one
 heading with the project and session, and each record under a heading
-with its time and kind. A call shows its result under its input, and the
+with its time to the second, its turn when it follows a prompt, and its
+kind. A string in a call's input that runs over lines, such as the plan
+of `ExitPlanMode`, follows the rest of the input in a text block named
+for its key, such as `input.plan`, so it reads as written. A call shows
+its result under its input, and the
 result is not shown again on its own unless `--context` lists its matched
 lines, or a search matched it and not its call, which then shows as
 context. `--limit` counts a result shown under its call, as JSON lists
 it, so Markdown can show fewer records than the limit. A tool's output that is a JSON object or array is indented, with
 its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
 tool wrote it. A sub-agent's record names the sub-agent at the
-end of its own heading too, as in ``### 2026-10-13 10:25 JST - Tool call -
+end of its own heading too, as in ``### 2026-10-13 10:25:01 JST - Tool call -
 `agent-1` ``, so it stands apart from the session's own records.
 
 With `--context`, a record shows its matched lines in place of its text:
@@ -702,8 +730,8 @@ A `user` entry is dropped, with the first matching reason, when it:
 3. carries a `tool_result` block, unless the user turned the call down
    with a comment: the comment is kept, as a prompt of kind `rejection`;
    or the block answers an `AskUserQuestion` or `ExitPlanMode` call: the
-   answer is kept, as a prompt of kind `answer`, `approval`, or
-   `rejection`;
+   answer is kept, as a prompt of kind `answer`, `typed-answer`,
+   `approval`, or `rejection`;
 4. starts with a harness tag such as `<system-reminder>`,
    `<task-notification>`, `<local-command-…>`, `<bash-input>`,
    `<bash-stdout>`, or `<user-prompt-submit-hook>`;

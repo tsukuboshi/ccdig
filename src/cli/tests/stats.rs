@@ -305,10 +305,6 @@ fn stats_rejects_what_would_change_what_it_counts() -> TestResult {
             "ccdig: --by subagent needs --subagents",
         ),
         (
-            &["--fields", "count", "--format", "md"][..],
-            "ccdig: --fields needs --format json or jsonl",
-        ),
-        (
             &["--fields", "text"][..],
             "ccdig: --fields: unknown key \"text\": use ",
         ),

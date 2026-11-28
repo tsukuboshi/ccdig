@@ -6,7 +6,7 @@ use jiff::tz::TimeZone;
 
 use crate::failure::Failure;
 use crate::record::{Head, Kind, Prompt};
-use crate::text::{code_span, escape_inline, heading_text, one_line};
+use crate::text::{code_span, cut_short, escape_inline, heading_text, one_line};
 
 /// Where Claude Code starts the tag it puts around pasted text, up to the
 /// paste's id.
@@ -47,7 +47,8 @@ impl Default for Limits {
     }
 }
 
-/// One section per transcript file, one line per prompt, cut to `limits`.
+/// One section per transcript file, one line per prompt, cut to `limits`,
+/// each followed by the first line of the reply before it when it has one.
 /// Prompts of a file must be adjacent.
 ///
 /// # Errors
@@ -179,17 +180,14 @@ fn session(
     let mut used = 0_usize;
     for (index, prompt) in prompts.iter().enumerate() {
         let body = match prompt.kind {
-            Kind::Answer => without_previews(&prompt.text),
+            Kind::Answer | Kind::TypedAnswer => without_previews(&prompt.text),
             Kind::Approval | Kind::Rejection | Kind::Slash | Kind::Text => {
                 Cow::Borrowed(prompt.text.as_str())
             }
         };
-        let line = one_line(&fold_pastes(&body));
-        let mut text: String = line.chars().take(limits.prompt_chars).collect();
-        if line.chars().count() > limits.prompt_chars {
-            text.push('\u{2026}');
-        }
-        let length = text.chars().count();
+        let text = cut_short(&one_line(&fold_pastes(&body)), limits.prompt_chars);
+        let after = cut_short(&one_line(&prompt.after), limits.prompt_chars);
+        let length = text.chars().count().saturating_add(after.chars().count());
         if used.saturating_add(length) > limits.session_chars {
             out.extend([
                 "- (",
@@ -205,9 +203,13 @@ fn session(
             Kind::Answer => "(answer) ",
             Kind::Approval => "(approval) ",
             Kind::Rejection => "(rejection) ",
+            Kind::TypedAnswer => "(typed answer) ",
             Kind::Slash | Kind::Text => "",
         };
         out.extend(["- ", mark, &code_span(&text), "\n"]);
+        if !after.is_empty() {
+            out.extend(["  - after: ", &code_span(&after), "\n"]);
+        }
         used = used.saturating_add(length);
     }
     Ok(())

@@ -200,6 +200,7 @@ impl Spot<'_> {
             cwd: entry.cwd.clone(),
             git_branch: entry.git_branch.clone(),
             timestamp: self.timestamp,
+            turn: 0,
             masked: self.title_masked.clone(),
         }
     }

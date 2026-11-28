@@ -198,7 +198,7 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 | `--status` | `result` | この状態の結果。`error` か `ok` |
 | `--denial` | `result` | この理由で実行されなかった呼び出しの結果。`user-rejected` など |
 | `--skill` | `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
-| `--kind` | `prompt` | この打ち方の依頼文。`text`・`slash`・`rejection`・`answer`・`approval` のいずれか |
+| `--kind` | `prompt` | この打ち方の依頼文。`text`・`slash`・`rejection`・`answer`・`typed-answer`・`approval` のいずれか |
 | `--superseded` | `prompt` | `true` なら、代わりに別の依頼文を送り直された依頼文。`false` ならそれ以外 |
 | `--subagents` | `reply`, `call`, `result` | サブエージェントの履歴も含める |
 
@@ -371,10 +371,14 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 依頼文の Markdown ダイジェストを、サイズの上限付きで出します。絞り込みは
 依頼文に適用され、`records` と同じく `--kind` と `--superseded` も効きます。
 `--superseded false` は、打ち直された依頼文を除きます。ツールの呼び出しを却下したときに打ったコメントは、
-前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、承認した
+前に `(rejection)` を付けて並べます。質問への回答には `(answer)`、
+自分の言葉で打った回答を含むなら `(typed answer)`、承認した
 プランには `(approval)` を付けます。貼り付けは `<pasted_content>` タグごと
 `[pasted N chars]` に縮め、打った文が見えるようにします。回答からは、選んだ
 選択肢のプレビュー（`selected preview:`）を除きます。`records` はどちらも残します。
+返答の後に続く依頼文の下には、その返答の最初の 1 行を `- after:` で添えます。
+「4つに絞りましょう」のような短い依頼文も、何への返事か分かります。依頼文と同じく
+切り詰め、`--max-session-chars` の文字数にも数えます。
 
 | フラグ | 既定 | 働き |
 | --- | --- | --- |
@@ -388,7 +392,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.5","schema":6,"filter":"strict-v4"}
+{"version":"0.0.5","schema":7,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -400,7 +404,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 | フラグ | 残すもの |
 | --- | --- |
-| `--since`, `--until` | 開始日から終了日までのレコード。`YYYY-MM-DD` |
+| `--since`, `--until` | 開始から終了までのレコード。日付の `YYYY-MM-DD` か、分か秒までの時刻の `YYYY-MM-DDTHH:MM[:SS]` で指定し、`T` は空白でもよい |
 | `--tz` | 日の境界と出力の時刻（Markdown も JSON も）をこの IANA タイムゾーンで扱う。既定はシステムのタイムゾーン（`TZ`、なければ `/etc/localtime`） |
 | `--project` | ディレクトリ名か cwd にこの値を含むプロジェクト |
 | `--session` | ID がこの値で始まるセッション。`current` なら ccdig を実行しているセッション |
@@ -459,11 +463,14 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 `records`・`sessions`・`stats` は `--fields` も受け付けます。JSON と JSON Lines
 で、指定したキーだけを、レコードが書く順に出します（カンマ区切りか
-繰り返しで指定）。絞り込みと同じく先頭に `!` を付けたキーは逆に除くので、
+繰り返しで指定）。Markdown では、そのキーの部分と列だけを出します。
+絞り込みと同じく先頭に `!` を付けたキーは逆に除くので、
 `--fields '!agent,!session_title,!project,!cwd,!git_branch'` は同じ
 セッションのどのレコードにも繰り返し入るキーを省き、
 `sessions --fields '!usage'` はトークン数を省きます。コマンドが書かない
-キーを指定するとエラーで、`--fields` と `--format md` の併用もエラーです。
+キーを指定するとエラーです。Markdown でも、各見出しの種類とセッションの
+タイトルは常に出し、`records` の `usage` のように Markdown に出ないキーは
+指定しても何も変わりません。
 
 ### 環境変数
 
@@ -491,7 +498,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
  "session_title":"Weekly report draft",
  "session_title_then":"Weekly report draft",
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
- "timestamp":"2026-10-13T10:00:01+09:00",
+ "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
  "permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
@@ -500,7 +507,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 ```
 
 どのレコードも、`--type` の名前で種類を表す `type` で始まります。ほかの
-種類も、`type` から `timestamp` までの同じキーで始まり、`redacted`・
+種類も、`type` から `turn` までの同じキーで始まり、`redacted`・
 `source`・`matched`・`matches` で終わります。
 
 | 種類 | 間に入るキー |
@@ -512,12 +519,24 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
 ツールの呼び出しを却下したときに打ったコメントなら `rejection`、質問への
-回答なら `answer`、承認したプランなら `approval` です。
+回答なら `answer`、自分の言葉で打った回答を含むなら `typed-answer`、
+承認したプランなら `approval` です。
 レコードの種類は `--type` で選ぶ `type` です。
 
 - 呼び出しの `result` は、同じファイルにあるその結果の内容（マスク後）で、
   結果と同じ `is_error`・`denial`・`text` を持ちます。ファイルに結果が無ければ
   `null` です。
+- `ExitPlanMode` の呼び出しの結果は、プランが呼び出しの入力と同じなら
+  プラン本文を省き、`## Approved Plan:` の下に `(the plan in the call's input)`
+  と書きます。`result` でも結果の `text` でも同じです。ユーザーが編集した
+  プランは入力と違うので、そのまま残します。
+- `turn` は、履歴ファイルでそのレコードまでにある打ち方が `text` か `slash` の
+  依頼文の数で、書かれた順に、打ち直された依頼文も含めて数えます。レコードは
+  直前の依頼文と同じ番号になり、2 つ目の依頼文への返答なら `turn` は 2 です。
+  ダイアログへの回答と、却下した呼び出しへのコメントは、その前の依頼文と同じ
+  番号です。最初の依頼文より前と、サブエージェントの履歴では 0 です。
+- ターンが返答を求めないときに Claude Code がモデル `<synthetic>` として書く
+  `No response requested.` だけの返答は除きます。
 - `matched` は、`--around` が一致の前後に出したレコードでは `false`、
   それ以外のレコードでは `true` です。
 - `matches` は、`--context` を付けたとき、`--grep` か `--igrep` に一致した
@@ -546,8 +565,10 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   コメントなしで差し戻したプランも `rejection` で、本文は Claude Code の
   定型文の最初の 1 文です。
 - 打ち方が `answer` の依頼文は、`AskUserQuestion` のダイアログでユーザーが
-  選んだか打った回答で、前後の Claude Code の定型文を除いたものです。
-  打ち方が `approval` の依頼文は `ExitPlanMode` で承認したプランで、本文は
+  選んだ回答です。打ち方が `typed-answer` の依頼文は、1 つでも自分の言葉で
+  打った回答を含むものです。どちらも前後の Claude Code の定型文を除きます。
+  Claude Code がこの 2 つを書き分けるのはバージョン 2.1.220 からで、それより
+  前の履歴では回答はすべて `answer` です。打ち方が `approval` の依頼文は `ExitPlanMode` で承認したプランで、本文は
   Claude Code の定型文の最初の 1 文です。どちらも `rejection` と同じく、
   呼び出しの結果と同じ行にあります。
 - `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
@@ -617,7 +638,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":6,"filter":"strict-v4","ccdig":"0.0.5",
+{"schema":7,"filter":"strict-v5","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -646,15 +667,18 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `Session` 列と `Cwd` 列があります。
 
 `records --format md` は、履歴ファイルごとのレコードをプロジェクトと
-セッションを記した 1 つの見出しの下にまとめ、各レコードを時刻と種類の
-見出しの下に置きます。呼び出しは入力の下に結果を出し、その結果は、
+セッションを記した 1 つの見出しの下にまとめ、各レコードを秒までの時刻、
+依頼文の後ならターン番号、種類の見出しの下に置きます。
+`ExitPlanMode` のプランのように、呼び出しの入力のうち複数行にわたる文字列は、
+残りの入力の後に `input.plan` のようなキー名を付けたテキストブロックで出し、
+書かれたとおりに読めるようにします。呼び出しは入力の下に結果を出し、その結果は、
 `--context` が一致した行を並べるときと、検索がその結果に一致して呼び出しには
 一致しなかったとき（呼び出しは前後のレコードとして出ます）を除いて、単独では
 出しません。`--limit` は JSON と同じく呼び出しの下に出した結果も数えるので、
 Markdown には上限より少ないレコードが出ることがあります。
 ツールの出力が JSON のオブジェクトか配列なら字下げし、`\u65e5` のような
 エスケープを戻します。JSON と JSON Lines は、ツールが書いたままにします。サブエージェントのレコードは、自分の見出しの末尾にも
-サブエージェント名を付けます（例: ``### 2026-10-13 10:25 JST - Tool call -
+サブエージェント名を付けます（例: ``### 2026-10-13 10:25:01 JST - Tool call -
 `agent-1` ``）。セッション本体のレコードと見分けられます。
 
 `--context` を付けると、レコードは全文の代わりに一致した行を出します。
@@ -687,7 +711,7 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 3. `tool_result` ブロックを持つ。ただし、ユーザーがコメントを添えて
    呼び出しを却下した行なら、コメントを打ち方が `rejection` の依頼文として残す。
    `AskUserQuestion` か `ExitPlanMode` の呼び出しに答えるブロックなら、
-   答えを打ち方が `answer`・`approval`・`rejection` の依頼文として残す
+   答えを打ち方が `answer`・`typed-answer`・`approval`・`rejection` の依頼文として残す
 4. `<system-reminder>`、`<task-notification>`、`<local-command-…>`、
    `<bash-input>`、`<bash-stdout>`、`<user-prompt-submit-hook>` などの
    ハーネスのタグで始まる

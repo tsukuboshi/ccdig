@@ -65,36 +65,148 @@ fn parse_rejects_anything_but_a_real_yyyy_mm_dd_day_in_order() -> TestResult {
             "slashes",
             "2026/10/05",
             "",
-            "parse since: \"2026/10/05\" is not a YYYY-MM-DD date",
+            "parse since: \"2026/10/05\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
         ),
         (
             "not a date",
             "",
             "last week",
-            "parse until: \"last week\" is not a YYYY-MM-DD date",
+            "parse until: \"last week\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
         ),
         (
             "impossible day",
             "2026-02-30",
             "",
-            "parse since: \"2026-02-30\" is not a YYYY-MM-DD date",
+            "parse since: \"2026-02-30\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
         ),
         (
             "no zero padding",
             "2026-1-05",
             "",
-            "parse since: \"2026-1-05\" is not a YYYY-MM-DD date",
+            "parse since: \"2026-1-05\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
         ),
         (
             "trailing text",
             "",
             "2026-10-05x",
-            "parse until: \"2026-10-05x\" is not a YYYY-MM-DD date",
+            "parse until: \"2026-10-05x\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
         ),
         (
             "since after until",
             "2026-10-12",
             "2026-10-11",
+            "since is after until",
+        ),
+    ] {
+        let Err(failure) = DayRange::parse(since, until, &zone) else {
+            return Err(format!("{name}: parsed").into());
+        };
+        check_eq(failure.to_string().as_str(), message, name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_bound_with_a_time_includes_the_whole_minute_or_second_it_names() -> TestResult {
+    let zone = tokyo()?;
+    for (name, since, until, instant, want) in [
+        // 09:00 in Tokyo is 00:00 UTC.
+        (
+            "before a minute",
+            "2026-10-05T09:00",
+            "",
+            "2026-10-04T23:59:59.999Z",
+            false,
+        ),
+        (
+            "at a minute",
+            "2026-10-05T09:00",
+            "",
+            "2026-10-05T00:00:00Z",
+            true,
+        ),
+        (
+            "a space for the T",
+            "2026-10-05 09:00",
+            "",
+            "2026-10-05T00:00:00Z",
+            true,
+        ),
+        (
+            "in the until minute",
+            "",
+            "2026-10-05T09:30",
+            "2026-10-05T00:30:59.999Z",
+            true,
+        ),
+        (
+            "after the until minute",
+            "",
+            "2026-10-05T09:30",
+            "2026-10-05T00:31:00Z",
+            false,
+        ),
+        (
+            "before a second",
+            "2026-10-05T09:00:15",
+            "",
+            "2026-10-05T00:00:14.999Z",
+            false,
+        ),
+        (
+            "in the until second",
+            "",
+            "2026-10-05T09:30:15",
+            "2026-10-05T00:30:15.999Z",
+            true,
+        ),
+        (
+            "after the until second",
+            "",
+            "2026-10-05T09:30:15",
+            "2026-10-05T00:30:16Z",
+            false,
+        ),
+        (
+            "a day and a time",
+            "2026-10-05",
+            "2026-10-05T09:30",
+            "2026-10-04T15:00:00Z",
+            true,
+        ),
+    ] {
+        let range = DayRange::parse(since, until, &zone)?;
+        check_eq(&range.contains(at(instant)?), &want, name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_bound_with_a_time_rejects_a_loose_or_impossible_time() -> TestResult {
+    let zone = tokyo()?;
+    for (name, since, until, message) in [
+        (
+            "an hour alone",
+            "2026-10-05T09",
+            "",
+            "parse since: \"2026-10-05T09\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
+        ),
+        (
+            "no such hour",
+            "",
+            "2026-10-05T24:00",
+            "parse until: \"2026-10-05T24:00\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
+        ),
+        (
+            "an offset",
+            "2026-10-05T09:00:00Z",
+            "",
+            "parse since: \"2026-10-05T09:00:00Z\" is not a YYYY-MM-DD day or a YYYY-MM-DDTHH:MM[:SS] time",
+        ),
+        (
+            "since after until within a day",
+            "2026-10-05T10:00",
+            "2026-10-05T09:59",
             "since is after until",
         ),
     ] {
@@ -237,6 +349,18 @@ fn minute_label_shows_the_zone_abbreviation() -> TestResult {
         ("America/Sao_Paulo", "2026-10-12 22:00 -03"),
     ] {
         check_eq(stamp.minute_label(&zone(name)?)?.as_str(), want, name)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn second_label_tells_apart_times_within_a_minute() -> TestResult {
+    let stamp = Stamp::parse_rfc3339("2026-10-13T01:02:03.999Z").ok_or("fixture")?;
+    for (name, want) in [
+        ("Asia/Tokyo", "2026-10-13 10:02:03 JST"),
+        ("America/Sao_Paulo", "2026-10-12 22:02:03 -03"),
+    ] {
+        check_eq(stamp.second_label(&zone(name)?)?.as_str(), want, name)?;
     }
     Ok(())
 }

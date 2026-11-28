@@ -7,7 +7,7 @@
 - Project: `-Users-alice-blog`
 - Session: `eeee`
 
-### 2026-10-15 09:00 JST - Reply
+### 2026-10-15 09:00:10 JST - turn 1 - Reply
 
 - Lines 2-4, matched 3
 
@@ -25,7 +25,7 @@ The cloud edition uses zip.
 line eight
 ```
 
-### 2026-10-15 09:00 JST - Tool call
+### 2026-10-15 09:00:20 JST - turn 1 - Tool call
 
 - Tool: `Write`
 - `input.content` lines 2-4, matched 3
@@ -38,7 +38,7 @@ ships later.
 
 - Result: ok
 
-### 2026-10-15 09:00 JST - Tool result
+### 2026-10-15 09:00:30 JST - turn 1 - Tool result
 
 - Tool: `Write`
 - Error: no

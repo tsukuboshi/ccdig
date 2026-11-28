@@ -27,7 +27,7 @@ pub enum Config {
     Records {
         /// How many characters to keep of each text.
         cuts: Cuts,
-        /// The keys to write in JSON and JSON Lines.
+        /// The keys to write.
         fields: Fields,
         /// The output format.
         format: Format,
@@ -38,7 +38,7 @@ pub enum Config {
     },
     /// `sessions`.
     Sessions {
-        /// The keys to write in JSON and JSON Lines.
+        /// The keys to write.
         fields: Fields,
         /// The output format.
         format: Format,
@@ -49,7 +49,7 @@ pub enum Config {
     },
     /// `stats`.
     Stats {
-        /// The keys to write in JSON and JSON Lines.
+        /// The keys to write.
         fields: Fields,
         /// The output format.
         format: Format,

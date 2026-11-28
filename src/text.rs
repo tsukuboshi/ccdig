@@ -80,6 +80,17 @@ pub fn cut_text(text: &str, limit: usize) -> String {
     )
 }
 
+/// `text` cut to `limit` characters, the cut marked with an ellipsis
+/// alone, for a line that must stay short, as in the digest.
+pub fn cut_short(text: &str, limit: usize) -> String {
+    let mut chars = text.chars();
+    let mut kept: String = chars.by_ref().take(limit).collect();
+    if chars.next().is_some() {
+        kept.push('\u{2026}');
+    }
+    kept
+}
+
 /// Cleans `text` and collapses all whitespace, newlines included, to single
 /// spaces, so a field cannot start a new Markdown block.
 pub fn one_line(text: &str) -> String {
