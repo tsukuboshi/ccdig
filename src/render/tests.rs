@@ -536,7 +536,7 @@ fn the_words_no_snapshot_shows_are_in_japanese() -> TestResult {
         ),
         (
             "a description",
-            words::fact(Lang::Ja, Fact::Description("")).to_owned(),
+            words::fact(Lang::Ja, &Fact::Description("")).to_owned(),
             "\u{8aac}\u{660e}",
         ),
         (
@@ -1214,5 +1214,39 @@ fn markdown_counts_the_sessions_the_matches_and_the_groups() -> TestResult {
         &true,
         &stats,
     )?;
+    Ok(())
+}
+
+#[test]
+fn markdown_lists_the_models_modes_and_versions_under_the_session() -> TestResult {
+    let turns = [
+        Turn::Prompt(Prompt {
+            permission_mode: "auto".to_owned(),
+            ..bare_prompt(
+                Head {
+                    agent_version: "2.1.326".to_owned(),
+                    ..blog_head("2026-10-13T01:23:00Z")?
+                },
+                BLOG_FILE,
+                "first",
+            )
+        }),
+        Turn::Reply(Reply {
+            model: "claude-opus-5-5".to_owned(),
+            ..reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 2, "later")?
+        }),
+        Turn::Reply(Reply {
+            model: "claude-haiku-5-5".to_owned(),
+            ..reply_at("2026-10-13T01:25:00Z", BLOG_FILE, 3, "done")?
+        }),
+    ];
+    let out = markdown::records(&turns, &tokyo()?, &Fields::default(), Lang::Ja)?;
+    let want = concat!(
+        "- \u{30bb}\u{30c3}\u{30b7}\u{30e7}\u{30f3}: `11111111-1111-4111-8111-111111111111`\n",
+        "- \u{30e2}\u{30c7}\u{30eb}: `claude-opus-5-5`, `claude-haiku-5-5`\n",
+        "- \u{6a29}\u{9650}\u{30e2}\u{30fc}\u{30c9}: `auto`\n",
+        "- Claude Code: `2.1.326`\n",
+    );
+    check_eq(&out.contains(want), &true, &out)?;
     Ok(())
 }

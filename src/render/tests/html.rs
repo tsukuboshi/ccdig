@@ -8,7 +8,7 @@ use super::{
     AGENT_FILE, BLOG_FILE, bare_prompt, blog_head, call_at, every_part, fields, found, outcome,
     reply_at, result_at, tokyo,
 };
-use crate::record::{Reply, Search, Spawned, Summary, ToolCall, ToolResult, Turn};
+use crate::record::{Head, Prompt, Reply, Search, Spawned, Summary, ToolCall, ToolResult, Turn};
 use crate::redact::Counts;
 use crate::render::html::{Masking, records};
 use crate::render::json::Fields;
@@ -337,6 +337,40 @@ fn a_section_names_its_branch_and_the_span_of_the_records_shown() -> TestResult 
             &false,
             &format!("{what}:\n{hidden}"),
         )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_section_lists_the_models_modes_and_versions_as_code() -> TestResult {
+    let turns = [
+        Turn::Prompt(Prompt {
+            permission_mode: "plan".to_owned(),
+            ..bare_prompt(
+                Head {
+                    agent_version: "2.1.326".to_owned(),
+                    ..blog_head("2026-10-13T01:23:00Z")?
+                },
+                BLOG_FILE,
+                "first",
+            )
+        }),
+        Turn::Reply(Reply {
+            model: "claude-<b>".to_owned(),
+            ..reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 2, "later")?
+        }),
+        Turn::Reply(Reply {
+            model: "claude-opus-5-5".to_owned(),
+            ..reply_at("2026-10-13T01:25:00Z", BLOG_FILE, 3, "done")?
+        }),
+    ];
+    let all = page(&turns)?;
+    for want in [
+        "<dt>Model</dt><dd><code>claude-&lt;b&gt;</code>, <code>claude-opus-5-5</code></dd>",
+        "<dt>Permission mode</dt><dd><code>plan</code></dd>",
+        "<dt>Claude Code</dt><dd><code>2.1.326</code></dd>",
+    ] {
+        check_eq(&all.contains(want), &true, &format!("{want}:\n{all}"))?;
     }
     Ok(())
 }

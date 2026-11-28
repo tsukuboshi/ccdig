@@ -49,7 +49,7 @@ fn write_view(view: &View<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Fa
         out.extend(["\n## ", &words::title(lang, section.title), "\n"]);
         if !section.facts.is_empty() {
             out.push('\n');
-            out.extend(section.facts.iter().map(|&fact| fact_line(fact, lang)));
+            out.extend(section.facts.iter().map(|fact| fact_line(fact, lang)));
         }
         for item in &section.items {
             out.push_str(&item_heading(item, zone, lang)?);
@@ -75,13 +75,20 @@ fn record_count(count: &Count, lang: Lang) -> String {
 }
 
 /// The list item that says `fact` under a section's heading.
-fn fact_line(fact: Fact<'_>, lang: Lang) -> String {
-    let value = match fact {
+fn fact_line(fact: &Fact<'_>, lang: Lang) -> String {
+    let value = match *fact {
         Fact::Project(text)
         | Fact::Session(text)
         | Fact::Subagent(text)
         | Fact::SubagentType(text) => code_span(text),
         Fact::Description(description) => escape_inline(&one_line(description)),
+        Fact::AgentVersions(ref values)
+        | Fact::Models(ref values)
+        | Fact::PermissionModes(ref values) => values
+            .iter()
+            .map(|value| code_span(value))
+            .collect::<Vec<_>>()
+            .join(", "),
     };
     format!("- {}: {value}\n", words::fact(lang, fact))
 }

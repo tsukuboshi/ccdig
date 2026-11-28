@@ -29,6 +29,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Every record of `records` has a new `agent_version` key, the version of
   Claude Code that wrote its line, or empty in older transcripts. The
   schema is now 10.
+- Markdown and HTML list under each transcript file's heading the models,
+  the permission modes, and the Claude Code versions of the records
+  shown, each once in the order it first appears, when `--fields` keeps
+  `model`, `permission_mode`, and `agent_version`.
 
 ## [0.0.6] - 2026-11-28
 

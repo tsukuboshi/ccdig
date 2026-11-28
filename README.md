@@ -744,7 +744,9 @@ type. The sessions table has a `Session` and a `Cwd` column, which
 `records --session` and `--project` take.
 
 `records --format md` puts the records of each transcript file under one
-heading with the project and session, and each record under a heading
+heading with the project, the session, and the models, permission modes,
+and Claude Code versions of the records shown, each once in the order it
+first appears, and each record under a heading
 with its time to the second, its turn when it follows a prompt, and its
 kind. A string in a call's input that runs over lines, such as the plan
 of `ExitPlanMode`, follows the rest of the input in a text block named
@@ -785,7 +787,8 @@ in code spans.
 `records --format html` writes one page on stdout, which a redirect saves.
 It starts with the count line of Markdown and how many times each rule
 masked something, or `Not masked (--no-mask)`. Each transcript file gets a
-section with the project, the session, the branch, and when the earliest
+section with the project, the session, the models, permission modes, and
+Claude Code versions, as in Markdown, the branch, and when the earliest
 and the latest record shown were written: a filter can leave out records
 at either end, so this is not when the session started and ended. Each
 record is under its time, its turn, and its kind, with an `id` made of its

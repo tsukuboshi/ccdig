@@ -279,18 +279,23 @@ pub const fn not_masked(lang: Lang) -> &'static str {
 }
 
 /// The name of the list item that says `fact` under a section's heading.
-pub const fn fact(lang: Lang, fact: Fact<'_>) -> &'static str {
+pub const fn fact(lang: Lang, fact: &Fact<'_>) -> &'static str {
     match (lang, fact) {
-        (Lang::En, Fact::Project(_)) => "Project",
-        (Lang::En, Fact::Session(_)) => "Session",
-        (Lang::En, Fact::Subagent(_)) => "Subagent",
-        (Lang::En, Fact::SubagentType(_)) => "Subagent type",
-        (Lang::En, Fact::Description(_)) => "Description",
-        (Lang::Ja, Fact::Project(_)) => "プロジェクト",
-        (Lang::Ja, Fact::Session(_)) => "セッション",
-        (Lang::Ja, Fact::Subagent(_)) => "サブエージェント",
-        (Lang::Ja, Fact::SubagentType(_)) => "サブエージェントの種類",
-        (Lang::Ja, Fact::Description(_)) => "説明",
+        (Lang::En, &Fact::Project(_)) => "Project",
+        (Lang::En, &Fact::Session(_)) => "Session",
+        (Lang::En, &Fact::Models(_)) => "Model",
+        (Lang::En, &Fact::PermissionModes(_)) => "Permission mode",
+        (Lang::En | Lang::Ja, &Fact::AgentVersions(_)) => "Claude Code",
+        (Lang::En, &Fact::Subagent(_)) => "Subagent",
+        (Lang::En, &Fact::SubagentType(_)) => "Subagent type",
+        (Lang::En, &Fact::Description(_)) => "Description",
+        (Lang::Ja, &Fact::Project(_)) => "プロジェクト",
+        (Lang::Ja, &Fact::Session(_)) => "セッション",
+        (Lang::Ja, &Fact::Models(_)) => "モデル",
+        (Lang::Ja, &Fact::PermissionModes(_)) => "権限モード",
+        (Lang::Ja, &Fact::Subagent(_)) => "サブエージェント",
+        (Lang::Ja, &Fact::SubagentType(_)) => "サブエージェントの種類",
+        (Lang::Ja, &Fact::Description(_)) => "説明",
     }
 }
 

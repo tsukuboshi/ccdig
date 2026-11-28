@@ -5,6 +5,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::classify::human::HARNESS_MODEL;
 use crate::redact::Counts;
 use crate::text::{Lang, Span, cut_span, cut_text};
 use crate::transcript::entry::Usage;
@@ -878,6 +879,18 @@ impl Turn {
             Self::Result(ref result) => result,
             Self::Summary(ref summary) => summary,
         }
+    }
+
+    /// The model that wrote the record, or empty for a record no model
+    /// wrote: a prompt, a result, a summary, or a reply Claude Code wrote
+    /// itself, as when a request failed.
+    pub fn model(&self) -> &str {
+        let model = match *self {
+            Self::Reply(ref reply) | Self::Thinking(ref reply) => &reply.model,
+            Self::Call(ref call) => &call.model,
+            Self::Prompt(_) | Self::Result(_) | Self::Summary(_) => "",
+        };
+        if model == HARNESS_MODEL { "" } else { model }
     }
 
     /// The tool's output the record carries: a result's text, or the one

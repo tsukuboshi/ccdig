@@ -219,12 +219,12 @@ fn each_heading_names_the_facts_fields_keeps() -> TestResult {
             Fields::default(),
             (
                 vec![
-                    (title, vec![project, session]),
+                    (title, vec![project.clone(), session.clone()]),
                     (
                         title,
                         vec![
-                            project,
-                            session,
+                            project.clone(),
+                            session.clone(),
                             Fact::Subagent("agent-7"),
                             Fact::SubagentType("Explore"),
                             Fact::Description("Look in *src*"),
@@ -258,6 +258,90 @@ fn each_heading_names_the_facts_fields_keeps() -> TestResult {
     ] {
         check_eq(&heads(&records(&turns, &kept)?), &want, name)?;
     }
+    Ok(())
+}
+
+#[test]
+fn a_heading_lists_the_models_modes_and_versions_its_records_show() -> TestResult {
+    let prompt = |mode: &str, version: &str| -> Result<Turn, String> {
+        Ok(Turn::Prompt(Prompt {
+            permission_mode: mode.to_owned(),
+            ..bare_prompt(
+                Head {
+                    agent_version: version.to_owned(),
+                    ..blog_head("2026-10-13T01:23:00Z")?
+                },
+                BLOG_FILE,
+                "hi",
+            )
+        }))
+    };
+    let reply = |model: &str, version: &str| -> Result<Turn, String> {
+        let written = reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 2, "Done.")?;
+        Ok(Turn::Reply(Reply {
+            model: model.to_owned(),
+            head: Head {
+                agent_version: version.to_owned(),
+                ..written.head.clone()
+            },
+            ..written
+        }))
+    };
+    let call = |model: &str| -> Result<Turn, String> {
+        Ok(Turn::Call(ToolCall {
+            model: model.to_owned(),
+            ..call_at(3, "Bash", json!({}), "toolu_1", None)?
+        }))
+    };
+    let turns = vec![
+        prompt("plan", "2.1.300")?,
+        reply("claude-opus-5-5", "2.1.300")?,
+        call("claude-haiku-5-5")?,
+        prompt("", "")?,
+        prompt("auto", "2.1.326")?,
+        reply("claude-opus-5-5", "2.1.326")?,
+        reply("<synthetic>", "2.1.326")?,
+    ];
+    let title = "Weekly report draft";
+    let project = Fact::Project("-Users-alice-blog");
+    let session = Fact::Session(BLOG_SESSION);
+    for (name, kept, want) in [
+        (
+            "every key",
+            Fields::default(),
+            vec![
+                project.clone(),
+                session.clone(),
+                Fact::Models(vec!["claude-opus-5-5", "claude-haiku-5-5"]),
+                Fact::PermissionModes(vec!["plan", "auto"]),
+                Fact::AgentVersions(vec!["2.1.300", "2.1.326"]),
+            ],
+        ),
+        (
+            "all but the models",
+            fields(&[], &["model"]),
+            vec![
+                project.clone(),
+                session.clone(),
+                Fact::PermissionModes(vec!["plan", "auto"]),
+                Fact::AgentVersions(vec!["2.1.300", "2.1.326"]),
+            ],
+        ),
+        (
+            "none of the three",
+            fields(&[], &["model", "permission_mode", "agent_version"]),
+            vec![project.clone(), session.clone()],
+        ),
+    ] {
+        let view = records(&turns, &kept)?;
+        check_eq(&heads(&view).0, &vec![(title, want)], name)?;
+    }
+    let blank = vec![prompt("", "")?, reply("", "")?];
+    check_eq(
+        &heads(&records(&blank, &Fields::default())?).0,
+        &vec![(title, vec![project, session])],
+        "no values",
+    )?;
     Ok(())
 }
 

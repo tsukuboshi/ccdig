@@ -75,10 +75,19 @@ pub struct Section<'records> {
 }
 
 /// Something the heading of a section says of its file.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Fact<'records> {
+    /// The versions of Claude Code that wrote the records shown, in the
+    /// order they first appear.
+    AgentVersions(Vec<&'records str>),
     /// What the caller wrote the sub-agent was for.
     Description(&'records str),
+    /// The models that wrote the records shown, in the order they first
+    /// appear.
+    Models(Vec<&'records str>),
+    /// The permission modes the prompts shown were written in, in the
+    /// order they first appear.
+    PermissionModes(Vec<&'records str>),
     /// The project directory's name.
     Project(&'records str),
     /// The session ID.
@@ -317,7 +326,7 @@ pub fn records<'records>(
         sections.push(Section {
             branch: (fields.keeps("git_branch") && !head.git_branch.is_empty())
                 .then_some(head.git_branch.as_str()),
-            facts: facts(first, fields),
+            facts: facts(group, fields),
             items: group
                 .iter()
                 .map(|turn| item(turn, &standing, fields))
@@ -375,18 +384,32 @@ pub fn count_types(types: &[&str]) -> Vec<(&'static str, usize)> {
         .collect()
 }
 
-/// What the heading of the section that starts with `first` says of its
-/// file, of the keys `fields` keeps: the project, the session, and the
+/// What the heading of the section of `group` says of its file, of the
+/// keys `fields` keeps: the project, the session, the models, permission
+/// modes, and versions of Claude Code its records show, and the
 /// sub-agent, its kind, and what it was for, when it has them.
-fn facts<'records>(first: &'records Turn, fields: &Fields) -> Vec<Fact<'records>> {
-    let head = first.head();
+fn facts<'records>(group: &[&'records Turn], fields: &Fields) -> Vec<Fact<'records>> {
     let mut facts = Vec::new();
+    // `chunk_by` gives no empty group.
+    let Some(&first) = group.first() else {
+        return facts;
+    };
+    let head = first.head();
     if fields.keeps("project") {
         facts.push(Fact::Project(&head.project));
     }
     if fields.keeps("session_id") {
         facts.push(Fact::Session(&head.session_id));
     }
+    let listed = |key: &str, value: fn(&'records Turn) -> &'records str| {
+        fields
+            .keeps(key)
+            .then(|| distinct(group.iter().map(|turn| value(turn))))
+            .filter(|values| !values.is_empty())
+    };
+    facts.extend(listed("model", Turn::model).map(Fact::Models));
+    facts.extend(listed("permission_mode", permission_mode).map(Fact::PermissionModes));
+    facts.extend(listed("agent_version", agent_version).map(Fact::AgentVersions));
     if let Some(name) = subagent(first, fields) {
         facts.push(Fact::Subagent(name));
     }
@@ -401,6 +424,34 @@ fn facts<'records>(first: &'records Turn, fields: &Fields) -> Vec<Fact<'records>
         }
     }
     facts
+}
+
+/// The values of `values` that are not empty, each once, in the order they
+/// first appear.
+fn distinct<'records>(values: impl Iterator<Item = &'records str>) -> Vec<&'records str> {
+    let mut seen = Vec::new();
+    for value in values {
+        if !value.is_empty() && !seen.contains(&value) {
+            seen.push(value);
+        }
+    }
+    seen
+}
+
+/// The permission mode a prompt was written in, or empty for the other
+/// records.
+fn permission_mode(turn: &Turn) -> &str {
+    match *turn {
+        Turn::Prompt(ref prompt) => &prompt.permission_mode,
+        Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) | Turn::Thinking(_) => {
+            ""
+        }
+    }
+}
+
+/// The version of Claude Code that wrote `turn`, or empty.
+fn agent_version(turn: &Turn) -> &str {
+    &turn.head().agent_version
 }
 
 /// The sub-agent `turn` comes from, when it does and `fields` keeps it.

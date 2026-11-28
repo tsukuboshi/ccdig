@@ -223,18 +223,24 @@ impl Writer<'_> {
             return Ok(());
         }
         page.tag("<dl class=\"facts\">\n");
-        for &fact in &section.facts {
+        for fact in &section.facts {
             fact_start(page, words::fact(self.lang, fact));
-            match fact {
+            match *fact {
                 Fact::Project(text)
                 | Fact::Session(text)
                 | Fact::Subagent(text)
-                | Fact::SubagentType(text) => {
-                    page.tag("<code>");
-                    page.text(text);
-                    page.tag("</code>");
-                }
+                | Fact::SubagentType(text) => code(page, text),
                 Fact::Description(text) => page.text(&one_line(text)),
+                Fact::AgentVersions(ref values)
+                | Fact::Models(ref values)
+                | Fact::PermissionModes(ref values) => {
+                    for (index, value) in values.iter().enumerate() {
+                        if index > 0 {
+                            page.tag(", ");
+                        }
+                        code(page, value);
+                    }
+                }
             }
             page.tag("</dd>\n");
         }
@@ -613,6 +619,13 @@ fn fact_start(page: &mut Page, name: &str) {
     page.tag("<dt>");
     page.text(name);
     page.tag("</dt><dd>");
+}
+
+/// `text` as code.
+fn code(page: &mut Page, text: &str) {
+    page.tag("<code>");
+    page.text(text);
+    page.tag("</code>");
 }
 
 /// The name of `tool`, or the words for one whose call was not found.
