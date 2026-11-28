@@ -31,7 +31,7 @@ pub enum Config {
         /// The keys to write.
         fields: Fields,
         /// The output format.
-        format: RecordsFormat,
+        format: Format,
         /// The kinds of record to pick.
         kinds: Types,
         /// What to read and how to report it.
@@ -72,6 +72,8 @@ pub enum Config {
 /// The output formats of `records`, `sessions`, and `stats`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Format {
+    /// One page to read and to pass on.
+    Html,
     /// One indented JSON document.
     Json,
     /// One JSON object per line.
@@ -80,22 +82,12 @@ pub enum Format {
     Markdown,
 }
 
-/// The output formats of `records`: those it shares with `sessions` and
-/// `stats`, and HTML, which only it writes, as a page has no tables.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RecordsFormat {
-    /// One page to read and to pass on.
-    Html,
-    /// A format `sessions` and `stats` take too.
-    Shared(Format),
-}
-
-impl RecordsFormat {
+impl Format {
     /// Whether a person reads the format, as Markdown and HTML, rather than
-    /// a program: it then takes `--lang`, lists matched lines only when
-    /// asked, and indents the JSON a tool wrote.
+    /// a program: it then takes `--lang`, and in `records` lists matched
+    /// lines only when asked and indents the JSON a tool wrote.
     pub const fn is_read(self) -> bool {
-        matches!(self, Self::Html | Self::Shared(Format::Markdown))
+        matches!(self, Self::Html | Self::Markdown)
     }
 }
 

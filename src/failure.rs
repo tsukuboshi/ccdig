@@ -58,10 +58,6 @@ pub enum Failure {
     /// `--root` is not given and there is no home directory to default to.
     #[error("find the default --root: HOME is not set")]
     Home,
-    /// `sessions` or `stats` is asked for HTML, which only `records`
-    /// writes.
-    #[error("--format html is for records, as sessions and stats write tables")]
-    HtmlNeedsRecords,
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),

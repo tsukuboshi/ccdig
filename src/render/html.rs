@@ -12,13 +12,14 @@ use std::collections::{HashMap, HashSet};
 use jiff::tz::TimeZone;
 
 use super::json::Fields;
+use super::table::{self, Cell, Table};
 use super::view::{
     self, Body, CallBody, Change, Ending, Fact, Input, Label, Passage, ResultBody, Run, Section,
     Tool, View,
 };
 use super::words::{self, Badge, Item};
 use crate::failure::Failure;
-use crate::record::Turn;
+use crate::record::{Group, Session, Turn};
 use crate::text::{Lang, cut_short, one_line};
 use crate::when::Stamp;
 use markup::Page;
@@ -446,8 +447,19 @@ pub fn records(
 ) -> Result<String, Failure> {
     let view = view::records(records, fields)?;
     let mut page = Page::new();
-    head(&mut page, lang);
-    top(&mut page, &view, lang, masking);
+    head(&mut page, lang, words::records_title(lang));
+    top(
+        &mut page,
+        words::records_title(lang),
+        &[words::record_count(
+            lang,
+            view.count.matched,
+            &view.count.types,
+            view.count.context,
+        )],
+        lang,
+        masking,
+    );
     let writer = Writer {
         lang,
         places: Places::of(&view),
@@ -503,9 +515,147 @@ fn is_fragment(uuid: &str) -> bool {
     !uuid.is_empty() && uuid.chars().all(|ch| ch.is_ascii_hexdigit() || ch == '-')
 }
 
-/// The start of the page, up to its body: the policy, the language, the
-/// title, and the styles.
-fn head(page: &mut Page, lang: Lang) {
+/// Sessions as one page with one table, with how many prompts and replies
+/// a search matched in each, and the first of them, when `matches` is set,
+/// in the columns whose keys `fields` keeps, in the words of `lang`, with
+/// times in `zone`, and the top saying `masking`.
+///
+/// # Errors
+///
+/// When a time cannot be shown in `zone`.
+pub fn sessions(
+    records: &[Session],
+    zone: &TimeZone,
+    matches: bool,
+    fields: &Fields,
+    lang: Lang,
+    masking: &Masking,
+) -> Result<String, Failure> {
+    let shown = table::sessions(records, matches, fields, lang);
+    let mut counts = vec![words::sessions_counted(lang, shown.count)];
+    if let Some((total, ref types)) = shown.matches {
+        counts.push(words::matches_counted(lang, total, &words::by_type(types)));
+    }
+    table_page(
+        words::sessions_title(lang),
+        &counts,
+        &shown.table,
+        zone,
+        lang,
+        masking,
+    )
+}
+
+/// The lines of `ccdig stats` as one page with one table: a column for
+/// each of `columns`, the keys before `count`, then the counts, the times
+/// in `zone`, and the tokens, each when `fields` keeps its key, in the
+/// words of `lang`, and the top saying `masking`.
+///
+/// # Errors
+///
+/// When a time cannot be shown in `zone`.
+pub fn stats(
+    groups: &[Group],
+    columns: &[&str],
+    zone: &TimeZone,
+    fields: &Fields,
+    lang: Lang,
+    masking: &Masking,
+) -> Result<String, Failure> {
+    let shown = table::stats(groups, columns, fields, lang);
+    table_page(
+        words::stats_title(lang),
+        &[words::groups_counted(lang, shown.groups)],
+        &shown.table,
+        zone,
+        lang,
+        masking,
+    )
+}
+
+/// A page of one table: `title`, each of `lines`, and how the records were
+/// masked at the top, then `table`, in the words of `lang` with times in
+/// `zone`.
+fn table_page(
+    title: &str,
+    lines: &[String],
+    table: &Table<'_>,
+    zone: &TimeZone,
+    lang: Lang,
+    masking: &Masking,
+) -> Result<String, Failure> {
+    let mut page = Page::new();
+    head(&mut page, lang, title);
+    top(&mut page, title, lines, lang, masking);
+    write_table(&mut page, table, zone, lang)?;
+    page.tag("</body>\n</html>\n");
+    Ok(page.finish())
+}
+
+/// `table` as a table element, with numbers aligned right and times in
+/// `zone`, in a block that scrolls when the table is wider than the page,
+/// so the table stays a table to a screen reader; nothing when it has no
+/// columns.
+fn write_table(
+    page: &mut Page,
+    table: &Table<'_>,
+    zone: &TimeZone,
+    lang: Lang,
+) -> Result<(), Failure> {
+    if table.columns.is_empty() {
+        return Ok(());
+    }
+    page.tag("<div class=\"table\">\n<table>\n<thead>\n<tr>");
+    for column in &table.columns {
+        page.tag(if column.number {
+            "<th class=\"number\">"
+        } else {
+            "<th>"
+        });
+        page.text(&column.text);
+        page.tag("</th>");
+    }
+    page.tag("</tr>\n</thead>\n<tbody>\n");
+    for row in &table.rows {
+        page.tag("<tr>");
+        for (column, &value) in table.columns.iter().zip(row) {
+            page.tag(if column.number {
+                "<td class=\"number\">"
+            } else {
+                "<td>"
+            });
+            cell(page, value, zone, lang)?;
+            page.tag("</td>");
+        }
+        page.tag("</tr>\n");
+    }
+    page.tag("</tbody>\n</table>\n</div>\n");
+    Ok(())
+}
+
+/// What a table cell holds, with a time in `zone` as a time element.
+fn cell(page: &mut Page, value: Cell<'_>, zone: &TimeZone, lang: Lang) -> Result<(), Failure> {
+    match value {
+        Cell::Code(text) => code(page, text),
+        Cell::Count(count) => page.text(&count.to_string()),
+        Cell::Empty => {}
+        Cell::Text(text) => page.text(&one_line(text)),
+        Cell::Time(stamp) => {
+            page.tag("<time datetime=\"");
+            page.text(&stamp.rfc3339());
+            page.tag("\">");
+            page.text(&stamp.minute_label(zone)?);
+            page.tag("</time>");
+        }
+        Cell::Title(title) => page.text(&words::plain_title(lang, title)),
+        Cell::Tokens(count) => page.text(&count.to_string()),
+    }
+    Ok(())
+}
+
+/// The start of the page, up to its body: the policy, the language,
+/// `title`, and the styles.
+fn head(page: &mut Page, lang: Lang, title: &str) {
     page.tag("<!doctype html>\n<html lang=\"");
     page.tag(match lang {
         Lang::En => "en",
@@ -517,25 +667,24 @@ fn head(page: &mut Page, lang: Lang) {
     page.tag("\">\n<meta name=\"referrer\" content=\"no-referrer\">\n");
     page.tag("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     page.tag("<title>");
-    page.text(words::records_title(lang));
+    page.text(title);
     page.tag("</title>\n<style>\n");
     page.tag(STYLE);
     page.tag("</style>\n</head>\n<body>\n");
 }
 
-/// The top of the page: its title, how many records it shows, and how
-/// they were masked.
-fn top(page: &mut Page, view: &View<'_>, lang: Lang, masking: &Masking) {
+/// The top of the page: `title`, each of `lines` in a line of its own,
+/// such as how many records it shows, and how the records were masked.
+fn top(page: &mut Page, title: &str, lines: &[String], lang: Lang, masking: &Masking) {
     page.tag("<header>\n<h1>");
-    page.text(words::records_title(lang));
-    page.tag("</h1>\n<p class=\"count\">");
-    page.text(&words::record_count(
-        lang,
-        view.count.matched,
-        &view.count.types,
-        view.count.context,
-    ));
-    page.tag("</p>\n<p class=\"masking\">");
+    page.text(title);
+    page.tag("</h1>\n");
+    for line in lines {
+        page.tag("<p class=\"count\">");
+        page.text(line);
+        page.tag("</p>\n");
+    }
+    page.tag("<p class=\"masking\">");
     page.text(&match *masking {
         Masking::Off => words::not_masked(lang).to_owned(),
         Masking::On(ref counts) => words::masked(lang, counts),

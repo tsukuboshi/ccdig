@@ -263,6 +263,55 @@ pre.diff ins {
   background: var(--put-in);
 }
 
+/* The table of sessions or stats, in a block that scrolls when the table
+   is wider than the page. */
+div.table {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+div.table > table {
+  border-collapse: collapse;
+  overflow-wrap: normal;
+}
+
+/* IDs, paths, and names stay whole, as a break in them reads as two. */
+div.table > table code {
+  white-space: nowrap;
+}
+
+/* Text, such as a title or a match, keeps a width to wrap in. */
+div.table > table td:not(.number, :empty):not(:has(> code, > time)) {
+  min-width: 16rem;
+}
+
+div.table > table th,
+div.table > table td {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+div.table > table th {
+  background: var(--panel);
+  white-space: nowrap;
+}
+
+div.table > table tbody tr:hover {
+  background: var(--panel);
+}
+
+div.table > table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+div.table > table time {
+  white-space: nowrap;
+}
+
 .prose > :first-child {
   margin-top: 0;
 }
@@ -305,6 +354,11 @@ pre.diff ins {
 
   pre {
     max-height: none;
+    overflow: visible;
+  }
+
+  /* On paper nothing scrolls, so a wide table is not cut at the edge. */
+  div.table {
     overflow: visible;
   }
 

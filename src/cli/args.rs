@@ -27,8 +27,8 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   branch, text, record type, tool, outcome, and skill narrow the history\n\
                   down, and stats counts what they keep. records, sessions, and stats write\n\
                   JSON Lines by default, on a terminal and in a pipe alike; give\n\
-                  --format md for Markdown to read, or with records, --format html for\n\
-                  one page to pass on. Harness noise is dropped, slash commands are\n\
+                  --format md for Markdown to read, or --format html for one page to\n\
+                  pass on. Harness noise is dropped, slash commands are\n\
                   folded back, and common secrets are masked by default.\n\
                   Your user name and other personal data stay unless you\n\
                   add them, as with --mask user, before you share the logs.",
@@ -591,7 +591,7 @@ pub enum Status {
 /// The output formats of `records`, `sessions`, and `stats`.
 #[derive(Clone, Copy, ValueEnum)]
 pub enum Format {
-    /// One HTML page to read and to pass on, for records only.
+    /// One HTML page to read and to pass on.
     Html,
     /// One indented JSON document.
     Json,
@@ -685,7 +685,7 @@ pub struct Output {
     )]
     pub fields: Vec<String>,
     /// Output format: JSON Lines by default, on a terminal and in a pipe
-    /// alike; md to read; html, for records only, for one page to pass on.
+    /// alike; md to read; html for one page to pass on.
     #[arg(
         long,
         default_value = "jsonl",
@@ -750,25 +750,13 @@ impl MaskKind {
     }
 }
 
-impl From<Format> for config::RecordsFormat {
+impl From<Format> for config::Format {
     fn from(format: Format) -> Self {
         match format {
             Format::Html => Self::Html,
-            Format::Json => Self::Shared(config::Format::Json),
-            Format::Jsonl => Self::Shared(config::Format::Jsonl),
-            Format::Markdown => Self::Shared(config::Format::Markdown),
-        }
-    }
-}
-
-impl TryFrom<Format> for config::Format {
-    type Error = Failure;
-
-    /// The format of a table, which HTML is not.
-    fn try_from(format: Format) -> Result<Self, Failure> {
-        match config::RecordsFormat::from(format) {
-            config::RecordsFormat::Shared(shared) => Ok(shared),
-            config::RecordsFormat::Html => Err(Failure::HtmlNeedsRecords),
+            Format::Json => Self::Json,
+            Format::Jsonl => Self::Jsonl,
+            Format::Markdown => Self::Markdown,
         }
     }
 }

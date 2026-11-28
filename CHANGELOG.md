@@ -25,7 +25,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ended, sub-agents in the calls that started them, and how many times
   each rule masked something at the top, in the words of `--lang`. It
   runs no script and loads nothing, follows dark mode, and prints with its
-  folds open. `sessions` and `stats` take no `html`.
+  folds open.
+- `sessions --format html` and `stats --format html` write the table of
+  Markdown as one page, with the same top as the records' page, the
+  numbers aligned right, and the times in `<time>` elements.
 - Every record of `records` has a new `agent_version` key, the version of
   Claude Code that wrote its line, or empty in older transcripts. The
   schema is now 10.
