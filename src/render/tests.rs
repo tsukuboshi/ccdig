@@ -17,8 +17,9 @@ use super::markdown;
 use super::view::Fact;
 use super::words;
 use crate::record::{
-    AGENT, Group, Head, Kind, MatchLine, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS,
-    STATS_KEYS, Search, Session, Source, Spawned, Summary, ToolCall, ToolResult, Touch, Turn,
+    AGENT, Asked, Choice, Group, Head, Kind, MatchLine, Outcome, Prompt, RECORD_KEYS, Reply,
+    SESSION_KEYS, STATS_KEYS, Search, Session, Source, Spawned, Summary, ToolCall, ToolResult,
+    Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
@@ -71,6 +72,7 @@ fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
         text: text.to_owned(),
         kind: Kind::Text,
         command: String::new(),
+        options: Vec::new(),
         redacted: false,
         source: source(file, 0, ""),
         search: Search::default(),
@@ -100,6 +102,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             text: "/weekly-report last week".to_owned(),
             kind: Kind::Slash,
             command: "/weekly-report".to_owned(),
+            options: Vec::new(),
             redacted: false,
             source: source(BLOG_FILE, 4, "u-1"),
             search: Search::default(),
@@ -114,6 +117,7 @@ fn sample_prompts() -> Result<Vec<Prompt>, String> {
             text: "keep <b> tags & \u{65e5}\u{672c}\u{8a9e} as is\nexport AWS_SECRET_ACCESS_KEY=***REDACTED***".to_owned(),
             kind: Kind::Text,
             command: String::new(),
+            options: Vec::new(),
             redacted: true,
             source: source(BLOG_FILE, 9, "u-2"),
             search: Search::default(),
@@ -905,6 +909,47 @@ fn outcome(is_error: bool, denial: &str, text: &str) -> Outcome {
     }
 }
 
+/// The questions the answer in `every_part` was to: the first starts
+/// with a Markdown heading and has a note, one option picked whose
+/// description holds Markdown and a tag, and one not picked whose label
+/// is a link, each with a preview; the second was answered in the user's own words.
+fn answered_options() -> Vec<Asked> {
+    vec![
+        Asked {
+            question: "# A?".to_owned(),
+            choices: vec![
+                Choice {
+                    label: "a".to_owned(),
+                    description: "The *first* <b>one</b>".to_owned(),
+                    preview: "fn a() {\n    b();\n}".to_owned(),
+                    picked: true,
+                },
+                Choice {
+                    label: "[b](javascript:x)".to_owned(),
+                    description: String::new(),
+                    preview: "<b>not</b> picked".to_owned(),
+                    picked: false,
+                },
+            ],
+            typed: String::new(),
+            notes: "1. keep <it> short".to_owned(),
+            several: false,
+        },
+        Asked {
+            question: "B?".to_owned(),
+            choices: vec![Choice {
+                label: "c".to_owned(),
+                description: "> quoted".to_owned(),
+                preview: String::new(),
+                picked: false,
+            }],
+            typed: "- my own\nwords".to_owned(),
+            notes: String::new(),
+            several: true,
+        },
+    ]
+}
+
 /// Records with every part the Markdown of `records` can show: each label,
 /// context, matched lines, the inputs a call can have, and the results that
 /// show under their call or on their own; then a sub-agent's file whose
@@ -920,12 +965,18 @@ fn every_part() -> Result<Vec<Turn>, String> {
             ..bare_prompt(blog_head("2026-10-13T01:23:00Z")?, BLOG_FILE, text)
         }))
     };
+    let Turn::Prompt(answer) = prompt(Kind::Answer, "\"A?\"=\"a\"")? else {
+        return Err("not a prompt".to_owned());
+    };
     let ran = outcome(false, "", "a.txt\nb.txt");
     let denied = outcome(true, "user-rejected", "The user said no.");
     let failed = outcome(true, "", "exit 1");
     Ok(vec![
         prompt(Kind::Text, "plain")?,
-        prompt(Kind::Answer, "\"A?\"=\"a\"")?,
+        Turn::Prompt(Prompt {
+            options: answered_options(),
+            ..answer
+        }),
         prompt(Kind::Approval, "the plan")?,
         prompt(Kind::Rejection, "not that")?,
         prompt(Kind::TypedAnswer, "\"B?\"=\"my own\"")?,
@@ -1029,6 +1080,7 @@ fn record_markdown_shows_each_part_fields_keeps() -> TestResult {
         ),
         ("parts-no-text", fields(&[], &["text"])),
         ("parts-no-matches", fields(&[], &["matches"])),
+        ("parts-no-options", fields(&[], &["options"])),
         (
             "parts-no-heading-facts",
             fields(

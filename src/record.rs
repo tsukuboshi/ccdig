@@ -20,7 +20,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 33] = [
+pub const RECORD_KEYS: [&str; 34] = [
     "type",
     "agent",
     "agent_version",
@@ -41,6 +41,7 @@ pub const RECORD_KEYS: [&str; 33] = [
     "text",
     "kind",
     "command",
+    "options",
     "permission_mode",
     "superseded",
     "model",
@@ -180,6 +181,45 @@ pub enum Kind {
     TypedAnswer,
 }
 
+/// A question Claude Code asked the user, with the options it offered.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Asked {
+    /// The question.
+    pub question: String,
+    /// The options, in the order offered.
+    pub choices: Vec<Choice>,
+    /// What the user typed in their own words in place of an option, or
+    /// after the options picked; empty when they typed nothing.
+    pub typed: String,
+    /// The notes the user added to the answer, or empty.
+    pub notes: String,
+    /// Whether the user could pick several options; not written.
+    #[serde(skip)]
+    pub several: bool,
+}
+
+/// An option Claude Code offered for a question.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Choice {
+    /// The option's name, which the answer repeats when it is picked.
+    pub label: String,
+    /// What the option means, or empty when Claude Code gave nothing.
+    pub description: String,
+    /// What the option would look like, such as a mockup or a snippet,
+    /// or empty when Claude Code gave nothing.
+    pub preview: String,
+    /// Whether the user picked it.
+    pub picked: bool,
+}
+
 /// A line of a record that `--grep` matched, or one around it, for
 /// `--context`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -230,6 +270,11 @@ pub struct Prompt {
     pub kind: Kind,
     /// The slash command's name, or empty for plain text.
     pub command: String,
+    /// For an answer, the questions Claude Code asked and the options it
+    /// offered for each, masked, saying which the user picked and what
+    /// else they wrote; empty for the other kinds, and for an answer whose
+    /// line does not record the answers apart from its text.
+    pub options: Vec<Asked>,
     /// The permission mode the line was written in, such as `plan` or
     /// `auto`, or empty when the line does not say, as for slash commands.
     pub permission_mode: String,
@@ -237,7 +282,7 @@ pub struct Prompt {
     /// file: one that follows the same line, as when they press Esc and
     /// edit the prompt, or interrupt the reply and send it again.
     pub superseded: bool,
-    /// Whether masking changed the text.
+    /// Whether masking changed the text or the options.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,

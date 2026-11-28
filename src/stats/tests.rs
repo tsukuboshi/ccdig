@@ -56,6 +56,7 @@ fn prompt(session: &str, time: &str, text: &str) -> Result<Turn, String> {
         text: text.to_owned(),
         kind: Kind::Text,
         command: String::new(),
+        options: Vec::new(),
         permission_mode: String::new(),
         superseded: false,
         redacted: false,

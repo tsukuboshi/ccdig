@@ -10,14 +10,26 @@ use super::mask::Draft;
 use super::{Extra, Pick, Select, Spot};
 use crate::classify::denial::{Answer, comment_in, denial};
 use crate::classify::human::{Reason, classify, is_no_response};
-use crate::classify::response::{ASK, DIALOGS, PLAN, Response, response, without_repeated_plan};
+use crate::classify::response::{
+    ASK, DIALOGS, PLAN, Response, picked, response, without_repeated_plan,
+};
 use crate::classify::slash::fold;
 use crate::record::{
-    Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall, ToolResult, Touch, Turn,
+    Asked, Choice, Head, Kind, Outcome, Prompt, Reply, Search, Source, Summary, ToolCall,
+    ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
-use crate::transcript::entry::{Block, Entry, Role, Usage};
+use crate::transcript::entry::{Answers, Block, Entry, Role, Usage};
 use crate::transcript::reader::Roles;
+
+/// A call that shows the user a dialog.
+struct Dialog {
+    /// The questions the call asks, with the options offered for each,
+    /// none of them picked yet; empty for a call that asks none.
+    asked: Vec<Asked>,
+    /// The tool's name.
+    tool: String,
+}
 
 /// What a result needs of the call it answers.
 struct Call {
@@ -90,8 +102,8 @@ pub struct Prompts {
     /// follows the reply the other followed, not the replies after it.
     branch: HashMap<String, String>,
     /// The calls seen so far in the file that show the user a dialog, by
-    /// ID: the tool's name.
-    dialogs: HashMap<String, String>,
+    /// ID.
+    dialogs: HashMap<String, Dialog>,
     /// The last typed prompt seen so far in the file that follows each
     /// line, by the line's ID: a prompt sent again in place of another
     /// follows the same line.
@@ -376,22 +388,23 @@ impl Pick for Prompts {
                 },
             );
             let reply = after.take().unwrap_or_default();
-            picked.push((index, drafted(spot, entry, &typed, kind, command, &reply)));
+            picked.push((
+                index,
+                drafted(spot, entry, &typed, kind, Vec::new(), command, &reply),
+            ));
         }
         // An answer can be on the line of a comment on another call, when
         // the calls were made together.
         if matches!(reason, Reason::ToolResult | Reason::Rejection) {
-            picked.extend(
-                self.responses(entry)
-                    .into_iter()
-                    .map(|(index, typed, kind)| {
-                        let reply = after.take().unwrap_or_default();
-                        (
-                            index,
-                            drafted(spot, entry, &typed, kind, String::new(), &reply),
-                        )
-                    }),
-            );
+            picked.extend(self.responses(entry).into_iter().map(
+                |(index, typed, kind, options)| {
+                    let reply = after.take().unwrap_or_default();
+                    (
+                        index,
+                        drafted(spot, entry, &typed, kind, options, String::new(), &reply),
+                    )
+                },
+            ));
         }
         picked
     }
@@ -461,7 +474,7 @@ impl Prompts {
     /// results: each answer's index, after the line's blocks and its
     /// rejection's so that none clashes with a result's in the check for
     /// resumed copies, its text, and its kind.
-    fn responses(&self, entry: &Entry) -> Vec<(usize, String, Kind)> {
+    fn responses(&self, entry: &Entry) -> Vec<(usize, String, Kind, Vec<Asked>)> {
         let after = entry.content.blocks.len().saturating_add(1);
         entry
             .content
@@ -472,15 +485,22 @@ impl Prompts {
                 let Block::ToolResult(ref result) = *block else {
                     return None;
                 };
-                let tool = self.dialogs.get(&result.tool_use_id)?;
-                let found = response(tool, Answer::of(entry, result))?;
-                let (text, kind) = match found {
-                    Response::Answer(text) => (text, Kind::Answer),
-                    Response::Approval(text) => (text, Kind::Approval),
-                    Response::Rejection(text) => (text, Kind::Rejection),
-                    Response::TypedAnswer(text) => (text, Kind::TypedAnswer),
+                let dialog = self.dialogs.get(&result.tool_use_id)?;
+                let asked = &dialog.asked;
+                let found = response(&dialog.tool, Answer::of(entry, result))?;
+                let listed = || {
+                    entry
+                        .answers
+                        .as_ref()
+                        .map_or_else(Vec::new, |recorded| with_picks(asked, recorded))
                 };
-                Some((after.saturating_add(index), text, kind))
+                let (text, kind, options) = match found {
+                    Response::Answer(text) => (text, Kind::Answer, listed()),
+                    Response::Approval(text) => (text, Kind::Approval, Vec::new()),
+                    Response::Rejection(text) => (text, Kind::Rejection, Vec::new()),
+                    Response::TypedAnswer(text) => (text, Kind::TypedAnswer, listed()),
+                };
+                Some((after.saturating_add(index), text, kind, options))
             })
             .collect()
     }
@@ -506,7 +526,13 @@ impl Prompts {
                 if let Block::ToolUse(ref call) = *block
                     && matches!(call.name.as_str(), ASK | PLAN)
                 {
-                    self.dialogs.insert(call.id.clone(), call.name.clone());
+                    self.dialogs.insert(
+                        call.id.clone(),
+                        Dialog {
+                            asked: asked_in(&call.input),
+                            tool: call.name.clone(),
+                        },
+                    );
                 }
             }
             if self.replies {
@@ -1037,19 +1063,45 @@ impl Select for ToolResult {
     }
 }
 
-/// The prompt `typed` on `entry`, of `kind`, after the reply whose first
-/// line is `after`, both masked. Only a typed prompt can be sent again in
-/// place of another, so only it keeps the line it follows.
+/// The prompt `typed` on `entry`, of `kind` with `options`, after the
+/// reply whose first line is `after`, all masked. Only a typed prompt can
+/// be sent again in place of another, so only it keeps the line it
+/// follows.
 fn drafted(
     spot: &Spot<'_>,
     entry: &Entry,
     typed: &str,
     kind: Kind,
+    asked: Vec<Asked>,
     command: String,
     after: &str,
 ) -> Draft<Prompt> {
     let mut masked = Counts::default();
-    let (text, redacted) = spot.mask.text(typed.trim(), &mut masked);
+    let (text, mut redacted) = spot.mask.text(typed.trim(), &mut masked);
+    let mut mask = |value: &str| {
+        let (found, changed) = spot.mask.text(value, &mut masked);
+        redacted |= changed;
+        found
+    };
+    let options = asked
+        .into_iter()
+        .map(|one| Asked {
+            question: mask(&one.question),
+            choices: one
+                .choices
+                .into_iter()
+                .map(|choice| Choice {
+                    label: mask(&choice.label),
+                    description: mask(&choice.description),
+                    preview: mask(&choice.preview),
+                    picked: choice.picked,
+                })
+                .collect(),
+            typed: mask(&one.typed),
+            notes: mask(&one.notes),
+            several: one.several,
+        })
+        .collect();
     let (reply, _) = spot.mask.text(after, &mut masked);
     let source = source(spot, entry, &mut masked);
     Draft::new(Prompt {
@@ -1057,6 +1109,7 @@ fn drafted(
         text,
         kind,
         command,
+        options,
         permission_mode: entry.permission_mode.clone(),
         superseded: false,
         redacted,
@@ -1199,6 +1252,90 @@ fn touch(tool: &str, input: &Value) -> Touch {
         "Bash" => Touch::Command(text("command")),
         _ => Touch::Nothing,
     }
+}
+
+/// The questions in the input of a call that asks the user some, with the
+/// options offered for each, none of them picked; a question or an option
+/// without the text it needs is left out.
+fn asked_in(input: &Value) -> Vec<Asked> {
+    input
+        .get("questions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|asked| {
+            let question = asked.get("question")?.as_str()?;
+            let choices = asked
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|option| {
+                    Some(Choice {
+                        label: option.get("label")?.as_str()?.to_owned(),
+                        description: text_of(option, "description"),
+                        preview: text_of(option, "preview"),
+                        picked: false,
+                    })
+                })
+                .collect();
+            Some(Asked {
+                question: question.to_owned(),
+                choices,
+                typed: String::new(),
+                notes: String::new(),
+                several: asked
+                    .get("multiSelect")
+                    .and_then(Value::as_bool)
+                    .unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+/// `asked` with what `recorded` says the user answered to each question:
+/// the options picked, the words they typed, and their notes.
+fn with_picks(asked: &[Asked], recorded: &Answers) -> Vec<Asked> {
+    asked
+        .iter()
+        .map(|one| {
+            let answer = recorded.given.get(&one.question).map_or("", String::as_str);
+            let labels: Vec<&str> = one
+                .choices
+                .iter()
+                .map(|choice| choice.label.as_str())
+                .collect();
+            let (flags, typed) = picked(answer, &labels, one.several);
+            Asked {
+                question: one.question.clone(),
+                choices: one
+                    .choices
+                    .iter()
+                    .zip(flags)
+                    .map(|(choice, flag)| Choice {
+                        picked: flag,
+                        ..choice.clone()
+                    })
+                    .collect(),
+                typed,
+                notes: recorded
+                    .notes
+                    .get(&one.question)
+                    .cloned()
+                    .unwrap_or_default(),
+                several: one.several,
+            }
+        })
+        .collect()
+}
+
+/// The string at `key` of `object`, or empty when it is not one.
+fn text_of(object: &Value, key: &str) -> String {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// The plan in the input of a call that shows one for approval.

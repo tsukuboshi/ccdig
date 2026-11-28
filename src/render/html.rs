@@ -19,7 +19,7 @@ use super::view::{
 };
 use super::words::{self, Badge, Item};
 use crate::failure::Failure;
-use crate::record::{Group, Session, Turn};
+use crate::record::{Asked, Group, Session, Turn};
 use crate::text::{Lang, cut_short, one_line};
 use crate::when::Stamp;
 use markup::Page;
@@ -350,6 +350,7 @@ impl Writer<'_> {
             Body::Text(ref passage) => {
                 self.headline(page, item, at)?;
                 text(page, passage, item.label, self.lang);
+                options(page, item.options, self.lang);
             }
             Body::Result(ref result) => {
                 self.headline(page, item, at)?;
@@ -835,6 +836,70 @@ fn text(page: &mut Page, passage: &Passage<'_>, label: Label, lang: Lang) {
             | Label::TypedAnswer => preformatted(page, body),
         },
     }
+}
+
+/// Each question in `asked` with the options offered for it, the ones the
+/// user picked marked in words, so the mark reads without its color. A
+/// label stands in bold, with its description under it in smaller type,
+/// and its preview under that, folded. What the user typed is one more
+/// option, picked, and their notes follow the options.
+fn options(page: &mut Page, asked: &[Asked], lang: Lang) {
+    for one in asked {
+        page.tag("<div class=\"options\">\n<p class=\"question\">");
+        page.text(&one.question);
+        page.tag("</p>\n<ul>\n");
+        for choice in &one.choices {
+            page.tag(if choice.picked {
+                "<li class=\"picked\">"
+            } else {
+                "<li>"
+            });
+            page.tag("<strong>");
+            page.text(&choice.label);
+            page.tag("</strong>");
+            if choice.picked {
+                picked_badge(page, lang);
+            }
+            if !choice.description.is_empty() {
+                page.tag("<span class=\"description\">");
+                page.text(&choice.description);
+                page.tag("</span>");
+            }
+            if !choice.preview.is_empty() {
+                page.tag("<details class=\"preview\">\n<summary>");
+                page.text(words::preview(lang));
+                page.tag("</summary>\n");
+                preformatted(page, &choice.preview);
+                page.tag("</details>");
+            }
+            page.tag("</li>\n");
+        }
+        if !one.typed.is_empty() {
+            page.tag("<li class=\"picked\"><span class=\"note\">");
+            page.text(words::typed(lang));
+            page.tag(":</span> <span class=\"written\">");
+            page.text(&one.typed);
+            page.tag("</span>");
+            picked_badge(page, lang);
+            page.tag("</li>\n");
+        }
+        page.tag("</ul>\n");
+        if !one.notes.is_empty() {
+            page.tag("<p><span class=\"note\">");
+            page.text(words::notes(lang));
+            page.tag(":</span> <span class=\"written\">");
+            page.text(&one.notes);
+            page.tag("</span></p>\n");
+        }
+        page.tag("</div>\n");
+    }
+}
+
+/// The badge that marks an option the user picked.
+fn picked_badge(page: &mut Page, lang: Lang) {
+    page.tag(" <span class=\"badge ok\">");
+    page.text(words::picked(lang));
+    page.tag("</span>");
 }
 
 /// `text` as written, in a block that keeps its lines. A line break

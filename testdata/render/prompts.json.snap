@@ -2,7 +2,7 @@
 source: src/testing.rs
 ---
 {
-  "schema": 11,
+  "schema": 12,
   "filter": "strict-v3",
   "ccdig": "0.1.0",
   "run": {
@@ -29,6 +29,7 @@ source: src/testing.rs
       "text": "/weekly-report last week",
       "kind": "slash",
       "command": "/weekly-report",
+      "options": [],
       "permission_mode": "",
       "superseded": false,
       "redacted": false,

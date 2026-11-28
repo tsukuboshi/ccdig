@@ -11,8 +11,10 @@ use super::view::{
 use super::words::{self, Item};
 use crate::failure::Failure;
 
-use crate::record::{Group, Session, Turn};
-use crate::text::{Lang, clean_text, code_span, escape_inline, escape_pipes, fenced, one_line};
+use crate::record::{Asked, Group, Session, Turn};
+use crate::text::{
+    Lang, clean_text, code_span, escape_block_start, escape_inline, escape_pipes, fenced, one_line,
+};
 
 /// Records of any kind, each under a heading that names its kind. A record
 /// with `matches` shows those lines in place of its text. A result shows
@@ -52,11 +54,16 @@ fn write_view(view: &View<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Fa
         for item in &section.items {
             out.push_str(&item_heading(item, zone, lang)?);
             let written = body(&item.body, lang);
-            let text = written.trim_start_matches('\n');
+            let listed = options(item.options, lang);
+            let text = [written.trim_start_matches('\n'), listed.as_str()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
             if text.is_empty() {
                 out.push('\n');
             } else {
-                out.extend(["\n\n", text]);
+                out.extend(["\n\n", &text]);
             }
         }
     }
@@ -128,6 +135,77 @@ fn body(body: &Body<'_>, lang: Lang) -> String {
         Body::Result(ref result) => tool_result(result, lang),
         Body::Text(ref passage) => passage_text(passage, lang),
     }
+}
+
+/// Each question in `asked` as a list item, with the options offered for
+/// it as a task list under it, the ones the user picked checked, each
+/// description in a paragraph of its own under its label, and its preview
+/// in a text block under that. What the user typed is one more option,
+/// checked, and their notes follow the options.
+fn options(asked: &[Asked], lang: Lang) -> String {
+    let mut out = String::new();
+    for one in asked {
+        out.extend(["- ", &paragraph(&one.question), "\n"]);
+        for choice in &one.choices {
+            let mark = if choice.picked { "[x]" } else { "[ ]" };
+            out.extend([
+                "  - ",
+                mark,
+                " ",
+                &escape_inline(&one_line(&choice.label)),
+                "\n",
+            ]);
+            if !choice.description.is_empty() {
+                out.extend(["\n    ", &paragraph(&choice.description), "\n"]);
+            }
+            if !choice.preview.is_empty() {
+                out.extend([
+                    "\n",
+                    &indented(&fenced("text", &clean_text(&choice.preview)), "    "),
+                ]);
+            }
+        }
+        if !one.typed.is_empty() {
+            out.extend([
+                "  - [x] ",
+                words::typed(lang),
+                ": ",
+                &escape_inline(&one_line(&one.typed)),
+                "\n",
+            ]);
+        }
+        if !one.notes.is_empty() {
+            out.extend([
+                "\n  ",
+                words::notes(lang),
+                ": ",
+                &escape_inline(&one_line(&one.notes)),
+                "\n",
+            ]);
+        }
+    }
+    out
+}
+
+/// `text` on one line, escaped so that it starts a paragraph and nothing
+/// else.
+fn paragraph(text: &str) -> String {
+    escape_block_start(&escape_inline(&one_line(text)))
+}
+
+/// `block` with each line that holds anything indented by `by`, so that it
+/// stays in the list item `by` is the indent of.
+fn indented(block: &str, by: &str) -> String {
+    block
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                "\n".to_owned()
+            } else {
+                format!("{by}{line}\n")
+            }
+        })
+        .collect()
 }
 
 /// `passage`: its runs of lines, or its text in a text block.

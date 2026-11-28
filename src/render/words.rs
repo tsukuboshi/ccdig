@@ -393,6 +393,38 @@ pub const fn compacted(lang: Lang) -> &'static str {
     }
 }
 
+/// What comes before the notes the user added to an answer.
+pub const fn notes(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Notes",
+        Lang::Ja => "メモ",
+    }
+}
+
+/// What a folded preview of an option is called.
+pub const fn preview(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Preview",
+        Lang::Ja => "プレビュー",
+    }
+}
+
+/// What comes before the words the user typed in place of an option.
+pub const fn typed(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Typed",
+        Lang::Ja => "自分で打った回答",
+    }
+}
+
+/// What marks the option the user picked for a question.
+pub const fn picked(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "picked",
+        Lang::Ja => "選択",
+    }
+}
+
 /// What follows the heading of a record `--around` added as context.
 pub const fn context(lang: Lang) -> &'static str {
     match lang {
