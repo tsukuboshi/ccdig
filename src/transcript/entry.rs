@@ -5,11 +5,25 @@
 //! U+FFFD, and one mistyped block empties the prompt text. Tool blocks are read one by one, so a broken block hides only
 //! itself.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
 use crate::when::Stamp;
+
+/// What the user answered through Claude Code's question dialog, as it
+/// records it on the line of the call's result (`toolUseResult`), by
+/// question.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Answers {
+    /// Each question's answer: the label picked, or the labels picked
+    /// joined by `, `, with any words the user typed in their own.
+    pub given: HashMap<String, String>,
+    /// The notes the user added to an answer.
+    pub notes: HashMap<String, String>,
+}
 
 /// One element of a message's content.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,6 +58,10 @@ pub struct Content {
 /// One line of a transcript, reduced to the fields ccdig uses.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Entry {
+    /// What the user answered through a question dialog, or `None` when
+    /// the line does not record it, as a line of another tool's result and
+    /// the lines of Claude Code before it recorded answers do not.
+    pub answers: Option<Answers>,
     /// The message content.
     pub content: Content,
     /// The working directory the session ran in.
@@ -154,6 +172,11 @@ struct RawEntry<'line> {
     /// `toolDenialKind`, on the result of a call that did not run.
     #[serde(rename = "toolDenialKind")]
     tool_denial_kind: Option<String>,
+    /// `toolUseResult`: what a tool returned, decoded only for the answers
+    /// to a question dialog, so that a value of another shape cannot
+    /// reject the line.
+    #[serde(borrow, rename = "toolUseResult")]
+    tool_use_result: Option<&'line RawValue>,
     /// `userFeedback`, on the result of a call the user turned down with a
     /// comment.
     #[serde(rename = "userFeedback")]
@@ -183,6 +206,16 @@ struct RawMessage<'line> {
     /// value of another shape cannot reject it.
     #[serde(borrow)]
     usage: Option<&'line RawValue>,
+}
+
+/// The JSON of `toolUseResult`, for the answers to a question dialog.
+#[derive(Deserialize)]
+struct RawToolUseResult {
+    /// `annotations`: by question, an object with the `notes` on the
+    /// answer, among others.
+    annotations: Option<HashMap<String, Value>>,
+    /// `answers`: by question, the answer.
+    answers: Option<HashMap<String, Value>>,
 }
 
 /// The JSON of `message.usage`.
@@ -298,6 +331,7 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         use_wire_inputs(&mut content.blocks, wire);
     }
     Some(Entry {
+        answers: raw.tool_use_result.and_then(decode_answers),
         content,
         cwd: raw.cwd.unwrap_or_default(),
         denial_kind: raw.tool_denial_kind.unwrap_or_default(),
@@ -326,6 +360,38 @@ pub fn decode_line(line: &[u8]) -> Option<Entry> {
         usage,
         uuid: raw.uuid.unwrap_or_default(),
         version: raw.version.unwrap_or_default(),
+    })
+}
+
+/// Reads the answers in `toolUseResult`, or `None` when it holds none, as
+/// the result of another tool does. An answer or a note that is not a
+/// string is left out.
+fn decode_answers(raw: &RawValue) -> Option<Answers> {
+    let result: RawToolUseResult = serde_json::from_str(raw.get()).ok()?;
+    let strings = |values: HashMap<String, Value>| -> HashMap<String, String> {
+        values
+            .into_iter()
+            .filter_map(|(key, value)| match value {
+                Value::String(text) => Some((key, text)),
+                Value::Array(_)
+                | Value::Bool(_)
+                | Value::Null
+                | Value::Number(_)
+                | Value::Object(_) => None,
+            })
+            .collect()
+    };
+    let answers = strings(result.answers?);
+    let annotations = result.annotations.unwrap_or_default();
+    let notes = annotations
+        .iter()
+        .filter_map(|(question, notes)| {
+            Some((question.clone(), notes.get("notes")?.as_str()?.to_owned()))
+        })
+        .collect();
+    Some(Answers {
+        given: answers,
+        notes,
     })
 }
 

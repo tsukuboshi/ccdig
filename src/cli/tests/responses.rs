@@ -38,6 +38,28 @@ const PLANS: [&str; 4] = [
     r#"{"type":"user","uuid":"x-4","sessionId":"xxxx","timestamp":"2026-10-15T00:01:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-x2","content":"User has approved your plan. You can now start coding.\n\n## Approved Plan (edited by user):\n# Plan\n\n- step one, edited\n"}]}}"#,
 ];
 
+/// A session where Claude Code asks two questions, one of them with
+/// several options to pick and the other with a preview for each option,
+/// and the user picks one of each, with a note on the first; then asks one where the user types an
+/// answer of their own; then one in a version that records no answers
+/// apart from its text; and the user types a prompt.
+const ASKED: [&str; 7] = [
+    r#"{"type":"assistant","uuid":"o-1","sessionId":"oooo","timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"tool_use","id":"t-o1","name":"AskUserQuestion","input":{"questions":[{"question":"Which branch?","header":"Branch","multiSelect":false,"options":[{"label":"main (Recommended)","description":"The default branch","preview":"git switch main"},{"label":"develop","description":"The branch for the next release","preview":"git switch develop"}]},{"question":"Which parts?","header":"Parts","multiSelect":true,"options":[{"label":"docs","description":"README"},{"label":"code"},{"label":"tests","description":"Unit tests"}]}]}}]}}"#,
+    r#"{"type":"user","uuid":"o-2","sessionId":"oooo","timestamp":"2026-10-15T00:00:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-o1","content":"Your questions have been answered: \"Which branch?\"=\"main (Recommended)\" selected preview:\ngit switch main user notes: keep it short, \"Which parts?\"=\"docs, tests\". You can now continue with these answers in mind."}]},"toolUseResult":{"questions":[],"answers":{"Which branch?":"main (Recommended)","Which parts?":"docs, tests"},"annotations":{"Which branch?":{"preview":"git switch main","notes":"keep it short"}}}}"#,
+    r#"{"type":"assistant","uuid":"o-3","sessionId":"oooo","timestamp":"2026-10-15T00:01:00Z","message":{"content":[{"type":"tool_use","id":"t-o2","name":"AskUserQuestion","input":{"questions":[{"question":"Which name?","header":"Name","multiSelect":false,"options":[{"label":"main","description":"Short"},{"label":"dig"}]}]}}]}}"#,
+    r#"{"type":"user","uuid":"o-4","sessionId":"oooo","timestamp":"2026-10-15T00:01:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-o2","content":"The user answered: \"Which name?\"=\"main, please\". Read the answers carefully"}]},"toolUseResult":{"questions":[],"answers":{"Which name?":"main, please"},"annotations":{}}}"#,
+    r#"{"type":"assistant","uuid":"o-5","sessionId":"oooo","timestamp":"2026-10-15T00:02:00Z","message":{"content":[{"type":"tool_use","id":"t-o3","name":"AskUserQuestion","input":{"questions":[{"question":"Which tag?","header":"Tag","multiSelect":false,"options":[{"label":"v1"},{"label":"v2"}]}]}}]}}"#,
+    r#"{"type":"user","uuid":"o-6","sessionId":"oooo","timestamp":"2026-10-15T00:02:10Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-o3","content":"Your questions have been answered: \"Which tag?\"=\"v1\". You can now continue with these answers in mind."}]},"toolUseResult":"an old text"}"#,
+    r#"{"type":"user","uuid":"o-7","sessionId":"oooo","timestamp":"2026-10-15T00:03:00Z","message":{"role":"user","content":"thanks"}}"#,
+];
+
+/// A history with the session `oooo` holding `ASKED`.
+fn asked() -> Result<History, Box<dyn Error>> {
+    let history = History::new("root")?;
+    history.write("-Users-alice-plan/oooo.jsonl", fixture_time()?, &ASKED)?;
+    Ok(history)
+}
+
 /// A history with the session `rrrr` holding `LINES`.
 fn history() -> Result<History, Box<dyn Error>> {
     let history = History::new("root")?;
@@ -381,5 +403,125 @@ fn the_reply_a_prompt_follows_is_the_one_on_its_branch_and_not_a_sub_agent_s() -
         ],
         &digest.out,
     )?;
+    Ok(())
+}
+
+#[test]
+fn an_answer_lists_the_options_offered_and_which_the_user_picked() -> TestResult {
+    let history = asked()?;
+    let prompts = json_lines(history.run(&["records", "--session", "oooo", "--type", "prompt"]))?;
+    let options: Vec<Value> = prompts
+        .iter()
+        .map(|prompt| prompt.get("options").cloned().unwrap_or_default())
+        .collect();
+    check_eq(
+        &options,
+        &vec![
+            serde_json::json!([
+                {
+                    "question": "Which branch?",
+                    "choices": [
+                        {"label": "main (Recommended)", "description": "The default branch", "preview": "git switch main", "picked": true},
+                        {"label": "develop", "description": "The branch for the next release", "preview": "git switch develop", "picked": false},
+                    ],
+                    "typed": "",
+                    "notes": "keep it short",
+                },
+                {
+                    "question": "Which parts?",
+                    "choices": [
+                        {"label": "docs", "description": "README", "preview": "", "picked": true},
+                        {"label": "code", "description": "", "preview": "", "picked": false},
+                        {"label": "tests", "description": "Unit tests", "preview": "", "picked": true},
+                    ],
+                    "typed": "",
+                    "notes": "",
+                },
+            ]),
+            serde_json::json!([
+                {
+                    "question": "Which name?",
+                    "choices": [
+                        {"label": "main", "description": "Short", "preview": "", "picked": false},
+                        {"label": "dig", "description": "", "preview": "", "picked": false},
+                    ],
+                    "typed": "main, please",
+                    "notes": "",
+                },
+            ]),
+            serde_json::json!([]),
+            serde_json::json!([]),
+        ],
+        "options",
+    )?;
+    check_eq(
+        &strings(&prompts, "kind"),
+        &vec!["answer", "typed-answer", "answer", "text"],
+        "kinds",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_options_can_be_left_out_and_are_masked() -> TestResult {
+    let history = asked()?;
+    let left_out = json_lines(history.run(&[
+        "records",
+        "--session",
+        "oooo",
+        "--type",
+        "prompt",
+        "--fields",
+        "!options",
+    ]))?;
+    check_eq(
+        &left_out
+            .iter()
+            .any(|prompt| prompt.get("options").is_some()),
+        &false,
+        "options left out",
+    )?;
+    let masked = json_lines(history.run(&[
+        "records",
+        "--session",
+        "oooo",
+        "--kind",
+        "answer",
+        "--mask-values",
+        r#"{"release": ["next release"]}"#,
+    ]))?;
+    let description = masked
+        .first()
+        .and_then(|prompt| prompt.pointer("/options/0/choices/1/description"))
+        .and_then(Value::as_str);
+    check_eq(
+        &description,
+        &Some("The branch for the \u{FF3B}release1\u{FF3D}"),
+        "masked description",
+    )?;
+    check_eq(
+        &masked
+            .first()
+            .and_then(|prompt| prompt.get("redacted"))
+            .and_then(Value::as_bool),
+        &Some(true),
+        "redacted",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_search_does_not_match_an_option_the_user_did_not_pick() -> TestResult {
+    let history = asked()?;
+    let found = json_lines(history.run(&[
+        "records",
+        "--session",
+        "oooo",
+        "--type",
+        "prompt",
+        "--grep",
+        "develop",
+    ]))?;
+    check_eq(&found.len(), &0, "records")?;
     Ok(())
 }

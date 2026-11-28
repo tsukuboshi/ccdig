@@ -11,7 +11,7 @@ use super::json::Fields;
 use crate::failure::Failure;
 use serde_json::{Map, Value};
 
-use crate::record::{Kind, MatchLine, Outcome, Record, Source, ToolCall, ToolResult, Turn};
+use crate::record::{Asked, Kind, MatchLine, Outcome, Record, Source, ToolCall, ToolResult, Turn};
 use crate::text::one_line;
 use crate::when::Stamp;
 
@@ -111,6 +111,11 @@ pub struct Item<'records> {
     /// Whether a search matched the record, rather than `--around` adding
     /// it as context.
     pub matched: bool,
+    /// The questions an answer was to, with the options offered, when
+    /// `--fields` keeps them and the answer shows whole rather than as the
+    /// lines a search matched, in place of its text; empty for the other
+    /// records.
+    pub options: &'records [Asked],
     /// Where the record's line is, which a format may name it by.
     pub origin: Origin<'records>,
     /// When the record was written.
@@ -542,7 +547,16 @@ fn item<'records>(
 ) -> Result<Item<'records>, Failure> {
     let body = match *turn {
         Turn::Prompt(ref prompt) => {
-            Body::Text(passage(&prompt.text, &prompt.search.matches, fields))
+            let shown = passage(&prompt.text, &prompt.search.matches, fields);
+            // The options of an answer say all its text does, and more.
+            if fields.keeps("options")
+                && !prompt.options.is_empty()
+                && matches!(shown, Passage::Text(_))
+            {
+                Body::Text(Passage::Hidden)
+            } else {
+                Body::Text(shown)
+            }
         }
         Turn::Reply(ref reply) | Turn::Thinking(ref reply) => {
             Body::Text(passage(&reply.text, &reply.search.matches, fields))
@@ -557,6 +571,19 @@ fn item<'records>(
             fields,
         )?),
     };
+    let options: &[Asked] = match *turn {
+        Turn::Prompt(ref prompt)
+            if fields.keeps("options") && !matches!(body, Body::Text(Passage::Lines(_))) =>
+        {
+            &prompt.options
+        }
+        Turn::Call(_)
+        | Turn::Prompt(_)
+        | Turn::Reply(_)
+        | Turn::Result(_)
+        | Turn::Summary(_)
+        | Turn::Thinking(_) => &[],
+    };
     let head = turn.head();
     let source = turn.source();
     Ok(Item {
@@ -569,6 +596,7 @@ fn item<'records>(
         .filter(|id| !id.is_empty()),
         label: label(turn),
         matched: turn.matched(),
+        options,
         origin: Origin {
             block: source.block,
             kind: turn.type_name(),

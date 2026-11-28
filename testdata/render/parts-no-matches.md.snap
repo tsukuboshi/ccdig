@@ -18,9 +18,28 @@ plain
 
 ### 2026-10-13 10:23:00 JST - turn 1 - Answer
 
-```text
-"A?"="a"
-```
+- \# A?
+  - [x] a
+
+    The \*first\* \<b\>one\</b\>
+
+    ```text
+    fn a() {
+        b();
+    }
+    ```
+  - [ ] \[b\](javascript:x)
+
+    ```text
+    <b>not</b> picked
+    ```
+
+  Notes: 1. keep \<it\> short
+- B?
+  - [ ] c
+
+    \> quoted
+  - [x] Typed: - my own words
 
 ### 2026-10-13 10:23:00 JST - turn 1 - Approval
 

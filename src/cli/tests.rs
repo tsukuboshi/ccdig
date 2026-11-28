@@ -734,7 +734,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":11,\"filter\":\"strict-v5\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":12,\"filter\":\"strict-v5\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -2095,8 +2095,9 @@ fn a_prompt_carries_the_permission_mode_recorded_on_its_line() -> TestResult {
         .collect::<Result<_, _>>()?;
     check_eq(&modes, &vec!["plan".to_owned(), String::new()], &ran.out)?;
     check_eq(
-        &ran.out
-            .contains(r#""command":"","permission_mode":"plan","superseded":false,"redacted""#),
+        &ran.out.contains(
+            r#""command":"","options":[],"permission_mode":"plan","superseded":false,"redacted""#,
+        ),
         &true,
         &ran.out,
     )?;
@@ -2136,7 +2137,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(11_i32)),
+        &Some(&serde_json::json!(12_i32)),
         "schema",
     )?;
     check_eq(

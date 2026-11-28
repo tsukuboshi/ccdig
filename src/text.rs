@@ -129,6 +129,26 @@ pub fn escape_inline(text: &str) -> String {
     escaped
 }
 
+/// Backslash-escapes the marker that would make `text`, a line that
+/// starts a paragraph, start another block in Markdown instead: a heading,
+/// a quote, a bullet, a setext underline, a fence of tildes, or an ordered
+/// list item, whose period or parenthesis after up to nine digits is
+/// escaped. The other block markers are inline characters, which
+/// `escape_inline` escapes.
+pub fn escape_block_start(text: &str) -> String {
+    if text.starts_with(['#', '>', '-', '+', '=', '~']) {
+        return format!("\\{text}");
+    }
+    let digits = text.chars().take_while(char::is_ascii_digit).count();
+    if (1..=9).contains(&digits)
+        && let Some((number, rest)) = text.split_at_checked(digits)
+        && rest.starts_with(['.', ')'])
+    {
+        return format!("{number}\\{rest}");
+    }
+    text.to_owned()
+}
+
 /// Escapes the characters that start a tag or an entity, or end an
 /// attribute value in either quote, so that `text` reads as written in an
 /// element's content or in a quoted attribute value. `text` should be

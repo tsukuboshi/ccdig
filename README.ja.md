@@ -451,7 +451,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.7","schema":11,"filter":"strict-v5"}
+{"version":"0.0.7","schema":12,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -569,7 +569,7 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","superseded":false,"redacted":false,
+ "options":[],"permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -640,6 +640,19 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
   前の履歴では回答はすべて `answer` です。打ち方が `approval` の依頼文は `ExitPlanMode` で承認したプランで、本文は
   Claude Code の定型文の最初の 1 文です。どちらも `rejection` と同じく、
   呼び出しの結果と同じ行にあります。
+- 打ち方が `answer` か `typed-answer` の依頼文の `options` は、Claude Code が
+  した質問の一覧です。質問ごとに `question`、提示した選択肢を順に並べた
+  `choices`、ユーザーが書いたものを持ちます。書いたものは、選択肢の代わりや
+  選んだものの後に自分の言葉で打った `typed` と、付けたメモの `notes` で、
+  無ければ空です。選択肢は `label`、`description` と `preview`（どちらも
+  無ければ空）、ユーザーが選んだかを表す `picked` です。
+  Claude Code が本文とは別に記録する回答から読むので、それを記録しない
+  バージョンの回答では `options` は空です。選択肢も本文と同じくマスクしますが、
+  `--grep` の検索対象には入らないので、パターンは本文にだけ一致します。
+  Markdown と HTML では、`--fields` で `options` を除かない限り、回答を本文の
+  代わりにこの一覧で示し、選んだものに印を付けます。HTML ではプレビューを
+  折りたたみます。ほかの打ち方では
+  `options` は空です。
 - `superseded` は、ユーザーがファイル内で後から別の依頼文を代わりに
   送った依頼文で `true` です。同じ行の後に続く依頼文のことで、Esc で
   依頼文を書き直したときや、返答を中断して送り直したときに生じます。
@@ -720,7 +733,7 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":11,"filter":"strict-v5","ccdig":"0.0.7",
+{"schema":12,"filter":"strict-v5","ccdig":"0.0.7",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

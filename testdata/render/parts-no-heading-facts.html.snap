@@ -28,8 +28,32 @@ plain</pre>
 </article>
 <article id="r2" class="answer">
 <h3>Answer <a class="anchor" href="#r2">#</a></h3>
+<div class="options">
+<p class="question"># A?</p>
+<ul>
+<li class="picked"><strong>a</strong> <span class="badge ok">picked</span><span class="description">The *first* &lt;b&gt;one&lt;/b&gt;</span><details class="preview">
+<summary>Preview</summary>
 <pre>
-&quot;A?&quot;=&quot;a&quot;</pre>
+fn a() {
+    b();
+}</pre>
+</details></li>
+<li><strong>[b](javascript:x)</strong><details class="preview">
+<summary>Preview</summary>
+<pre>
+&lt;b&gt;not&lt;/b&gt; picked</pre>
+</details></li>
+</ul>
+<p><span class="note">Notes:</span> <span class="written">1. keep &lt;it&gt; short</span></p>
+</div>
+<div class="options">
+<p class="question">B?</p>
+<ul>
+<li><strong>c</strong><span class="description">&gt; quoted</span></li>
+<li class="picked"><span class="note">Typed:</span> <span class="written">- my own
+words</span> <span class="badge ok">picked</span></li>
+</ul>
+</div>
 </article>
 <article id="r3" class="approval">
 <h3>Approval <a class="anchor" href="#r3">#</a></h3>

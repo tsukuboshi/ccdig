@@ -115,3 +115,54 @@ fn first_sentence(text: &str) -> String {
         .trim()
         .to_owned()
 }
+
+/// Which of `labels`, the options offered for a question, `answer` says
+/// the user picked, in the order of `labels`, and what is left of it that
+/// they typed in their own words, or empty.
+///
+/// `answer` is what Claude Code records for the question: the label
+/// picked, or with `several`, the labels picked joined by `, `, with any
+/// words the user typed after them. For one option, only an answer that is
+/// a label whole picks it, so a typed answer that starts with one is not
+/// taken for it; for several, the labels are read from the start, the
+/// longest first where one starts another.
+pub fn picked(answer: &str, labels: &[&str], several: bool) -> (Vec<bool>, String) {
+    let mut found = vec![false; labels.len()];
+    if !several {
+        if let Some(slot) = labels
+            .iter()
+            .position(|&label| label == answer)
+            .and_then(|at| found.get_mut(at))
+        {
+            *slot = true;
+            return (found, String::new());
+        }
+        return (found, answer.to_owned());
+    }
+    let mut rest = answer;
+    loop {
+        let next = labels
+            .iter()
+            .enumerate()
+            .filter(|&(index, label)| {
+                !label.is_empty()
+                    && found.get(index) == Some(&false)
+                    && rest
+                        .strip_prefix(label)
+                        .is_some_and(|after| after.is_empty() || after.starts_with(", "))
+            })
+            .max_by_key(|&(_, label)| label.len());
+        let Some((index, label)) = next else {
+            break;
+        };
+        if let Some(slot) = found.get_mut(index) {
+            *slot = true;
+        }
+        let after = rest.get(label.len()..).unwrap_or_default();
+        rest = after.strip_prefix(", ").unwrap_or(after);
+    }
+    (found, rest.to_owned())
+}
+
+#[cfg(test)]
+mod tests;

@@ -236,6 +236,36 @@ section.subagent > h2 {
   font-size: 1.05rem;
 }
 
+/* The options offered for a question: the ones not picked fade, and the
+   picked one carries a badge, so it reads without the colors. */
+div.options p.question {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
+div.options ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+div.options li:not(.picked) {
+  color: var(--muted);
+}
+
+div.options .description {
+  display: block;
+  font-size: 0.9em;
+}
+
+div.options .written {
+  white-space: pre-wrap;
+}
+
+div.options details.preview {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9em;
+}
+
 p.lines,
 p.key {
   margin: 0.5rem 0 0;

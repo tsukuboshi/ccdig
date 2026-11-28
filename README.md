@@ -475,7 +475,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.7","schema":11,"filter":"strict-v5"}
+{"version":"0.0.7","schema":12,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -591,7 +591,7 @@ Warnings, errors, the `--mask-report` line, and `--help` stay in English.
  "project":"-Users-alice-blog","cwd":"/Users/alice/blog","git_branch":"main",
  "timestamp":"2026-10-13T10:00:01+09:00","turn":1,
  "text":"/weekly-report last week","kind":"slash","command":"/weekly-report",
- "permission_mode":"","superseded":false,"redacted":false,
+ "options":[],"permission_mode":"","superseded":false,"redacted":false,
  "source":{"file":"/Users/alice/.claude/projects/-Users-alice-blog/<uuid>.jsonl",
            "line":3,"uuid":"<entry uuid>"},
  "matched":true,"matches":[]}
@@ -667,6 +667,19 @@ plan approved; the record type is `type`, which `--type` picks.
   prompt of kind `approval` is a plan approved with `ExitPlanMode`, with
   the first sentence of Claude Code's text. Like a `rejection`, each is on the line
   of the call's result.
+- `options` of an `answer` or a `typed-answer` lists the questions Claude
+  Code asked, each with its `question`, its `choices`, the options it
+  offered in order, and what the user wrote: `typed`, the words they typed
+  in place of an option or after the ones picked, and `notes`, the notes
+  they added, each empty when there is none. A choice has its `label`, its
+  `description` and its `preview`, each empty when Claude Code gave none,
+  and `picked`, whether the user picked it. They
+  are read from the answers Claude Code records apart from the text, so
+  `options` is empty for an answer of a version that records none. They
+  are masked as text is, but `--grep` does not search them, so a pattern
+  matches only the text. Markdown and HTML show an answer by its options,
+  the picked ones marked, in place of its text, unless `--fields` leaves
+  `options` out; HTML folds each preview. `options` is empty for the other kinds.
 - `superseded` is `true` for a prompt the user sent another prompt in
   place of, later in the file: one that follows the same line, as when
   they press Esc and edit the prompt, or interrupt the reply and send it
@@ -747,7 +760,7 @@ plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":11,"filter":"strict-v5","ccdig":"0.0.7",
+{"schema":12,"filter":"strict-v5","ccdig":"0.0.7",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

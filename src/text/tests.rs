@@ -3,8 +3,8 @@
 mod properties;
 
 use super::{
-    Lang, Span, clean_text, code_span, cut_span, cut_text, escape_inline, escape_pipes, one_line,
-    shell_quote,
+    Lang, Span, clean_text, code_span, cut_span, cut_text, escape_block_start, escape_inline,
+    escape_pipes, one_line, shell_quote,
 };
 use crate::testing::{TestResult, check_eq};
 
@@ -59,6 +59,31 @@ fn escape_inline_escapes_each_inline_markdown_character_but_not_hash() -> TestRe
         "\\\\\\`\\*\\_\\[\\]\\<\\>\\!\\&\\|#",
         "special characters",
     )?;
+    Ok(())
+}
+
+#[test]
+fn escape_block_start_keeps_a_line_from_starting_a_block() -> TestResult {
+    for (name, text, want) in [
+        ("a heading", "# A?", "\\# A?"),
+        ("a quote", "> quoted", "\\> quoted"),
+        ("a bullet", "- item", "\\- item"),
+        ("a plus bullet", "+ item", "\\+ item"),
+        ("a setext underline", "===", "\\==="),
+        ("a fence of tildes", "~~~", "\\~~~"),
+        ("an ordered item", "1. keep", "1\\. keep"),
+        ("an ordered item with a paren", "12) keep", "12\\) keep"),
+        ("a number that starts no item", "2026 plans", "2026 plans"),
+        (
+            "too many digits for an item",
+            "1234567890. x",
+            "1234567890. x",
+        ),
+        ("plain text", "plain", "plain"),
+        ("empty", "", ""),
+    ] {
+        check_eq(escape_block_start(text).as_str(), want, name)?;
+    }
     Ok(())
 }
 

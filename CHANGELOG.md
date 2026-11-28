@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A prompt of kind `answer` or `typed-answer` has a new `options` key: the
+  questions Claude Code asked, each with the options it offered, their
+  descriptions and previews, whether the user picked each, and what the
+  user typed and their notes, read from the answers Claude Code records
+  apart from the text and masked as text is. `--grep` does not search
+  them. Markdown and HTML show an answer by its options in place of its
+  text, the picked ones marked, and HTML folds each preview. The other prompts,
+  and the answers of a version that records none, have it empty. The
+  schema is now 12.
+
 ## [0.0.7] - 2026-11-28
 
 ### Added

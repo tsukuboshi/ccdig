@@ -91,6 +91,7 @@ files below are the ones there are.
   `transcript/reader/tests/properties.rs`,
   `classify/denial/tests/properties.rs`,
   `classify/human/tests/properties.rs`,
+  `classify/response/tests/properties.rs`,
   `classify/slash/tests/properties.rs`, `redact/tests/properties.rs`,
   `stats/tests/properties.rs`, `filter/tests/properties.rs`,
   `collect/tests/properties.rs`,
