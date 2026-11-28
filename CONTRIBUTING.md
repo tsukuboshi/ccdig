@@ -24,6 +24,7 @@ commands.
 cargo fmt --all --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
+cargo insta test --check --unreferenced=reject
 cargo deny check
 ast-grep test
 ast-grep scan --error=unused-suppression --error=no-suppress-all
