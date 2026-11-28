@@ -20,6 +20,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   labels, column names, and notes of a cut that Markdown and `digest` put
   around the records. The default, `en`, writes them as before. JSON and
   JSON Lines take no `--lang`, and leave `CCDIG_LANG` unused.
+- `records --format html` writes the records as one page to pass on, with
+  each tool call folded under its tool, what it was about, and how it
+  ended, sub-agents in the calls that started them, and how many times
+  each rule masked something at the top, in the words of `--lang`. It
+  runs no script and loads nothing, follows dark mode, and prints with its
+  folds open. `sessions` and `stats` take no `html`.
 
 ## [0.0.6] - 2026-11-28
 

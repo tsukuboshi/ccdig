@@ -1,0 +1,89 @@
+---
+source: src/testing.rs
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>Records</h1>
+<p class="count">Records: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 2 context</p>
+<p class="masking">Masked 2 by aws-credential, 1 by email</p>
+</header>
+<section>
+<h2>Weekly report draft</h2>
+<article id="r1" class="prompt">
+<h3>Prompt <a class="anchor" href="#r1">#</a></h3>
+</article>
+<article id="r2" class="answer">
+<h3>Answer <a class="anchor" href="#r2">#</a></h3>
+</article>
+<article id="r3" class="approval">
+<h3>Approval <a class="anchor" href="#r3">#</a></h3>
+</article>
+<article id="r4" class="rejection">
+<h3>Rejection <a class="anchor" href="#r4">#</a></h3>
+</article>
+<article id="r5" class="typed-answer">
+<h3>Typed answer <a class="anchor" href="#r5">#</a></h3>
+</article>
+<article id="r6" class="thinking">
+<h3>Thinking <a class="anchor" href="#r6">#</a></h3>
+</article>
+<article id="r7" class="reply context">
+<h3>Reply <span class="note">(context)</span> <a class="anchor" href="#r7">#</a></h3>
+</article>
+<article id="r8" class="reply">
+<h3>Reply <a class="anchor" href="#r8">#</a></h3>
+</article>
+<article id="r9" class="call">
+<details>
+<summary>Tool call <a class="anchor" href="#r9">#</a></summary>
+<section class="subagent">
+<h2>Weekly report draft</h2>
+<article id="r16" class="reply">
+<h3>Reply <a class="anchor" href="#r16">#</a></h3>
+</article>
+</section>
+</details>
+</article>
+<article id="r10" class="call">
+<details>
+<summary>Tool call <a class="anchor" href="#r10">#</a></summary>
+</details>
+</article>
+<article id="r11" class="result">
+<h3>Tool result <a class="anchor" href="#r11">#</a></h3>
+<p class="link"><a href="#r10">Tool call</a></p>
+</article>
+<article id="r12" class="call context">
+<details>
+<summary>Tool call <span class="note">(context)</span> <a class="anchor" href="#r12">#</a></summary>
+</details>
+</article>
+<article id="r13" class="result">
+<h3>Tool result <a class="anchor" href="#r13">#</a></h3>
+<p class="link"><a href="#r12">Tool call</a></p>
+</article>
+<article id="r14" class="call">
+<details>
+<summary>Tool call <a class="anchor" href="#r14">#</a></summary>
+</details>
+</article>
+<article id="r15" class="summary">
+<details>
+<summary>Summary <span class="note">The context was compacted here</span> <a class="anchor" href="#r15">#</a></summary>
+</details>
+</article>
+</section>
+</body>
+</html>

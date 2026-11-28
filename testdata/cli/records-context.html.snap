@@ -1,0 +1,68 @@
+---
+source: src/testing.rs
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>Records</h1>
+<p class="count">Records: 3 (reply 1, call 1, result 1)</p>
+<p class="masking">Masked nothing</p>
+</header>
+<section>
+<h2>(untitled)</h2>
+<dl class="facts">
+<dt>Project</dt><dd><code>-Users-alice-blog</code></dd>
+<dt>Session</dt><dd><code>eeee</code></dd>
+<dt>Records shown</dt><dd><time datetime="2026-10-15T09:00:10+09:00">2026-10-15 09:00:10 JST</time> – <time datetime="2026-10-15T09:00:30+09:00">2026-10-15 09:00:30 JST</time></dd>
+</dl>
+<article id="reply-e-2-0" class="reply">
+<h3><time datetime="2026-10-15T09:00:10+09:00">2026-10-15 09:00:10 JST</time> - turn 1 - Reply <a class="anchor" href="#reply-e-2-0">#</a></h3>
+<p class="lines">Lines 2-4, matched 3</p>
+<pre>
+line two
+<mark>The Cloud edition was left out.</mark>
+line four</pre>
+<p class="lines">Lines 6-8, matched 7</p>
+<pre>
+line six
+<mark>The cloud edition uses zip.</mark>
+line eight</pre>
+</article>
+<article id="call-e-3-0" class="call">
+<details>
+<summary><time datetime="2026-10-15T09:00:20+09:00">2026-10-15 09:00:20 JST</time> - turn 1 - Tool call <code class="tool">Write</code> <span class="badge ok">ok</span> <a class="anchor" href="#call-e-3-0">#</a></summary>
+<p class="lines">input.content lines 2-4, matched 3</p>
+<pre>
+
+<mark>The cloud edition</mark>
+ships later.</pre>
+<p class="link"><a href="#result-e-4-0">Tool result</a></p>
+</details>
+</article>
+<article id="result-e-4-0" class="result">
+<h3><time datetime="2026-10-15T09:00:30+09:00">2026-10-15 09:00:30 JST</time> - turn 1 - Tool result <a class="anchor" href="#result-e-4-0">#</a></h3>
+<p class="link"><a href="#call-e-3-0">Tool call</a></p>
+<dl class="facts">
+<dt>Tool</dt><dd><code>Write</code></dd>
+<dt>Error</dt><dd>no</dd>
+</dl>
+<p class="lines">Lines 1-3, matched 2</p>
+<pre>
+   483	fn a() {}
+<mark>   484	cloud edition</mark>
+   485	fn b() {}</pre>
+</article>
+</section>
+</body>
+</html>

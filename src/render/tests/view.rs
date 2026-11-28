@@ -29,6 +29,17 @@ type Heading<'records> = (Option<Stamp>, Option<usize>, bool, Option<&'records s
 /// An item's label, with what it came to when it is a call.
 type Shown<'records> = (Label, Option<Ending<'records>>);
 
+/// Each section's branch, parent, and span, and each item's origin and
+/// call ID.
+type Origins = (
+    Vec<(
+        Option<&'static str>,
+        Option<&'static str>,
+        Option<(Stamp, Stamp)>,
+    )>,
+    Vec<(&'static str, &'static str, usize, Option<&'static str>)>,
+);
+
 /// A section's title and facts.
 type Top<'records> = (&'records str, Vec<Fact<'records>>);
 
@@ -380,6 +391,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
                     failed: false,
                     output: Some("done"),
                 }),
+                gist: Some("ls"),
                 input: shown,
                 tool: Some(Tool::Named("Bash")),
             }),
@@ -390,6 +402,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
             Fields::default(),
             Body::Call(CallBody {
                 ending: Some(Ending::Missing),
+                gist: None,
                 input: Input::Shown {
                     json: None,
                     texts: vec![("plan", "one\ntwo")],
@@ -403,6 +416,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
             Fields::default(),
             Body::Call(CallBody {
                 ending: Some(Ending::Missing),
+                gist: None,
                 input: Input::Lines(vec![Run {
                     field: Some("input.command"),
                     first: 1,
@@ -418,6 +432,7 @@ fn a_call_shows_its_tool_input_and_ending_as_fields_keeps() -> TestResult {
             fields(&[], &["tool", "input", "result"]),
             Body::Call(CallBody {
                 ending: None,
+                gist: None,
                 input: Input::Hidden,
                 tool: None,
             }),
@@ -453,4 +468,92 @@ fn a_result_shows_its_tool_failure_denial_and_text_as_fields_keeps() -> TestResu
             }),
         ),
     ])
+}
+
+#[test]
+fn each_item_and_section_says_where_it_comes_from_as_fields_keeps() -> TestResult {
+    let ran = outcome(false, "", "done");
+    let mut call = call_at(5, "Agent", json!({}), "toolu_a", Some(ran.clone()))?;
+    call.source.uuid = "u-call".to_owned();
+    call.source.block = 1;
+    let sub_agent = Turn::Reply(Reply {
+        subagent: "agent-7".to_owned(),
+        spawned: Spawned {
+            parent_tool_use_id: "toolu_a".to_owned(),
+            ..Spawned::default()
+        },
+        head: Head {
+            git_branch: String::new(),
+            ..blog_head("2026-10-13T01:25:30Z")?
+        },
+        ..reply_at("2026-10-13T01:25:30Z", AGENT_FILE, 1, "Looked.")?
+    });
+    let turns = [
+        Turn::Reply(reply_at("2026-10-13T01:26:00Z", BLOG_FILE, 2, "later")?),
+        Turn::Call(call),
+        Turn::Result(ToolResult {
+            search: found(&[("text", 1, "done", true)]),
+            ..result_at(6, "Agent", "toolu_a", &ran)?
+        }),
+        sub_agent,
+    ];
+    // (name, the `--fields`, each section's branch, parent, and span, and
+    // each item's origin and call ID)
+    let session_span = (at("2026-10-13T01:25:00Z")?, at("2026-10-13T01:26:00Z")?);
+    let agent_span = (at("2026-10-13T01:25:30Z")?, at("2026-10-13T01:25:30Z")?);
+    let cases: [(&str, Fields, Origins); 2] = [
+        (
+            "every key",
+            Fields::default(),
+            (
+                vec![
+                    (Some("main"), None, Some(session_span)),
+                    (None, Some("toolu_a"), Some(agent_span)),
+                ],
+                vec![
+                    ("reply", "", 0, None),
+                    ("call", "u-call", 1, Some("toolu_a")),
+                    ("result", "", 0, Some("toolu_a")),
+                    ("reply", "", 0, None),
+                ],
+            ),
+        ),
+        (
+            "without the branch, the time, and the source",
+            fields(&[], &["git_branch", "timestamp", "source"]),
+            (
+                vec![(None, None, None), (None, Some("toolu_a"), None)],
+                vec![
+                    ("reply", "", 0, None),
+                    ("call", "", 1, Some("toolu_a")),
+                    ("result", "", 0, Some("toolu_a")),
+                    ("reply", "", 0, None),
+                ],
+            ),
+        ),
+    ];
+    for (name, kept, (sections, items)) in cases {
+        let view = records(&turns, &kept)?;
+        let got_sections: Vec<_> = view
+            .sections
+            .iter()
+            .map(|section| (section.branch, section.parent, section.span))
+            .collect();
+        check_eq(&got_sections, &sections, name)?;
+        let got_items: Vec<_> = view
+            .sections
+            .iter()
+            .flat_map(|section| &section.items)
+            .map(|item| {
+                (
+                    item.origin.kind,
+                    item.origin.uuid,
+                    item.origin.block,
+                    item.call_id,
+                )
+            })
+            .collect();
+        check_eq(&got_items, &items, name)?;
+    }
+    Ok(())
 }

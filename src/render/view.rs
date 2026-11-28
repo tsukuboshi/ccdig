@@ -1,7 +1,7 @@
 //! What the records show for a reader, apart from how a format writes it:
 //! which records stand under their own heading, what each heading says,
-//! and which parts of each record `--fields` keeps. The Markdown of
-//! `records` writes it. The texts stay as the records hold them, masked
+//! and which parts of each record `--fields` keeps. The Markdown and the
+//! HTML of `records` write it. The texts stay as the records hold them, masked
 //! but not escaped, and the words stay out: a format escapes and words
 //! them its own way.
 
@@ -14,6 +14,21 @@ use serde_json::{Map, Value};
 use crate::record::{Kind, MatchLine, Outcome, Record, Source, ToolCall, ToolResult, Turn};
 use crate::text::one_line;
 use crate::when::Stamp;
+
+/// The keys of a call's input that say what the call is about, in the order
+/// they are looked for: a command, a file, a pattern, a page, a search, what
+/// a sub-agent is for, a skill, and a directory. The tools of Claude Code
+/// and many others name them so.
+const GIST_KEYS: [&str; 8] = [
+    "command",
+    "file_path",
+    "pattern",
+    "url",
+    "query",
+    "description",
+    "skill",
+    "path",
+];
 
 /// The records, grouped by transcript file.
 #[derive(Debug, Eq, PartialEq)]
@@ -41,10 +56,20 @@ pub struct Count {
 /// The records of one transcript file.
 #[derive(Debug, Eq, PartialEq)]
 pub struct Section<'records> {
+    /// The git branch of the first record, when it has one and `--fields`
+    /// keeps it.
+    pub branch: Option<&'records str>,
     /// What the heading says of the file, in the order shown.
     pub facts: Vec<Fact<'records>>,
     /// The records, each under its own heading.
     pub items: Vec<Item<'records>>,
+    /// The ID of the call that started the sub-agent of the file, or
+    /// `None` for a session's own file.
+    pub parent: Option<&'records str>,
+    /// The times of the earliest and the latest record shown, when
+    /// `--fields` keeps them: not when the session started or ended, as the
+    /// filters may leave out records at either end.
+    pub span: Option<(Stamp, Stamp)>,
     /// The session's title, or empty.
     pub title: &'records str,
 }
@@ -69,17 +94,35 @@ pub enum Fact<'records> {
 pub struct Item<'records> {
     /// What the record holds.
     pub body: Body<'records>,
+    /// The ID of the call a call or a result is of, which pairs them, or
+    /// `None` for the other records.
+    pub call_id: Option<&'records str>,
     /// What kind of record it is.
     pub label: Label,
     /// Whether a search matched the record, rather than `--around` adding
     /// it as context.
     pub matched: bool,
+    /// Where the record's line is, which a format may name it by.
+    pub origin: Origin<'records>,
     /// When the record was written.
     pub stamp: Option<Stamp>,
     /// The sub-agent the record comes from.
     pub subagent: Option<&'records str>,
     /// The record's turn, when it follows a prompt.
     pub turn: Option<usize>,
+}
+
+/// Where a record's line is: what tells it apart from every other record,
+/// whatever the filters keep.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Origin<'records> {
+    /// The block's index in the line.
+    pub block: usize,
+    /// The record's type, as `--type` names it.
+    pub kind: &'static str,
+    /// The line's ID, or empty when the line has none or `--fields` leaves
+    /// `source` out.
+    pub uuid: &'records str,
 }
 
 /// What kind of record an item is, as its heading names it.
@@ -145,6 +188,21 @@ pub struct Run<'records> {
     pub lines: &'records [MatchLine],
 }
 
+impl Run<'_> {
+    /// The numbers of the lines a search matched, when the run holds others
+    /// too; empty when it matched them all, which needs no saying.
+    pub fn hits(&self) -> Vec<String> {
+        if self.lines.iter().all(|line| line.hit) {
+            return Vec::new();
+        }
+        self.lines
+            .iter()
+            .filter(|line| line.hit)
+            .map(|line| line.line.to_string())
+            .collect()
+    }
+}
+
 /// A tool's name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Tool<'records> {
@@ -159,6 +217,10 @@ pub enum Tool<'records> {
 pub struct CallBody<'records> {
     /// What the call came to, or `None` when `--fields` leaves it out.
     pub ending: Option<Ending<'records>>,
+    /// The first line of the first key of the input that says what the
+    /// call is about, such as a command or a file, or `None` when it has
+    /// none, or the input does not show whole.
+    pub gist: Option<&'records str>,
     /// The call's input.
     pub input: Input<'records>,
     /// The tool, or `None` when `--fields` leaves it out.
@@ -251,19 +313,36 @@ pub fn records<'records>(
         let Some(&first) = group.first() else {
             continue;
         };
+        let head = first.head();
         sections.push(Section {
+            branch: (fields.keeps("git_branch") && !head.git_branch.is_empty())
+                .then_some(head.git_branch.as_str()),
             facts: facts(first, fields),
             items: group
                 .iter()
                 .map(|turn| item(turn, &standing, fields))
                 .collect::<Result<_, _>>()?,
-            title: &first.head().session_title,
+            parent: first
+                .spawned()
+                .map(|spawned| spawned.parent_tool_use_id.as_str())
+                .filter(|id| !id.is_empty()),
+            span: fields.keeps("timestamp").then(|| span(group)).flatten(),
+            title: &head.session_title,
         });
     }
     Ok(View {
         count: count(&shown),
         sections,
     })
+}
+
+/// The times of the earliest and the latest of `group`.
+fn span(group: &[&Turn]) -> Option<(Stamp, Stamp)> {
+    let times = || group.iter().map(|turn| turn.head().timestamp);
+    Some((
+        times().min_by_key(Stamp::instant)?,
+        times().max_by_key(Stamp::instant)?,
+    ))
 }
 
 /// How many of `shown` a search matched, by type, and how many are
@@ -393,10 +472,26 @@ fn item<'records>(
         )?),
     };
     let head = turn.head();
+    let source = turn.source();
     Ok(Item {
         body,
+        call_id: match *turn {
+            Turn::Call(ref call) => Some(call.tool_use_id.as_str()),
+            Turn::Result(ref result) => Some(result.tool_use_id.as_str()),
+            Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) | Turn::Thinking(_) => None,
+        }
+        .filter(|id| !id.is_empty()),
         label: label(turn),
         matched: turn.matched(),
+        origin: Origin {
+            block: source.block,
+            kind: turn.type_name(),
+            uuid: if fields.keeps("source") {
+                &source.uuid
+            } else {
+                ""
+            },
+        },
         stamp: fields.keeps("timestamp").then_some(head.timestamp),
         subagent: subagent(turn, fields),
         turn: (head.turn > 0 && fields.keeps("turn")).then_some(head.turn),
@@ -477,19 +572,35 @@ fn call_body<'records>(
     output: bool,
     fields: &Fields,
 ) -> Result<CallBody<'records>, Failure> {
-    let input = if !call.search.matches.is_empty() && fields.keeps("matches") {
-        Input::Lines(runs(&call.search.matches))
+    // The gist comes from the input only when the whole of it shows, so it
+    // shows no more of the input than the body does.
+    let (input, gist) = if !call.search.matches.is_empty() && fields.keeps("matches") {
+        (Input::Lines(runs(&call.search.matches)), None)
     } else if fields.keeps("input") {
-        shown_input(&call.input)?
+        (shown_input(&call.input)?, gist(&call.input))
     } else {
-        Input::Hidden
+        (Input::Hidden, None)
     };
     Ok(CallBody {
         ending: fields
             .keeps("result")
             .then(|| ending(call.result.as_ref(), output)),
+        gist,
         input,
         tool: fields.keeps("tool").then(|| tool(&call.tool)),
+    })
+}
+
+/// The first line that is not blank of the first of `GIST_KEYS` in `input`
+/// whose value is a string with one, trimmed.
+fn gist(input: &Value) -> Option<&str> {
+    GIST_KEYS.iter().find_map(|&key| {
+        input
+            .get(key)?
+            .as_str()?
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
     })
 }
 

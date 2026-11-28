@@ -9,7 +9,8 @@ for time, project, session, branch, text, record type, tool, outcome, and
 skill to narrow the history down to the part that matters, and count the
 records and tokens with `stats`. `records`, `sessions`, and `stats` write
 JSON Lines to process by default, on a terminal and in a pipe alike; give
-`--format md` for Markdown to read. Common secrets are masked by default,
+`--format md` for Markdown to read, or with `records`, `--format html` for
+one page to pass on. Common secrets are masked by default,
 and email addresses, IP addresses, your user name, and values you list
 can be masked too.
 
@@ -62,6 +63,14 @@ weekly report can be given a digest of the prompts on its branch or in
 its week as the story of the work, and someone in another time zone the
 times in theirs with `--tz`.
 
+`records --format html` writes the same records as one page, with each
+tool call folded under its tool, what it was about, and how it ended. The
+page runs no script and loads nothing, so it can be attached to a PR as
+the story of the work, handed to a customer as a record of what the agent
+ran and changed, printed to a PDF for a report, or shared as an example of
+a session that went well. See [HTML](#html) for what it shows and what to
+check before it goes out.
+
 ```sh
 # One session, also masking emails, IPs, the user name, and a file's values
 ccdig records --session 1a2b --format md --mask email,ip,user \
@@ -76,6 +85,16 @@ ccdig digest --since 2026-10-05 --until 2026-10-11 \
 
 # A log for a teammate on the US west coast, in their local time
 ccdig records --session 1a2b --format md --tz America/Los_Angeles
+
+# The sessions on a PR's branch, with the tool calls, as one page
+ccdig records --branch feature/login --type prompt,reply,call --format html > pr.html
+
+# For a customer: the shell commands the agent ran, and the calls that touched a directory
+ccdig records --session 1a2b --tool Bash --format html --mask-report text > commands.html
+ccdig records --session 1a2b --touched src/billing --type call --format html > billing.html
+
+# Each tool's input and output cut to 2000 characters
+ccdig records --session 1a2b --type prompt,reply,call --tool-chars 2000 --format html > session.html
 ```
 
 ### Let Claude Code search past sessions
@@ -274,8 +293,8 @@ Four options shape the output:
 
 | Flag | Does |
 | --- | --- |
-| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown prints those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
-| `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, and `md` Markdown to read |
+| `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown and HTML print those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
+| `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, `md` Markdown to read, and `html` one page to pass on, which only `records` writes |
 | `--message-chars N` | Keeps the first N characters of the text of each prompt, reply, and summary, followed by `… (M more characters, next: N+1-2N)`. `--message-chars FROM-TO` keeps the characters from FROM to TO, counted from 1 as `cut -c` counts, after `(K characters before) …`, so the range a cut names reads on where it left off |
 | `--tool-chars N` | Does the same to each string in a tool's input, and to each tool result's output, the one a call carries too, so a `Write` of a whole file does not fill the output. It also takes `FROM-TO`, which leaves whole a string of an input no longer than TO - FROM + 1 characters, one the cut of that many left whole, such as a file's path |
 
@@ -493,17 +512,17 @@ records that matched and keeps the context after the last of them. With
 
 `records`, `sessions`, and `stats` take `--fields` too: in JSON and JSON
 Lines it writes only the keys it names, comma-separated or repeated, in
-the order the records write them, and in Markdown it shows only the parts
-and the columns of those keys. A key with a leading `!` is left out instead, as
+the order the records write them, and in Markdown and HTML it shows only
+the parts and the columns of those keys. A key with a leading `!` is left out instead, as
 with the filters, so
 `--fields '!agent,!session_title,!project,!cwd,!git_branch'` drops the keys
 every record of a session repeats, and `sessions --fields '!usage'` drops
-the tokens. A key the command does not write is an error. In Markdown, the
-type in each heading and the session title always show, and a key it does
+the tokens. A key the command does not write is an error. In Markdown and
+HTML, the type in each heading and the session title always show, and a key it does
 not show, such as `usage` of `records`, changes nothing.
 
-`--lang ja` writes in Japanese the words Markdown and `digest` put around
-the records: the headings, the labels, the column names, and the notes of
+`--lang ja` writes in Japanese the words Markdown, HTML, and `digest` put
+around the records: the headings, the labels, the column names, and the notes of
 a cut, such as `… (1900 more characters, next: 101-200)`. The default is
 `en`. The records' own text, the tool names, the `input.<key>` names, the
 `denial` values, and the type names in the count line, which `--type`
@@ -732,7 +751,7 @@ its result under its input, and the
 result is not shown again on its own unless `--context` lists its matched
 lines, or a search matched it and not its call, which then shows as
 context. `--limit` counts a result shown under its call, as JSON lists
-it, so Markdown can show fewer records than the limit. A tool's output that is a JSON object or array is indented, with
+it, so Markdown and HTML can show fewer records than the limit. A tool's output that is a JSON object or array is indented, with
 its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
 tool wrote it. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25:01 JST - Tool call -
@@ -758,6 +777,55 @@ Markdown and digest output treat transcript fields as untrusted: terminal
 control characters and bidi overrides become U+FFFD, metadata is flattened
 to one line, titles escape inline Markdown and HTML, and digest prompts sit
 in code spans.
+
+### HTML
+
+`records --format html` writes one page on stdout, which a redirect saves.
+It starts with the count line of Markdown and how many times each rule
+masked something, or `Not masked (--no-mask)`. Each transcript file gets a
+section with the project, the session, the branch, and when the earliest
+and the latest record shown were written: a filter can leave out records
+at either end, so this is not when the session started and ended. Each
+record is under its time, its turn, and its kind, with an `id` made of its
+type, its line's ID, and its block in the line, such as
+`reply-3f2a9c1e-…-0`, so a link to it stays the same whatever the filters
+keep. A record whose line has no ID gets its place on the page, such as
+`r7`.
+
+- A call folds under one line: its tool, the first line of the first of
+  `command`, `file_path`, `pattern`, `url`, `query`, `description`,
+  `skill`, and `path` in its input, cut to 80 characters, and a badge
+  that says `ok`, `error`, `denied`, or `no result`. Its result folds
+  inside it. A result that stands on its own, as in Markdown, links to
+  its call, and the call back to it.
+- A sub-agent's records show in the call that started it when the page
+  has that call, as with `--type prompt,reply,call --subagents`, and in a
+  section of their own after the session's otherwise, as in Markdown.
+- A summary marks where the context was compacted, with its text folded.
+- Replies, thinking, and summaries are Markdown and are rendered, with
+  tables and struck-through text. Prompts, inputs, and outputs show as
+  written. A record `--around` added is faded, and the lines `--context`
+  lists have the matched ones marked.
+- A long output is not cut but scrolls in its box; `--tool-chars` cuts it.
+- The page follows the system's dark mode. Printing it, or saving it as a
+  PDF, opens every fold, in Chrome and Edge 131, Firefox 143, Safari
+  18.4, and later; in an older browser, open the folds first.
+
+The page treats transcript fields as untrusted, as Markdown does, and runs
+no script and loads nothing: its `Content-Security-Policy` allows only the
+styles written in it. Text is escaped, raw HTML in a reply shows as text,
+a link goes only to an `http` or `https` address, and an image shows only
+its description, so opening the page sends no request.
+
+Before a page goes outside the team:
+
+1. Make it with the masks its content needs, such as
+   `--mask email,ip,user --mask-values @secrets.json`, and with
+   `--mask-report text`.
+2. Check that the count on stderr is the one at the top of the page.
+3. Open the page, open the folds or the print preview, and read it through
+   for names, paths, and values no rule knows. Masking finds the patterns
+   it knows, not what a customer would rather keep to themselves.
 
 ## What is read
 
@@ -916,9 +984,12 @@ ccdig: masked 3 by github-token, 2 by values/repo, 1 by email
 
 - Records left out by a filter or `--limit` are not counted, and the
   values themselves are never written.
-- Each record counts in all its fields, as `--format jsonl` prints them,
-  so Markdown and `digest`, which leave fields out or cut the text, can
-  show fewer masks than the report counts.
+- Each record counts in all its fields, those a format leaves out too.
+  Markdown and HTML indent a tool's output that is JSON and mask the
+  strings decoding brings out, so they can count more than
+  `--format jsonl` for the same records; the top of an HTML page says the
+  same count as the report. Markdown, HTML, and `digest` leave fields out
+  or cut the text, so they can show fewer masks than they count.
 
 | Rule name | Counts |
 | --- | --- |

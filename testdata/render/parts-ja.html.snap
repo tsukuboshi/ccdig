@@ -1,0 +1,175 @@
+---
+source: src/testing.rs
+---
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>記録</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>記録</h1>
+<p class="count">記録: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 前後の記録 2</p>
+<p class="masking">マスクしていません (--no-mask)</p>
+</header>
+<section>
+<h2>Weekly report draft</h2>
+<dl class="facts">
+<dt>プロジェクト</dt><dd><code>-Users-alice-blog</code></dd>
+<dt>セッション</dt><dd><code>11111111-1111-4111-8111-111111111111</code></dd>
+<dt>ブランチ</dt><dd><code>main</code></dd>
+<dt>表示している記録の期間</dt><dd><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> – <time datetime="2026-10-13T01:26:00Z">2026-10-13 10:26:00 JST</time></dd>
+</dl>
+<article id="r1" class="prompt">
+<h3><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> - ターン 1 - プロンプト <a class="anchor" href="#r1">#</a></h3>
+<pre>
+plain</pre>
+</article>
+<article id="r2" class="answer">
+<h3><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> - ターン 1 - 回答 <a class="anchor" href="#r2">#</a></h3>
+<pre>
+&quot;A?&quot;=&quot;a&quot;</pre>
+</article>
+<article id="r3" class="approval">
+<h3><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> - ターン 1 - 承認 <a class="anchor" href="#r3">#</a></h3>
+<pre>
+the plan</pre>
+</article>
+<article id="r4" class="rejection">
+<h3><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> - ターン 1 - 却下 <a class="anchor" href="#r4">#</a></h3>
+<pre>
+not that</pre>
+</article>
+<article id="r5" class="typed-answer">
+<h3><time datetime="2026-10-13T01:23:00Z">2026-10-13 10:23:00 JST</time> - ターン 1 - 自由記述の回答 <a class="anchor" href="#r5">#</a></h3>
+<pre>
+&quot;B?&quot;=&quot;my own&quot;</pre>
+</article>
+<article id="r6" class="thinking">
+<h3><time datetime="2026-10-13T01:24:00Z">2026-10-13 10:24:00 JST</time> - 思考 <a class="anchor" href="#r6">#</a></h3>
+<div class="prose">
+<p>Let me think.</p>
+</div>
+</article>
+<article id="r7" class="reply context">
+<h3><time datetime="2026-10-13T01:24:01Z">2026-10-13 10:24:01 JST</time> - 返答 <span class="note">(前後の記録)</span> <a class="anchor" href="#r7">#</a></h3>
+<div class="prose">
+<p>Nearby.</p>
+</div>
+</article>
+<article id="r8" class="reply">
+<h3><time datetime="2026-10-13T01:24:02Z">2026-10-13 10:24:02 JST</time> - 返答 <a class="anchor" href="#r8">#</a></h3>
+<p class="lines">1 行目</p>
+<pre>
+<mark>first hit</mark></pre>
+<p class="lines">3-4 行目、一致 4</p>
+<pre>
+before
+<mark>second hit</mark></pre>
+</article>
+<article id="r9" class="call">
+<details>
+<summary><time datetime="2026-10-13T01:25:00Z">2026-10-13 10:25:00 JST</time> - ターン 2 - ツール呼び出し <code class="tool">Bash</code> <span class="gist">ls</span> <span class="badge ok">成功</span> <a class="anchor" href="#r9">#</a></summary>
+<pre class="json">
+{
+  &quot;command&quot;: &quot;ls&quot;
+}</pre>
+<p class="key"><code>input.plan</code></p>
+<pre>
+step 1
+step 2</pre>
+<details class="output">
+<summary>結果</summary>
+<pre>
+a.txt
+b.txt</pre>
+</details>
+<section class="subagent">
+<h2>Weekly report draft</h2>
+<dl class="facts">
+<dt>プロジェクト</dt><dd><code>-Users-alice-blog</code></dd>
+<dt>セッション</dt><dd><code>11111111-1111-4111-8111-111111111111</code></dd>
+<dt>サブエージェント</dt><dd><code>agent-7</code></dd>
+<dt>サブエージェントの種類</dt><dd><code>Explore</code></dd>
+<dt>ブランチ</dt><dd><code>main</code></dd>
+<dt>表示している記録の期間</dt><dd><time datetime="2026-10-13T01:25:30Z">2026-10-13 10:25:30 JST</time></dd>
+</dl>
+<article id="r16" class="reply">
+<h3><time datetime="2026-10-13T01:25:30Z">2026-10-13 10:25:30 JST</time> - 返答 - <code>agent-7</code> <a class="anchor" href="#r16">#</a></h3>
+<div class="prose">
+<p>Looked.</p>
+</div>
+</article>
+</section>
+</details>
+</article>
+<article id="r10" class="call">
+<details>
+<summary><time datetime="2026-10-13T01:25:00Z">2026-10-13 10:25:00 JST</time> - ターン 2 - ツール呼び出し <code class="tool">ExitPlanMode</code> <span class="badge denied">却下</span> <a class="anchor" href="#r10">#</a></summary>
+<p class="key"><code>input.plan</code></p>
+<pre>
+one
+two</pre>
+<p>却下理由: <code>user-rejected</code></p>
+<p class="link"><a href="#r11">ツール結果</a></p>
+</details>
+</article>
+<article id="r11" class="result">
+<h3><time datetime="2026-10-13T01:25:01Z">2026-10-13 10:25:01 JST</time> - ターン 2 - ツール結果 <a class="anchor" href="#r11">#</a></h3>
+<p class="link"><a href="#r10">ツール呼び出し</a></p>
+<dl class="facts">
+<dt>ツール</dt><dd><code>ExitPlanMode</code></dd>
+<dt>エラー</dt><dd>あり</dd>
+<dt>却下理由</dt><dd><code>user-rejected</code></dd>
+</dl>
+<p class="lines">1 行目</p>
+<pre>
+<mark>The user said no.</mark></pre>
+</article>
+<article id="r12" class="call context">
+<details>
+<summary><time datetime="2026-10-13T01:25:00Z">2026-10-13 10:25:00 JST</time> - ターン 2 - ツール呼び出し <span class="note">(前後の記録)</span> <code class="tool">Bash</code> <span class="gist">false</span> <span class="badge error">エラー</span> <a class="anchor" href="#r12">#</a></summary>
+<pre class="json">
+{
+  &quot;command&quot;: &quot;false&quot;
+}</pre>
+<p class="link"><a href="#r13">ツール結果</a></p>
+</details>
+</article>
+<article id="r13" class="result">
+<h3><time datetime="2026-10-13T01:25:01Z">2026-10-13 10:25:01 JST</time> - ターン 2 - ツール結果 <a class="anchor" href="#r13">#</a></h3>
+<p class="link"><a href="#r12">ツール呼び出し</a></p>
+<dl class="facts">
+<dt>ツール</dt><dd><code>Bash</code></dd>
+<dt>エラー</dt><dd>あり</dd>
+</dl>
+<pre>
+exit 1</pre>
+</article>
+<article id="r14" class="call">
+<details>
+<summary><time datetime="2026-10-13T01:25:00Z">2026-10-13 10:25:00 JST</time> - ターン 2 - ツール呼び出し <code class="tool">Bash</code> <span class="badge missing">結果なし</span> <a class="anchor" href="#r14">#</a></summary>
+<p class="lines">input.command 1-2 行目</p>
+<pre>
+<mark>git add .</mark>
+<mark>git commit</mark></pre>
+</details>
+</article>
+<article id="r15" class="summary">
+<details>
+<summary><time datetime="2026-10-13T01:26:00Z">2026-10-13 10:26:00 JST</time> - 要約 <span class="note">ここで文脈を圧縮しました</span> <a class="anchor" href="#r15">#</a></summary>
+<div class="prose">
+<p>Compacted.</p>
+</div>
+</details>
+</article>
+</section>
+</body>
+</html>

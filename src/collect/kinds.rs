@@ -786,6 +786,10 @@ impl Select for Prompt {
         &mut self.search
     }
 
+    fn source_mut(&mut self) -> &mut Source {
+        &mut self.source
+    }
+
     fn superseded_mut(&mut self) -> Option<&mut bool> {
         Some(&mut self.superseded)
     }
@@ -828,6 +832,10 @@ impl Select for Reply {
         &mut self.search
     }
 
+    fn source_mut(&mut self) -> &mut Source {
+        &mut self.source
+    }
+
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
         Some(&mut self.usage)
     }
@@ -860,6 +868,10 @@ impl Select for Summary {
 
     fn search_mut(&mut self) -> &mut Search {
         &mut self.search
+    }
+
+    fn source_mut(&mut self) -> &mut Source {
+        &mut self.source
     }
 }
 
@@ -918,6 +930,10 @@ impl Select for ToolCall {
         &mut self.search
     }
 
+    fn source_mut(&mut self) -> &mut Source {
+        &mut self.source
+    }
+
     fn usage_mut(&mut self) -> Option<&mut Option<Usage>> {
         Some(&mut self.usage)
     }
@@ -959,6 +975,10 @@ impl Select for Turn {
 
     fn search_mut(&mut self) -> &mut Search {
         selected_mut(self).search_mut()
+    }
+
+    fn source_mut(&mut self) -> &mut Source {
+        selected_mut(self).source_mut()
     }
 
     fn superseded_mut(&mut self) -> Option<&mut bool> {
@@ -1010,6 +1030,10 @@ impl Select for ToolResult {
 
     fn search_mut(&mut self) -> &mut Search {
         &mut self.search
+    }
+
+    fn source_mut(&mut self) -> &mut Source {
+        &mut self.source
     }
 }
 
@@ -1152,6 +1176,7 @@ fn selected_mut(turn: &mut Turn) -> &mut dyn Select {
 /// Where `entry` is, counting what masking the path counted in `masked`.
 fn source(spot: &Spot<'_>, entry: &Entry, masked: &mut Counts) -> Source {
     Source {
+        block: 0,
         file: spot.mask.meta(&spot.file.path.to_string_lossy(), masked),
         line: spot.line,
         uuid: entry.uuid.clone(),

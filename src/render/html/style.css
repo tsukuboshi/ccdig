@@ -1,0 +1,279 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --line: #d1d9e0;
+  --accent: #0969da;
+  --mark: #fff8c5;
+  --ok: #1a7f37;
+  --error: #cf222e;
+  --denied: #9a6700;
+  --missing: #59636e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --bg: #0d1117;
+    --panel: #151b23;
+    --line: #3d444d;
+    --accent: #4493f8;
+    --mark: #4d3e0a;
+    --ok: #3fb950;
+    --error: #f85149;
+    --denied: #d29922;
+    --missing: #9198a1;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  padding: 1rem;
+  max-width: 64rem;
+  color: var(--fg);
+  background: var(--bg);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 2rem 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.3rem;
+}
+
+h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+header p {
+  margin: 0.25rem 0;
+  color: var(--muted);
+}
+
+code,
+pre,
+time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+pre {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  max-height: 24rem;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+a {
+  color: var(--accent);
+}
+
+a.anchor {
+  margin-left: 0.25rem;
+  color: var(--muted);
+  text-decoration: none;
+  visibility: hidden;
+}
+
+h3:hover a.anchor,
+summary:hover a.anchor,
+:target a.anchor {
+  visibility: visible;
+}
+
+dl.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.1rem 1rem;
+  margin: 0.5rem 0 1rem;
+}
+
+dl.facts dt {
+  color: var(--muted);
+}
+
+dl.facts dd {
+  margin: 0;
+}
+
+article {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: 6px;
+}
+
+article.prompt,
+article.answer,
+article.approval,
+article.rejection,
+article.typed-answer {
+  border-left-color: var(--accent);
+}
+
+article.summary {
+  border-style: dashed;
+}
+
+/* A sub-agent in a call of context shows as its own records do. */
+article.context > :not(details),
+article.context > details > :not(section) {
+  opacity: 0.6;
+}
+
+article:target {
+  outline: 2px solid var(--accent);
+}
+
+.note {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+details > summary {
+  cursor: pointer;
+}
+
+article.call > details > summary {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.gist {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  font-weight: normal;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid currentcolor;
+  border-radius: 1rem;
+  font-size: 0.8em;
+  font-weight: normal;
+}
+
+.badge.ok {
+  color: var(--ok);
+}
+
+.badge.error {
+  color: var(--error);
+}
+
+.badge.denied {
+  color: var(--denied);
+}
+
+.badge.missing {
+  color: var(--missing);
+}
+
+details.output {
+  margin: 0.5rem 0;
+}
+
+section.subagent {
+  margin: 0.75rem 0 0.25rem 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px dashed var(--line);
+}
+
+section.subagent > h2 {
+  margin-top: 0.5rem;
+  font-size: 1.05rem;
+}
+
+p.lines,
+p.key {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+mark {
+  color: inherit;
+  background: var(--mark);
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+}
+
+.prose th,
+.prose td {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+}
+
+.prose blockquote {
+  margin: 0.5rem 0;
+  padding-left: 0.8rem;
+  color: var(--muted);
+  border-left: 3px solid var(--line);
+}
+
+@media print {
+  body {
+    max-width: none;
+    font-size: 11pt;
+  }
+
+  details::details-content {
+    content-visibility: visible;
+    display: block;
+  }
+
+  details > summary {
+    list-style: none;
+  }
+
+  pre {
+    max-height: none;
+    overflow: visible;
+  }
+
+  article {
+    break-inside: avoid-page;
+  }
+
+  article.context > :not(details),
+  article.context > details > :not(section) {
+    opacity: 1;
+  }
+
+  a.anchor {
+    display: none;
+  }
+}

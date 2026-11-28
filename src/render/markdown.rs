@@ -68,22 +68,10 @@ fn write_view(view: &View<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Fa
 /// The line that counts the records: those a search matched, by type, and
 /// apart from them, those `--around` added as context.
 fn record_count(count: &Count, lang: Lang) -> String {
-    let mut out = words::record_count(lang, count.matched, &by_type(&count.types), count.context);
-    out.push('\n');
-    out
-}
-
-/// `types` and how many of each there are, as ` (prompt 2, call 1)`;
-/// empty when there are none.
-fn by_type(types: &[(&str, usize)]) -> String {
-    if types.is_empty() {
-        return String::new();
-    }
-    let parts: Vec<String> = types
-        .iter()
-        .map(|&(name, count)| format!("{name} {count}"))
-        .collect();
-    format!(" ({})", parts.join(", "))
+    format!(
+        "- {}\n",
+        words::record_count(lang, count.matched, &count.types, count.context)
+    )
 }
 
 /// The list item that says `fact` under a section's heading.
@@ -169,7 +157,7 @@ pub fn sessions(
         out.push_str(&words::match_count(
             lang,
             total,
-            &by_type(&count_types(&types)),
+            &words::by_type(&count_types(&types)),
         ));
     }
     let shown: Vec<Column> = SESSION_COLUMNS
@@ -356,17 +344,11 @@ fn tool_result(result: &ResultBody<'_>, lang: Lang) -> String {
 fn lines(runs: &[Run<'_>], lang: Lang) -> String {
     let mut out = Vec::new();
     for run in runs {
-        let hits: Vec<String> = if run.lines.iter().any(|line| !line.hit) {
-            run.lines
-                .iter()
-                .filter(|line| line.hit)
-                .map(|line| line.line.to_string())
-                .collect()
-        } else {
-            Vec::new()
-        };
         let field = run.field.map(code_span);
-        let item = words::lines(lang, field.as_deref(), run.first, run.last, &hits);
+        let item = format!(
+            "- {}",
+            words::lines(lang, field.as_deref(), run.first, run.last, &run.hits())
+        );
         let text: Vec<&str> = run.lines.iter().map(|line| line.text.as_str()).collect();
         out.push(format!(
             "{item}\n\n{}",

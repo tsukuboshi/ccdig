@@ -1,25 +1,127 @@
 //! Properties of the writers that hold for any records.
 
 use core::error::Error;
+use std::collections::HashSet;
 
 use proptest::bool::ANY;
 use proptest::collection::vec;
+use proptest::prop_oneof;
+use proptest::sample::select;
 use proptest::strategy::Strategy;
-use serde_json::Value;
+use serde_json::{Value, json};
 
-use super::{BLOG_FILE, at, bare_prompt, reply_at, sample_session, tokyo};
-use crate::record::{AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
+use super::{
+    AGENT_FILE, BLOG_FILE, at, bare_prompt, blog_head, call_at, found, outcome, reply_at,
+    result_at, sample_session, source, tokyo,
+};
+use crate::record::{
+    AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Spawned, Summary, ToolCall,
+    ToolResult, Turn,
+};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
+use crate::render::html::{self, Masking};
 use crate::render::json::{Fields, Run, document, lines};
 use crate::render::markdown;
 use crate::render::words;
 use crate::testing::{TestResult, check_eq, for_all, hostile_text, json_value};
-use crate::text::{Lang, one_line};
+use crate::text::{Lang, clean_text, one_line};
+
+/// Pieces of Markdown and HTML that would run a script, load something,
+/// or break out of where they stand, if written as they are.
+const ATTACKS: &[&str] = &[
+    "<script>alert(1)</script>",
+    "<img src=x onerror=alert(1)>",
+    "<a href=\"javascript:alert(1)\">x</a>",
+    "<iframe src=\"https://evil.example/\"></iframe>",
+    "<style>body { display: none }</style>",
+    "<!-- x -->",
+    "[x](javascript:alert(1))",
+    "[x](JaVaScRiPt:alert(1) \"t\\\"onmouseover=\")",
+    "[x](data:text/html,<script>alert(1)</script>)",
+    "[x][r]\n\n[r]: javascript:alert(1)",
+    "<javascript:alert(1)>",
+    "<mail@evil.example>",
+    "![x](https://evil.example/x.png)",
+    "![x **y**](javascript:alert(1))",
+    "[ok](https://ok.example/?a=\"b\" 'c')",
+    "<https://ok.example/>",
+    "| a | b |\n|:--|--:|\n| c | d |",
+    "# heading {#id .class onclick=x}",
+    "```\"><script>\nx\n```",
+    "&lt;script&gt; &#60;b&#62;",
+    "\"' onmouseover=alert(1) x='",
+    "run &#x202E;txt.exe&#x202C; [a&#x1b;](https://ok.example/ \"&#x202E;\")",
+];
+
+/// The elements the page may hold.
+const ELEMENTS: &[&str] = &[
+    "a",
+    "article",
+    "blockquote",
+    "body",
+    "br",
+    "code",
+    "dd",
+    "del",
+    "details",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "li",
+    "mark",
+    "meta",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "span",
+    "strong",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "time",
+    "title",
+    "tr",
+    "ul",
+];
+
+/// The attributes the page may hold.
+const ATTRIBUTES: &[&str] = &[
+    "charset",
+    "class",
+    "content",
+    "datetime",
+    "href",
+    "http-equiv",
+    "id",
+    "lang",
+    "name",
+    "start",
+    "title",
+];
 
 /// A session of hostile prompts: a title, a project, a session ID, and
 /// the prompts.
 type Group = (String, String, String, Vec<String>);
+
+/// A tag of the page: its element and its attributes with their values.
+type Tag = (String, Vec<(String, String)>);
 
 /// Up to three sessions of up to five prompts, each in its own file. A
 /// prompt has text: `classify` drops a blank one.
@@ -419,6 +521,179 @@ fn a_title_is_one_line_and_never_empty() -> TestResult {
             check_eq(&shown.is_empty(), &false, "empty")?;
             if one_line(&title).is_empty() {
                 check_eq(&shown, &words::title(lang, ""), "untitled")?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Text that mixes hostile characters with the pieces of `ATTACKS`.
+fn hostile_markdown() -> impl Strategy<Value = String> {
+    let piece = prop_oneof![hostile_text(), select(ATTACKS).prop_map(str::to_owned)];
+    let separators = select(&["", " ", "\n", "\n\n"][..]);
+    vec((piece, separators), 0..5).prop_map(|pieces| {
+        pieces
+            .into_iter()
+            .flat_map(|(text, separator)| [text, separator.to_owned()])
+            .collect()
+    })
+}
+
+/// The tags of `page`, but for the doctype, the end tags, and what the
+/// style element holds. Every `<` in the page starts a tag, as the text of
+/// the records is escaped.
+fn tags(page: &str) -> Result<Vec<Tag>, String> {
+    let (before, rest) = page
+        .split_once("<style>")
+        .ok_or_else(|| format!("no style:\n{page}"))?;
+    let (_, after) = rest
+        .split_once("</style>")
+        .ok_or_else(|| format!("no end of style:\n{page}"))?;
+    let mut found = Vec::new();
+    for chunk in [before, after] {
+        for part in chunk.split('<').skip(1) {
+            let (inside, _) = part
+                .split_once('>')
+                .ok_or_else(|| format!("an open tag: <{part}"))?;
+            if inside.starts_with('/') || inside.starts_with("!doctype") {
+                continue;
+            }
+            found.push(tag(inside)?);
+        }
+    }
+    Ok(found)
+}
+
+/// The element and the attributes of a tag, from what is between its `<`
+/// and its `>`.
+fn tag(between: &str) -> Result<Tag, String> {
+    let inside = between.trim_end_matches('/').trim_end();
+    let (element, mut rest) = inside.split_once(' ').unwrap_or((inside, ""));
+    let mut attributes = Vec::new();
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            return Ok((element.to_owned(), attributes));
+        }
+        let (name, quoted) = rest
+            .split_once("=\"")
+            .ok_or_else(|| format!("an attribute without a quoted value: <{inside}>"))?;
+        let (value, after) = quoted
+            .split_once('"')
+            .ok_or_else(|| format!("an open value: <{inside}>"))?;
+        attributes.push((name.to_owned(), value.to_owned()));
+        rest = after;
+    }
+}
+
+/// Records of each kind, with every text that shows taken from `texts`.
+fn hostile_turns(texts: &[String]) -> Result<Vec<Turn>, String> {
+    let text = |index: usize| texts.get(index).cloned().unwrap_or_default();
+    let head = |time: &str| -> Result<Head, String> {
+        Ok(Head {
+            session_title: text(0),
+            project: text(1),
+            session_id: text(2),
+            git_branch: text(3),
+            turn: 1,
+            ..blog_head(time)?
+        })
+    };
+    let ran = outcome(true, &text(12), &text(11));
+    let input = json!({
+        "command": text(10),
+        "file_path": text(13),
+        text(11): text(10),
+    });
+    Ok(vec![
+        Turn::Prompt(bare_prompt(
+            head("2026-10-13T01:23:00Z")?,
+            BLOG_FILE,
+            &text(4),
+        )),
+        Turn::Reply(Reply {
+            head: head("2026-10-13T01:24:00Z")?,
+            ..reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 2, &text(5))?
+        }),
+        Turn::Thinking(Reply {
+            head: head("2026-10-13T01:24:00Z")?,
+            ..reply_at("2026-10-13T01:24:00Z", BLOG_FILE, 3, &text(6))?
+        }),
+        Turn::Summary(Summary {
+            head: head("2026-10-13T01:24:00Z")?,
+            text: text(7),
+            redacted: false,
+            source: source(BLOG_FILE, 4, &text(13)),
+            search: Search::default(),
+            masked: Counts::default(),
+        }),
+        Turn::Call(ToolCall {
+            head: head("2026-10-13T01:25:00Z")?,
+            ..call_at(5, &text(9), input.clone(), "toolu_1", Some(ran.clone()))?
+        }),
+        Turn::Call(ToolCall {
+            head: head("2026-10-13T01:25:00Z")?,
+            ..call_at(6, &text(9), input, "toolu_2", None)?
+        }),
+        Turn::Result(ToolResult {
+            head: head("2026-10-13T01:25:00Z")?,
+            ..result_at(7, &text(9), "toolu_3", &ran)?
+        }),
+        Turn::Reply(Reply {
+            head: head("2026-10-13T01:26:00Z")?,
+            search: found(&[("text", 1, &text(13), true), ("text", 2, &text(5), false)]),
+            ..reply_at("2026-10-13T01:26:00Z", BLOG_FILE, 8, &text(5))?
+        }),
+        Turn::Reply(Reply {
+            head: head("2026-10-13T01:27:00Z")?,
+            subagent: text(8),
+            spawned: Spawned {
+                subagent_type: text(8),
+                subagent_description: text(13),
+                parent_tool_use_id: "toolu_1".to_owned(),
+            },
+            ..reply_at("2026-10-13T01:27:00Z", AGENT_FILE, 1, &text(5))?
+        }),
+    ])
+}
+
+#[test]
+fn the_page_has_only_the_elements_and_attributes_it_writes_and_no_id_twice() -> TestResult {
+    for_all(&vec(hostile_markdown(), 14..=14), |texts| {
+        let turns = hostile_turns(&texts)?;
+        let masking = Masking::On(vec![(texts.first().cloned().unwrap_or_default(), 1)]);
+        let page = html::records(&turns, &tokyo()?, &Fields::default(), Lang::En, &masking)?;
+        // Nothing that drives a terminal or reorders the text, not even
+        // what a character reference in the Markdown stands for.
+        check_eq(&clean_text(&page), &page, "a control character")?;
+        // The session's file and the sub-agent's, each once.
+        check_eq(&page.matches("<section").count(), &2, &page)?;
+        let mut ids = HashSet::new();
+        for (element, attributes) in tags(&page)? {
+            check_eq(
+                &ELEMENTS.contains(&element.as_str()),
+                &true,
+                &format!("<{element}>\n{page}"),
+            )?;
+            for (name, value) in attributes {
+                check_eq(
+                    &ATTRIBUTES.contains(&name.as_str()),
+                    &true,
+                    &format!("{name} on <{element}>\n{page}"),
+                )?;
+                if name == "id" {
+                    check_eq(
+                        &ids.insert(value.clone()),
+                        &true,
+                        &format!("id=\"{value}\" again\n{page}"),
+                    )?;
+                }
+                if name == "href" {
+                    let web = ["http://", "https://", "#"]
+                        .iter()
+                        .any(|start| value.starts_with(start));
+                    check_eq(&web, &true, &format!("href=\"{value}\"\n{page}"))?;
+                }
             }
         }
         Ok(())

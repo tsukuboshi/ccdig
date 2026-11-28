@@ -462,6 +462,11 @@ pub struct Summary {
 /// Where a record's line is.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Source {
+    /// The block's index in the line, as one line can hold several records;
+    /// left out of the JSON, which tells the records of a line apart by
+    /// their type and text.
+    #[serde(skip)]
+    pub block: usize,
     /// The transcript file.
     pub file: String,
     /// The 1-based line number.

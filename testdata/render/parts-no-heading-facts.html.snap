@@ -1,0 +1,161 @@
+---
+source: src/testing.rs
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>Records</h1>
+<p class="count">Records: 14 (prompt 5, thinking 1, reply 2, call 3, result 2, summary 1) + 2 context</p>
+<p class="masking">Masked 2 by aws-credential, 1 by email</p>
+</header>
+<section>
+<h2>Weekly report draft</h2>
+<article id="r1" class="prompt">
+<h3>Prompt <a class="anchor" href="#r1">#</a></h3>
+<pre>
+plain</pre>
+</article>
+<article id="r2" class="answer">
+<h3>Answer <a class="anchor" href="#r2">#</a></h3>
+<pre>
+&quot;A?&quot;=&quot;a&quot;</pre>
+</article>
+<article id="r3" class="approval">
+<h3>Approval <a class="anchor" href="#r3">#</a></h3>
+<pre>
+the plan</pre>
+</article>
+<article id="r4" class="rejection">
+<h3>Rejection <a class="anchor" href="#r4">#</a></h3>
+<pre>
+not that</pre>
+</article>
+<article id="r5" class="typed-answer">
+<h3>Typed answer <a class="anchor" href="#r5">#</a></h3>
+<pre>
+&quot;B?&quot;=&quot;my own&quot;</pre>
+</article>
+<article id="r6" class="thinking">
+<h3>Thinking <a class="anchor" href="#r6">#</a></h3>
+<div class="prose">
+<p>Let me think.</p>
+</div>
+</article>
+<article id="r7" class="reply context">
+<h3>Reply <span class="note">(context)</span> <a class="anchor" href="#r7">#</a></h3>
+<div class="prose">
+<p>Nearby.</p>
+</div>
+</article>
+<article id="r8" class="reply">
+<h3>Reply <a class="anchor" href="#r8">#</a></h3>
+<p class="lines">Line 1</p>
+<pre>
+<mark>first hit</mark></pre>
+<p class="lines">Lines 3-4, matched 4</p>
+<pre>
+before
+<mark>second hit</mark></pre>
+</article>
+<article id="r9" class="call">
+<details>
+<summary>Tool call <code class="tool">Bash</code> <span class="gist">ls</span> <span class="badge ok">ok</span> <a class="anchor" href="#r9">#</a></summary>
+<pre class="json">
+{
+  &quot;command&quot;: &quot;ls&quot;
+}</pre>
+<p class="key"><code>input.plan</code></p>
+<pre>
+step 1
+step 2</pre>
+<details class="output">
+<summary>Result</summary>
+<pre>
+a.txt
+b.txt</pre>
+</details>
+<section class="subagent">
+<h2>Weekly report draft</h2>
+<article id="r16" class="reply">
+<h3>Reply <a class="anchor" href="#r16">#</a></h3>
+<div class="prose">
+<p>Looked.</p>
+</div>
+</article>
+</section>
+</details>
+</article>
+<article id="r10" class="call">
+<details>
+<summary>Tool call <code class="tool">ExitPlanMode</code> <span class="badge denied">denied</span> <a class="anchor" href="#r10">#</a></summary>
+<p class="key"><code>input.plan</code></p>
+<pre>
+one
+two</pre>
+<p>Denial: <code>user-rejected</code></p>
+<p class="link"><a href="#r11">Tool result</a></p>
+</details>
+</article>
+<article id="r11" class="result">
+<h3>Tool result <a class="anchor" href="#r11">#</a></h3>
+<p class="link"><a href="#r10">Tool call</a></p>
+<dl class="facts">
+<dt>Tool</dt><dd><code>ExitPlanMode</code></dd>
+<dt>Error</dt><dd>yes</dd>
+<dt>Denial</dt><dd><code>user-rejected</code></dd>
+</dl>
+<p class="lines">Line 1</p>
+<pre>
+<mark>The user said no.</mark></pre>
+</article>
+<article id="r12" class="call context">
+<details>
+<summary>Tool call <span class="note">(context)</span> <code class="tool">Bash</code> <span class="gist">false</span> <span class="badge error">error</span> <a class="anchor" href="#r12">#</a></summary>
+<pre class="json">
+{
+  &quot;command&quot;: &quot;false&quot;
+}</pre>
+<p class="link"><a href="#r13">Tool result</a></p>
+</details>
+</article>
+<article id="r13" class="result">
+<h3>Tool result <a class="anchor" href="#r13">#</a></h3>
+<p class="link"><a href="#r12">Tool call</a></p>
+<dl class="facts">
+<dt>Tool</dt><dd><code>Bash</code></dd>
+<dt>Error</dt><dd>yes</dd>
+</dl>
+<pre>
+exit 1</pre>
+</article>
+<article id="r14" class="call">
+<details>
+<summary>Tool call <code class="tool">Bash</code> <span class="badge missing">no result</span> <a class="anchor" href="#r14">#</a></summary>
+<p class="lines">input.command lines 1-2</p>
+<pre>
+<mark>git add .</mark>
+<mark>git commit</mark></pre>
+</details>
+</article>
+<article id="r15" class="summary">
+<details>
+<summary>Summary <span class="note">The context was compacted here</span> <a class="anchor" href="#r15">#</a></summary>
+<div class="prose">
+<p>Compacted.</p>
+</div>
+</details>
+</article>
+</section>
+</body>
+</html>

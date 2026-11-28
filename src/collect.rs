@@ -19,7 +19,7 @@ use self::mask::{Draft, Mask};
 use self::read::{Mention, Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Spawned, Touch};
+use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Source, Spawned, Touch};
 use crate::redact::Counts;
 use crate::text::{Lang, clean_text};
 use crate::transcript::entry::{Entry, Usage};
@@ -136,6 +136,9 @@ pub trait Select: Record {
     /// What the search made of the record, which `--around` and
     /// `--context` fill in.
     fn search_mut(&mut self) -> &mut Search;
+
+    /// Where the record's line is, whose block `gather` fills in.
+    fn source_mut(&mut self) -> &mut Source;
 
     /// Where the kind says whether the user sent another prompt in its
     /// place, `None` for a kind that does not.

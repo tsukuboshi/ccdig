@@ -9,6 +9,7 @@ mod around;
 mod context;
 mod denials;
 mod fields;
+mod html;
 mod kinds;
 mod lang;
 mod mentions;
@@ -876,7 +877,7 @@ fn help_lists_the_commands_and_the_flags_by_use() -> TestResult {
         &sessions,
     )?;
     check_eq(
-        &records.contains("[possible values: json, jsonl, md]"),
+        &records.contains("[possible values: html, json, jsonl, md]"),
         &true,
         "format values",
     )?;

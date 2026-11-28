@@ -37,7 +37,7 @@ fn option() -> impl Strategy<Value = Vec<String>> {
     )
     .prop_map(|flag| vec![flag.to_owned()]);
     prop_oneof![
-        pair("--format", &["json", "jsonl", "md"]),
+        pair("--format", &["json", "jsonl", "md", "html"]),
         pair("--since", &["2026-10-13", "2026-10-15", ""]),
         pair("--until", &["2026-10-14", "2026-10-20"]),
         pair("--tz", &["Asia/Tokyo", "UTC", "America/New_York"]),

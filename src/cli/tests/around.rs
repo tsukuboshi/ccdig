@@ -6,7 +6,7 @@ use core::error::Error;
 use serde_json::Value;
 
 use super::{History, fixture_time};
-use crate::testing::{TestResult, check_eq};
+use crate::testing::{TestResult, check_eq, snapshot, without_style};
 
 /// A history with a session `ffff` in which a prompt asks about the cloud
 /// edition and the replies go on, a prompt marked WIP mentions it too, and
@@ -375,4 +375,12 @@ fn context_a_copy_dropped_still_comes_back_for_a_later_match() -> TestResult {
         "records",
     )?;
     Ok(())
+}
+
+#[test]
+fn the_page_fades_a_record_of_context() -> TestResult {
+    let history = history_with_a_thread()?;
+    let ran = history.run_week(&search(&["--around", "1", "--format", "html"]));
+    check_eq(&ran.code, &0, &ran.err)?;
+    snapshot("cli/records-around.html", &without_style(&ran.out)?)
 }
