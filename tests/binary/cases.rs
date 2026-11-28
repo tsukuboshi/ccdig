@@ -7,7 +7,8 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// The variables ccdig reads its defaults from.
-const VARIABLES: [&str; 6] = [
+const VARIABLES: [&str; 7] = [
+    "CCDIG_LANG",
     "CCDIG_MASK",
     "CCDIG_MASK_VALUES",
     "CCDIG_ON_SKIP",
@@ -202,6 +203,33 @@ fn session_current_reads_claude_code_session_id() -> Result<(), Box<dyn Error>> 
     let outside = ccdig(&refs, "Asia/Tokyo")?;
     if outside.status.code() != Some(1_i32) {
         return Err(format!("outside: status {:?}", outside.status).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn the_cases_clear_every_variable_ccdig_reads_a_default_from() -> Result<(), Box<dyn Error>> {
+    let source = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("cli")
+            .join("environment.rs"),
+    )?;
+    // `HOME` and `TZ` stay: the cases set `TZ`, and the default root is
+    // under `HOME`.
+    let read: Vec<&str> = source
+        .split("var(\"")
+        .skip(1)
+        .filter_map(|rest| rest.split_once('"').map(|(name, _)| name))
+        .filter(|name| name.starts_with("CCDIG_") || name.starts_with("CLAUDE_"))
+        .collect();
+    if read.is_empty() {
+        return Err("no variable found in src/cli/environment.rs".into());
+    }
+    for name in read {
+        if !VARIABLES.contains(&name) {
+            return Err(format!("{name} is read but not in VARIABLES").into());
+        }
     }
     Ok(())
 }
