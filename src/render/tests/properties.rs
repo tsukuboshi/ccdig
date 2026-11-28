@@ -13,8 +13,9 @@ use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Fields, Run, document, lines};
 use crate::render::markdown;
+use crate::render::words;
 use crate::testing::{TestResult, check_eq, for_all, hostile_text, json_value};
-use crate::text::one_line;
+use crate::text::{Lang, one_line};
 
 /// A session of hostile prompts: a title, a project, a session ID, and
 /// the prompts.
@@ -100,7 +101,7 @@ fn outside_fences(markdown: &str) -> Vec<&str> {
 /// The Markdown `records` writes of `turns`, with the times in Tokyo, and
 /// its headings outside fenced code blocks.
 fn record_headings(turns: &[Turn]) -> Result<(String, Vec<String>), Box<dyn Error>> {
-    let out = markdown::records(turns, &tokyo()?, &Fields::default())?;
+    let out = markdown::records(turns, &tokyo()?, &Fields::default(), Lang::En)?;
     let headings = outside_fences(&out)
         .into_iter()
         .filter(|line| line.trim_start().starts_with('#'))
@@ -174,7 +175,7 @@ fn the_digest_lists_or_counts_every_prompt_within_the_limits() -> TestResult {
         session_chars,
     });
     for_all(&(sessions_of_prompts(), all_limits), |(groups, limits)| {
-        let out = digest(&prompts(&groups)?, &tokyo()?, limits)?;
+        let out = digest(&prompts(&groups)?, &tokyo()?, limits, Lang::En)?;
         let sections: Vec<&str> = out.split("\n\n").collect();
         check_eq(&sections.len(), &groups.len(), "sections")?;
         for (section, group) in sections.iter().zip(&groups) {
@@ -328,7 +329,8 @@ fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
                     })
                 })
                 .collect::<Result<_, _>>()?;
-            let out = markdown::sessions(&sessions, &tokyo()?, matches, &Fields::default())?;
+            let out =
+                markdown::sessions(&sessions, &tokyo()?, matches, &Fields::default(), Lang::En)?;
             let table: Vec<&str> = out.lines().filter(|line| line.starts_with('|')).collect();
             check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
             for row in table {
@@ -338,4 +340,87 @@ fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
             Ok(())
         },
     )
+}
+
+/// What `markdown` is built of, line by line, apart from its words: for
+/// each line, whether it is outside fenced code blocks, how many `#` start
+/// it, whether it is a list item, and how many bare `|` split it.
+fn skeleton(markdown: &str) -> Vec<(bool, usize, bool, usize)> {
+    let outside = outside_fences(markdown);
+    let mut rest = outside.iter().peekable();
+    markdown
+        .lines()
+        .map(|line| {
+            let out = rest
+                .peek()
+                .is_some_and(|next| next.as_ptr() == line.as_ptr());
+            if out {
+                rest.next();
+            }
+            (
+                out,
+                line.chars().take_while(|&ch| ch == '#').count(),
+                line.trim_start().starts_with("- "),
+                line.replace("\\|", "").matches('|').count(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn japanese_markdown_and_digest_are_built_as_the_english_ones_are() -> TestResult {
+    for_all(&sessions_of_prompts(), |groups| {
+        let all = prompts(&groups)?;
+        let turns: Vec<Turn> = all.iter().cloned().map(Turn::Prompt).collect();
+        let zone = tokyo()?;
+        let records = |lang| markdown::records(&turns, &zone, &Fields::default(), lang);
+        check_eq(
+            &skeleton(&records(Lang::Ja)?),
+            &skeleton(&records(Lang::En)?),
+            &records(Lang::Ja)?,
+        )?;
+        let limits = Limits {
+            prompt_chars: 20,
+            session_chars: 60,
+        };
+        let digests = |lang| digest(&all, &zone, limits, lang);
+        check_eq(
+            &skeleton(&digests(Lang::Ja)?),
+            &skeleton(&digests(Lang::En)?),
+            &digests(Lang::Ja)?,
+        )?;
+        let sessions: Vec<Session> = groups
+            .iter()
+            .map(|group| {
+                sample_session().map(|session| Session {
+                    title: group.0.clone(),
+                    project: group.1.clone(),
+                    id: group.2.clone(),
+                    ..session
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        let tables = |lang| markdown::sessions(&sessions, &zone, true, &Fields::default(), lang);
+        check_eq(
+            &skeleton(&tables(Lang::Ja)?),
+            &skeleton(&tables(Lang::En)?),
+            &tables(Lang::Ja)?,
+        )?;
+        Ok(())
+    })
+}
+
+#[test]
+fn a_title_is_one_line_and_never_empty() -> TestResult {
+    for_all(&hostile_text(), |title| {
+        for lang in [Lang::En, Lang::Ja] {
+            let shown = words::title(lang, &title);
+            check_eq(&shown.contains('\n'), &false, "a line break")?;
+            check_eq(&shown.is_empty(), &false, "empty")?;
+            if one_line(&title).is_empty() {
+                check_eq(&shown, &words::title(lang, ""), "untitled")?;
+            }
+        }
+        Ok(())
+    })
 }

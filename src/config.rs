@@ -13,6 +13,7 @@ use crate::record::Cuts;
 use crate::render::digest::Limits;
 use crate::render::json::{Fields, Run};
 use crate::stats::Grouping;
+use crate::text::Lang;
 
 /// A subcommand with everything it needs.
 pub enum Config {
@@ -111,6 +112,9 @@ pub enum OnSkip {
 /// What the subcommands that read transcripts share: where to read, what
 /// to keep, how to mask it, and how to report the run.
 pub struct Shared {
+    /// The language of the words around the records, in Markdown and the
+    /// digest.
+    pub lang: Lang,
     /// How many records to print at most, or `None` for all of them.
     pub limit: Option<usize>,
     /// The masking to apply.

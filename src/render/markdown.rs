@@ -7,15 +7,14 @@ use serde_json::Value;
 
 use super::json::Fields;
 use super::view::{
-    self, Body, CallBody, Count, Ending, Fact, Input, Item, Label, Passage, ResultBody, Run, Tool,
-    View, count_types,
+    self, Body, CallBody, Count, Ending, Fact, Input, Passage, ResultBody, Run, Tool, View,
+    count_types,
 };
+use super::words::{self, Column, Item, SESSION_COLUMNS};
 use crate::failure::Failure;
 
 use crate::record::{Group, Session, Turn};
-use crate::text::{
-    clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
-};
+use crate::text::{Lang, clean_text, code_span, escape_inline, escape_pipes, fenced, one_line};
 
 /// Records of any kind, each under a heading that names its kind. A record
 /// with `matches` shows those lines in place of its text. A result shows
@@ -23,28 +22,38 @@ use crate::text::{
 /// or a search matched it and not its call; it then shows under its own
 /// heading, and the call says only how it ended. Only the parts `fields`
 /// keeps are shown; the type in each heading and the session's title stay.
+/// The words around the records are in `lang`.
 ///
 /// # Errors
 ///
 /// When a time cannot be shown in `zone`, or an input cannot be encoded.
-pub fn records(records: &[Turn], zone: &TimeZone, fields: &Fields) -> Result<String, Failure> {
-    write_view(&view::records(records, fields)?, zone)
+pub fn records(
+    records: &[Turn],
+    zone: &TimeZone,
+    fields: &Fields,
+    lang: Lang,
+) -> Result<String, Failure> {
+    write_view(&view::records(records, fields)?, zone, lang)
 }
 
 /// `view` under one heading per transcript file, after the count line,
 /// with times shown in `zone`. Two files that share a session ID, such as
 /// a resumed copy, get two headings.
-fn write_view(view: &View<'_>, zone: &TimeZone) -> Result<String, Failure> {
-    let mut out = format!("# Records\n\n{}", record_count(&view.count));
+fn write_view(view: &View<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Failure> {
+    let mut out = format!(
+        "# {}\n\n{}",
+        words::records_title(lang),
+        record_count(&view.count, lang)
+    );
     for section in &view.sections {
-        out.extend(["\n## ", &heading_text(section.title), "\n"]);
+        out.extend(["\n## ", &words::title(lang, section.title), "\n"]);
         if !section.facts.is_empty() {
             out.push('\n');
-            out.extend(section.facts.iter().map(|&fact| fact_line(fact)));
+            out.extend(section.facts.iter().map(|&fact| fact_line(fact, lang)));
         }
         for item in &section.items {
-            out.push_str(&item_heading(item, zone)?);
-            let written = body(&item.body);
+            out.push_str(&item_heading(item, zone, lang)?);
+            let written = body(&item.body, lang);
             let text = written.trim_start_matches('\n');
             if text.is_empty() {
                 out.push('\n');
@@ -58,11 +67,8 @@ fn write_view(view: &View<'_>, zone: &TimeZone) -> Result<String, Failure> {
 
 /// The line that counts the records: those a search matched, by type, and
 /// apart from them, those `--around` added as context.
-fn record_count(count: &Count) -> String {
-    let mut out = format!("- Records: {}{}", count.matched, by_type(&count.types));
-    if count.context > 0 {
-        out.extend([" + ", &count.context.to_string(), " context"]);
-    }
+fn record_count(count: &Count, lang: Lang) -> String {
+    let mut out = words::record_count(lang, count.matched, &by_type(&count.types), count.context);
     out.push('\n');
     out
 }
@@ -81,33 +87,32 @@ fn by_type(types: &[(&str, usize)]) -> String {
 }
 
 /// The list item that says `fact` under a section's heading.
-fn fact_line(fact: Fact<'_>) -> String {
-    match fact {
-        Fact::Project(project) => format!("- Project: {}\n", code_span(project)),
-        Fact::Session(session) => format!("- Session: {}\n", code_span(session)),
-        Fact::Subagent(name) => format!("- Subagent: {}\n", code_span(name)),
-        Fact::SubagentType(kind) => format!("- Subagent type: {}\n", code_span(kind)),
-        Fact::Description(description) => {
-            format!("- Description: {}\n", escape_inline(&one_line(description)))
-        }
-    }
+fn fact_line(fact: Fact<'_>, lang: Lang) -> String {
+    let value = match fact {
+        Fact::Project(text)
+        | Fact::Session(text)
+        | Fact::Subagent(text)
+        | Fact::SubagentType(text) => code_span(text),
+        Fact::Description(description) => escape_inline(&one_line(description)),
+    };
+    format!("- {}: {value}\n", words::fact(lang, fact))
 }
 
 /// The heading of `item`, with its time in `zone`, its turn, and its label,
 /// marked when it is context, and followed by its sub-agent, as a reader
 /// searching the records may see this heading alone.
-fn item_heading(item: &Item<'_>, zone: &TimeZone) -> Result<String, Failure> {
+fn item_heading(item: &view::Item<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Failure> {
     let mut parts = Vec::new();
     if let Some(stamp) = item.stamp {
         parts.push(stamp.second_label(zone)?);
     }
     if let Some(turn) = item.turn {
-        parts.push(format!("turn {turn}"));
+        parts.push(words::turn(lang, turn));
     }
-    parts.push(label(item.label).to_owned());
+    parts.push(words::label(lang, item.label).to_owned());
     let mut out = format!("\n### {}", parts.join(" - "));
     if !item.matched {
-        out.push_str(" (context)");
+        out.extend([" ", words::context(lang)]);
     }
     if let Some(name) = item.subagent {
         out.extend([" - ", &code_span(name)]);
@@ -115,36 +120,20 @@ fn item_heading(item: &Item<'_>, zone: &TimeZone) -> Result<String, Failure> {
     Ok(out)
 }
 
-/// The words a heading names `label` with.
-const fn label(label: Label) -> &'static str {
-    match label {
-        Label::Answer => "Answer",
-        Label::Approval => "Approval",
-        Label::Call => "Tool call",
-        Label::Prompt => "Prompt",
-        Label::Rejection => "Rejection",
-        Label::Reply => "Reply",
-        Label::Result => "Tool result",
-        Label::Summary => "Summary",
-        Label::Thinking => "Thinking",
-        Label::TypedAnswer => "Typed answer",
-    }
-}
-
 /// What follows an item's heading.
-fn body(body: &Body<'_>) -> String {
+fn body(body: &Body<'_>, lang: Lang) -> String {
     match *body {
-        Body::Call(ref call) => tool_call(call),
-        Body::Result(ref result) => tool_result(result),
-        Body::Text(ref passage) => passage_text(passage),
+        Body::Call(ref call) => tool_call(call, lang),
+        Body::Result(ref result) => tool_result(result, lang),
+        Body::Text(ref passage) => passage_text(passage, lang),
     }
 }
 
 /// `passage`: its runs of lines, or its text in a text block.
-fn passage_text(passage: &Passage<'_>) -> String {
+fn passage_text(passage: &Passage<'_>, lang: Lang) -> String {
     match *passage {
         Passage::Hidden => String::new(),
-        Passage::Lines(ref runs) => lines(runs),
+        Passage::Lines(ref runs) => lines(runs, lang),
         Passage::Text(text) => fenced("text", &clean_text(text)),
     }
 }
@@ -161,20 +150,13 @@ pub fn sessions(
     zone: &TimeZone,
     matches: bool,
     fields: &Fields,
+    lang: Lang,
 ) -> Result<String, Failure> {
-    /// The columns: the heading, the key, and whether the column holds a
-    /// number, aligned right, in the order they are shown.
-    const COLUMNS: [(&str, &str, bool); 8] = [
-        ("Started", "started_at", false),
-        ("Session", "session_id", false),
-        ("Project", "project", false),
-        ("Cwd", "cwd", false),
-        ("Prompts", "prompt_count", true),
-        ("Matches", "match_count", true),
-        ("First match", "first_match", false),
-        ("Title", "title", false),
-    ];
-    let mut out = format!("# Sessions\n\n- Sessions: {}\n", records.len());
+    let mut out = format!(
+        "# {}\n\n{}",
+        words::sessions_title(lang),
+        words::session_count(lang, records.len())
+    );
     if matches {
         let total: usize = records
             .iter()
@@ -184,26 +166,26 @@ pub fn sessions(
             .iter()
             .flat_map(|session| session.matched_types.iter().copied())
             .collect();
-        out.extend([
-            "- Matches: ",
-            &total.to_string(),
+        out.push_str(&words::match_count(
+            lang,
+            total,
             &by_type(&count_types(&types)),
-            "\n",
-        ]);
+        ));
     }
-    let shown: Vec<(&str, &str, bool)> = COLUMNS
+    let shown: Vec<Column> = SESSION_COLUMNS
         .into_iter()
-        .filter(|&(_, key, _)| {
-            fields.keeps(key) && (matches || !matches!(key, "match_count" | "first_match"))
+        .filter(|column| {
+            fields.keeps(column.key)
+                && (matches || !matches!(column.key, "match_count" | "first_match"))
         })
         .collect();
     if shown.is_empty() {
         return Ok(out);
     }
-    let names: Vec<&str> = shown.iter().map(|&(name, _, _)| name).collect();
+    let names: Vec<&str> = shown.iter().map(|column| column.heading(lang)).collect();
     let aligns: Vec<&str> = shown
         .iter()
-        .map(|&(_, _, number)| if number { "---:" } else { "---" })
+        .map(|column| if column.number { "---:" } else { "---" })
         .collect();
     out.extend([
         "\n| ",
@@ -214,8 +196,8 @@ pub fn sessions(
     ]);
     for session in records {
         let mut cells = Vec::new();
-        for &(_, key, _) in &shown {
-            cells.push(match key {
+        for column in &shown {
+            cells.push(match column.key {
                 "started_at" => session.started_at.minute_label(zone)?,
                 "session_id" => escape_pipes(&code_span(&session.id)),
                 "project" => escape_pipes(&code_span(&session.project)),
@@ -226,7 +208,7 @@ pub fn sessions(
                     .first_match
                     .as_ref()
                     .map_or_else(String::new, |found| escape_inline(&one_line(&found.text))),
-                _ => heading_text(&session.title),
+                _ => words::title(lang, &session.title),
             });
         }
         out.extend(["| ", &cells.join(" | "), " |\n"]);
@@ -247,6 +229,7 @@ pub fn stats(
     columns: &[&str],
     zone: &TimeZone,
     fields: &Fields,
+    lang: Lang,
 ) -> Result<String, Failure> {
     let sessions = Group::writes_sessions(columns);
     let empty = groups.iter().any(|group| group.empty.is_some());
@@ -282,13 +265,13 @@ pub fn stats(
         .enumerate()
         .filter_map(|(index, name)| keep(index).then_some(name))
         .collect();
-    let mut out = format!("# Stats\n\n- Groups: {}\n", groups.len());
+    let mut out = words::stats_head(lang, groups.len());
     if names.is_empty() {
         return Ok(out);
     }
     out.push_str("\n|");
     for name in &names {
-        out.extend([" ", &column_label(name), " |"]);
+        out.extend([" ", &words::stats_column(lang, name), " |"]);
     }
     out.push_str("\n|");
     for name in &names {
@@ -307,7 +290,7 @@ pub fn stats(
             .map(|name| {
                 let value = group.keys.get(*name).and_then(Value::as_str);
                 if *name == "session_title" {
-                    return heading_text(value.unwrap_or_default());
+                    return words::title(lang, value.unwrap_or_default());
                 }
                 value.map_or_else(String::new, |text| escape_pipes(&code_span(text)))
             })
@@ -345,32 +328,23 @@ pub fn stats(
     Ok(out)
 }
 
-/// The heading of the column of `key`: `session_title` as `Session title`.
-fn column_label(key: &str) -> String {
-    let words = key.replace('_', " ");
-    let mut chars = words.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
-}
-
 /// A tool result's body: the calling tool's name, whether it failed, why
 /// the call did not run when it did not, and the output in a text block, or
 /// its matched lines, each when the view keeps it.
-fn tool_result(result: &ResultBody<'_>) -> String {
+fn tool_result(result: &ResultBody<'_>, lang: Lang) -> String {
     let mut head = String::new();
     if let Some(tool) = result.tool {
-        head.extend(["- Tool: ", &tool_name(tool), "\n"]);
+        head.push_str(&list_item(lang, Item::Tool, &tool_name(tool, lang)));
     }
     if let Some(failed) = result.failed {
-        head.extend(["- Error: ", if failed { "yes" } else { "no" }, "\n"]);
+        head.push_str(&list_item(lang, Item::Error, words::failed(lang, failed)));
     }
     if let Some(denial) = result.denial {
-        head.extend(["- Denial: ", &code_span(denial), "\n"]);
+        head.push_str(&list_item(lang, Item::Denial, &code_span(denial)));
     }
     match result.passage {
         Passage::Hidden => head,
-        Passage::Lines(ref runs) => format!("{head}{}", lines(runs)),
+        Passage::Lines(ref runs) => format!("{head}{}", lines(runs, lang)),
         Passage::Text(text) => format!("{head}\n{}", fenced("text", &clean_text(text))),
     }
 }
@@ -379,30 +353,20 @@ fn tool_result(result: &ResultBody<'_>) -> String {
 /// them matched when it holds others too, followed by the lines in a text
 /// block. The line numbers stay out of the block, so they do not mix with
 /// numbers in the text.
-fn lines(runs: &[Run<'_>]) -> String {
+fn lines(runs: &[Run<'_>], lang: Lang) -> String {
     let mut out = Vec::new();
     for run in runs {
-        let (single, plural) = run.field.map_or_else(
-            || ("Line".to_owned(), "Lines".to_owned()),
-            |field| {
-                let name = code_span(field);
-                (format!("{name} line"), format!("{name} lines"))
-            },
-        );
-        let mut item = if run.first == run.last {
-            format!("- {single} {}", run.first)
-        } else {
-            format!("- {plural} {}-{}", run.first, run.last)
-        };
-        if run.lines.iter().any(|line| !line.hit) {
-            let hits: Vec<String> = run
-                .lines
+        let hits: Vec<String> = if run.lines.iter().any(|line| !line.hit) {
+            run.lines
                 .iter()
                 .filter(|line| line.hit)
                 .map(|line| line.line.to_string())
-                .collect();
-            item.extend([", matched ", &hits.join(", ")]);
-        }
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let field = run.field.map(code_span);
+        let item = words::lines(lang, field.as_deref(), run.first, run.last, &hits);
         let text: Vec<&str> = run.lines.iter().map(|line| line.text.as_str()).collect();
         out.push(format!(
             "{item}\n\n{}",
@@ -414,14 +378,14 @@ fn lines(runs: &[Run<'_>]) -> String {
 
 /// A tool call's body: the tool's name, its input, or its matched lines,
 /// and what it came to, each when the view keeps it.
-fn tool_call(call: &CallBody<'_>) -> String {
+fn tool_call(call: &CallBody<'_>, lang: Lang) -> String {
     let mut out = String::new();
     if let Some(tool) = call.tool {
-        out.extend(["- Tool: ", &tool_name(tool), "\n"]);
+        out.push_str(&list_item(lang, Item::Tool, &tool_name(tool, lang)));
     }
     let input = match call.input {
         Input::Hidden => String::new(),
-        Input::Lines(ref runs) => lines(runs),
+        Input::Lines(ref runs) => lines(runs, lang),
         Input::Shown {
             ref json,
             ref texts,
@@ -431,7 +395,7 @@ fn tool_call(call: &CallBody<'_>) -> String {
         out.extend([input.as_str(), "\n"]);
     }
     if let Some(ending) = call.ending {
-        out.push_str(&outcome(ending));
+        out.push_str(&outcome(ending, lang));
     }
     out
 }
@@ -461,18 +425,18 @@ fn tool_input(json: Option<&str>, texts: &[(&str, &str)]) -> String {
 /// What a call came to: whether it failed, why it did not run when it did
 /// not, and the output in a text block when it carries it; or `(none)` when
 /// its file has no result for it.
-fn outcome(ending: Ending<'_>) -> String {
+fn outcome(ending: Ending<'_>, lang: Lang) -> String {
     let Ending::Ran {
         denial,
         failed,
         output,
     } = ending
     else {
-        return "- Result: (none)\n".to_owned();
+        return list_item(lang, Item::Result, words::ending(lang, None));
     };
-    let mut out = format!("- Result: {}\n", if failed { "error" } else { "ok" });
+    let mut out = list_item(lang, Item::Result, words::ending(lang, Some(failed)));
     if let Some(reason) = denial {
-        out.extend(["- Denial: ", &code_span(reason), "\n"]);
+        out.push_str(&list_item(lang, Item::Denial, &code_span(reason)));
     }
     if let Some(text) = output {
         out.extend(["\n", &fenced("text", &clean_text(text))]);
@@ -482,9 +446,14 @@ fn outcome(ending: Ending<'_>) -> String {
 
 /// The tool's name as a code span, or `(unknown)` when the call was not
 /// found.
-fn tool_name(tool: Tool<'_>) -> String {
+fn tool_name(tool: Tool<'_>, lang: Lang) -> String {
     match tool {
         Tool::Named(name) => code_span(name),
-        Tool::Unknown => "(unknown)".to_owned(),
+        Tool::Unknown => words::unknown_tool(lang).to_owned(),
     }
+}
+
+/// The list item `item` of a call or a result, saying `value`.
+fn list_item(lang: Lang, item: Item, value: &str) -> String {
+    format!("- {}: {value}\n", words::item(lang, item))
 }

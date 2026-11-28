@@ -502,6 +502,15 @@ the tokens. A key the command does not write is an error. In Markdown, the
 type in each heading and the session title always show, and a key it does
 not show, such as `usage` of `records`, changes nothing.
 
+`--lang ja` writes in Japanese the words Markdown and `digest` put around
+the records: the headings, the labels, the column names, and the notes of
+a cut, such as `… (1900 more characters, next: 101-200)`. The default is
+`en`. The records' own text, the tool names, the `input.<key>` names, the
+`denial` values, and the type names in the count line, which `--type`
+takes, stay as they are. JSON and JSON Lines write the records alone, so
+`--lang` with them is an error, while `CCDIG_LANG` is left unused there.
+Warnings, errors, the `--mask-report` line, and `--help` stay in English.
+
 ### Environment variables
 
 | Variable | Sets the default of | Value |
@@ -510,6 +519,7 @@ not show, such as `usage` of `records`, changes nothing.
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code's own variable; its `projects` directory is the root |
 | `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code's own variable; the ID of the session it runs ccdig in |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` or `fail` |
+| `CCDIG_LANG` | `--lang` | `en` or `ja`. Formats that take no `--lang` leave it unused, though another value is an error there too |
 | `CCDIG_MASK` | `--mask` | A comma-separated list |
 | `CCDIG_MASK_VALUES` | `--mask-values` | One JSON object, or `@` and a file |
 

@@ -21,7 +21,7 @@ use crate::failure::Failure;
 use crate::filter::Query;
 use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Spawned, Touch};
 use crate::redact::Counts;
-use crate::text::clean_text;
+use crate::text::{Lang, clean_text};
 use crate::transcript::entry::{Entry, Usage};
 use crate::transcript::meta::Spawn;
 use crate::transcript::reader::{MAX_LINE_BYTES, Roles};
@@ -47,6 +47,9 @@ pub struct Reading {
     /// With `--context`, how many lines around each line `--grep` matched
     /// to list in a record's `matches`.
     pub excerpt: Option<usize>,
+    /// The language of the note that marks a cut, as in `first_match`:
+    /// English for JSON, whose values do not change with `--lang`.
+    pub lang: Lang,
     /// For `sessions --grep`: the kinds of record whose matches of the
     /// including patterns to count, keeping every prompt the other filters
     /// let through rather than only the prompts the patterns match; `None`
@@ -397,6 +400,7 @@ where
         mask,
         reading.around.unwrap_or_default(),
         &query.grep,
+        reading.lang,
     ))
 }
 

@@ -489,6 +489,15 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 タイトルは常に出し、`records` の `usage` のように Markdown に出ないキーは
 指定しても何も変わりません。
 
+`--lang ja` を付けると、Markdown と `digest` がレコードの周りに書く文言を
+日本語にします。見出し、ラベル、列名と、
+`… (1900 more characters, next: 101-200)` のような切り詰めの跡が対象です。
+既定は `en` です。レコード自体の本文、ツール名、`input.<key>` の名前、
+`denial` の値、件数行の種類名（`--type` に渡す値）はそのまま残します。
+JSON と JSON Lines はレコードだけを書くので、`--lang` を付けるとエラーに
+なり、`CCDIG_LANG` は使いません。警告、エラー、`--mask-report` の行、
+`--help` は英語のままです。
+
 ### 環境変数
 
 | 変数 | 既定値を与えるフラグ | 値 |
@@ -497,6 +506,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | `CLAUDE_CONFIG_DIR` | `--root` | Claude Code 自身の変数。その下の `projects` ディレクトリをルートにする |
 | `CLAUDE_CODE_SESSION_ID` | `--session current` | Claude Code 自身の変数。ccdig を実行しているセッションの ID |
 | `CCDIG_ON_SKIP` | `--on-skip` | `warn` か `fail` |
+| `CCDIG_LANG` | `--lang` | `en` か `ja`。`--lang` を取らない形式では使わないが、それ以外の値はそこでもエラーになる |
 | `CCDIG_MASK` | `--mask` | カンマ区切りの一覧 |
 | `CCDIG_MASK_VALUES` | `--mask-values` | JSON オブジェクト 1 つ、または `@` とファイル |
 

@@ -44,7 +44,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             let corpus = gather(&shared, SessionSort::Time, Prompts::with_replies)?;
             printed(
                 &shared,
-                digest(&corpus.records, &shared.zone, limits)?,
+                digest(&corpus.records, &shared.zone, limits, shared.lang)?,
                 corpus.warnings,
                 corpus.records.iter().map(Record::masked),
             )
@@ -62,10 +62,10 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                 if format == Format::Markdown {
                     shared.mask.indent_json(record);
                 }
-                record.cut(cuts);
+                record.cut(cuts, shared.lang);
             }
             let out = write(format, &fields, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone, &fields)
+                markdown::records(records, &shared.zone, &fields, shared.lang)
             })?;
             printed(
                 &shared,
@@ -87,6 +87,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
                     &shared.zone,
                     shared.reading.mentions.is_some(),
                     &fields,
+                    shared.lang,
                 )
             })?;
             printed(
@@ -109,7 +110,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             let groups = tally(&corpus.records, &grouping, &shared.zone)?;
             let keys = columns(&grouping.by);
             let out = write(format, &fields, &groups, &shared.run, |lines| {
-                markdown::stats(lines, &keys, &shared.zone, &fields)
+                markdown::stats(lines, &keys, &shared.zone, &fields, shared.lang)
             })?;
             printed(
                 &shared,
