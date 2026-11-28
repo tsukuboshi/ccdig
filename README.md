@@ -424,7 +424,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.6","schema":8,"filter":"strict-v5"}
+{"version":"0.0.6","schema":9,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -542,9 +542,9 @@ have the same keys from `type` to `turn`, and end with `redacted`,
 
 | Type | Keys in between |
 | --- | --- |
-| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
+| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id`, `usage` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id` |
 | `summary` | `text` |
 
 Every key is always present unless `--fields` leaves it out. The `kind` of a prompt is how it was typed,
@@ -631,6 +631,16 @@ plan approved; the record type is `type`, which `--type` picks.
   `agent-1a2b`, for a sub-agent. A sub-agent's record carries the
   `session_id` and `session_title` of its session; the title is empty when
   the session's own transcript was last written before `--since`.
+- `subagent_type`, `subagent_description`, and `parent_tool_use_id` say
+  how a sub-agent was started: its kind, such as `Explore`, what the
+  caller wrote it was for, masked as text is, and the `tool_use_id` of the
+  call that started it. That call is in the session's transcript, or for a
+  sub-agent another one started, in that sub-agent's, so the record with
+  that `tool_use_id` outside the sub-agent's own file is its parent. They
+  come from the `.meta.json` next to the sub-agent's transcript, as
+  Claude Code has been observed to write it, and are empty for the session
+  itself, when that file is missing, and when it does not say, as for a
+  skill run in a forked sub-agent, which no call starts.
 - `input` is the `tool_use` block's input with the untruncated values
   from the line's `wireToolInputs` laid over it when Claude Code stored
   them, so the keys the model did not send, such as the `plan` of
@@ -674,7 +684,7 @@ plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":8,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":9,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -716,7 +726,9 @@ it, so Markdown can show fewer records than the limit. A tool's output that is a
 its escapes such as `\u65e5` decoded; JSON and JSON Lines keep it as the
 tool wrote it. A sub-agent's record names the sub-agent at the
 end of its own heading too, as in ``### 2026-10-13 10:25:01 JST - Tool call -
-`agent-1` ``, so it stands apart from the session's own records.
+`agent-1` ``, so it stands apart from the session's own records. The
+heading of a sub-agent's transcript also says its type and, on one line,
+its description, as in ``- Subagent type: `Explore` ``.
 
 With `--context`, a record shows its matched lines in place of its text:
 each run of adjacent lines is a list item that says which lines it holds,
@@ -764,6 +776,10 @@ Code wrote `origin` skip rule 2. Thinking blocks are printed only with
 
 - Only regular files are read: `<root>/<project>/<session>.jsonl`, and
   with `--subagents` also `<root>/<project>/<session>/subagents/*.jsonl`.
+  `records` also reads the `.meta.json` of the same name next to each
+  sub-agent transcript it reads, up to 1 MiB. A missing one, or one that
+  is not a regular file, says nothing; one that cannot be read or decoded
+  is a warning, which `--on-skip fail` counts.
 - Symlinks are not followed.
 - A resumed session repeats earlier entries; each entry (by `uuid` and
   position in the line) is listed once, in the original session, when the
@@ -835,7 +851,7 @@ comma-separated or repeated, as in `--mask email,user`:
 
 These masks and `--mask-values` also apply to the fields that are not
 text: `project`, `cwd`, `git_branch`, file paths, `tool`, `model`,
-`skill`, `subagent`, `command`, the keys of a tool's input, and the warnings on
+`skill`, `subagent`, `subagent_type`, `command`, the keys of a tool's input, and the warnings on
 stderr. The keys of a tool's input get the built-in rules too, so a
 secret used as a key, such as a token, is masked there.
 

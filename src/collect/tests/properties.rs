@@ -17,7 +17,8 @@ const FILE_CASES: u32 = 32;
 
 /// The lines of one session that put `value` in every field that is
 /// printed: the cwd, the branch, a prompt, a reply, its model, a tool's
-/// name and input, the tool's output, and the title.
+/// name and input, the tool's output, and the title. `subagent_files`
+/// puts it in a sub-agent's fields.
 fn session_lines(value: &str, noise: &str) -> Vec<String> {
     let head = |kind: &str, uuid: &str, at: &str| {
         json!({
@@ -59,6 +60,27 @@ fn session_lines(value: &str, noise: &str) -> Vec<String> {
     ]
 }
 
+/// A sub-agent's transcript and its `.meta.json`, which put `value` in a
+/// reply, the sub-agent's type, and its description.
+fn subagent_files(value: &str, noise: &str) -> (String, String) {
+    let reply = json!({
+        "type": "assistant",
+        "uuid": "g-1",
+        "sessionId": "s-1",
+        "isSidechain": true,
+        "timestamp": "2026-10-15T00:00:03Z",
+        "message": {"role": "assistant", "content": [
+            {"type": "text", "text": format!("found {value}")},
+        ]},
+    });
+    let meta = json!({
+        "agentType": format!("agent-{value}"),
+        "description": format!("look for {value} {noise}"),
+        "toolUseId": "t-1",
+    });
+    (reply.to_string(), meta.to_string())
+}
+
 #[test]
 fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult {
     let value_lists = vec("[A-Z]{3}[0-9]{3}[a-z]{2}", 1..3);
@@ -81,6 +103,17 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                 "2026-10-15T02:00:00Z",
                 &refs,
             )?;
+            let (reply, meta) = subagent_files(first, &noise);
+            root.write(
+                &format!("{project}/s-1/subagents/agent-1.jsonl"),
+                "2026-10-15T01:00:00Z",
+                &[&reply],
+            )?;
+            root.write(
+                &format!("{project}/s-1/subagents/agent-1.meta.json"),
+                "2026-10-15T01:00:00Z",
+                &[&meta],
+            )?;
             let given: Vec<(&str, &str, &str)> = values
                 .iter()
                 .map(|value| (value.as_str(), "\u{FF3B}v\u{FF3D}", "repo"))
@@ -100,7 +133,8 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                         around: None,
                         excerpt,
                         mentions: None,
-                        subagents: false,
+                        spawns: true,
+                        subagents: true,
                         usage: true,
                     },
                     &query,
@@ -131,8 +165,8 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
             let corpus = last.ok_or("no run")?;
             check_eq(
                 &corpus.records.len(),
-                &4,
-                "a prompt, a reply, a call, and a result, each once",
+                &5,
+                "a prompt, a reply, a call, and a result, each once, and the sub-agent's reply",
             )?;
             let prompts: usize = corpus
                 .sessions

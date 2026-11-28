@@ -161,7 +161,7 @@ fn fields_names_an_unknown_key() -> TestResult {
         ),
         (
             &["records", "--fields", "txt", "--format", "md"][..],
-            "ccdig: --fields: unknown key \"txt\": use type, agent, session_id, session_title, session_title_then, project, cwd, git_branch, timestamp, turn, tool, input, tool_use_id, result, is_error, denial, text, kind, command, permission_mode, superseded, model, skill, subagent, usage, redacted, source, matched, or matches\n",
+            "ccdig: --fields: unknown key \"txt\": use type, agent, session_id, session_title, session_title_then, project, cwd, git_branch, timestamp, turn, tool, input, tool_use_id, result, is_error, denial, text, kind, command, permission_mode, superseded, model, skill, subagent, subagent_type, subagent_description, parent_tool_use_id, usage, redacted, source, matched, or matches\n",
         ),
     ] {
         let ran = history.run(args);

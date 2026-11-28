@@ -6,7 +6,9 @@ use proptest::strategy::Strategy;
 use serde_json::Value;
 
 use super::{BLOG_FILE, at, bare_prompt, blog_head, sample_session, source, tokyo};
-use crate::record::{AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Turn};
+use crate::record::{
+    AGENT, FirstMatch, Head, MatchLine, Prompt, Reply, Search, Session, Spawned, Turn,
+};
 use crate::redact::Counts;
 use crate::render::digest::{Limits, digest};
 use crate::render::json::{Fields, Run, document, lines};
@@ -241,6 +243,7 @@ fn a_sub_agent_name_adds_no_heading() -> TestResult {
                         model: String::new(),
                         skill: String::new(),
                         subagent: name.clone(),
+                        spawned: Spawned::default(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
                         search: Search::default(),
@@ -279,6 +282,7 @@ fn matched_lines_add_no_heading() -> TestResult {
                         model: String::new(),
                         skill: String::new(),
                         subagent: String::new(),
+                        spawned: Spawned::default(),
                         redacted: false,
                         source: source(BLOG_FILE, 1, "a-1"),
                         search: Search {

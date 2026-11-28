@@ -7,6 +7,8 @@ mod properties;
 use core::error::Error;
 use std::path::Path;
 
+use jiff::tz::TimeZone;
+use serde_json::Value;
 use tempfile::TempDir;
 
 use super::excerpt::excerpt;
@@ -18,6 +20,7 @@ use crate::record::{Record as _, Turn};
 use crate::redact::ExtraMasks;
 use crate::testing::{TestResult, check_eq, time, write_transcript};
 use crate::transcript::entry::Usage;
+use crate::when::DayRange;
 
 /// Every kind of record `records` can pick.
 const ALL: Types = Types {
@@ -28,6 +31,11 @@ const ALL: Types = Types {
     summaries: true,
     thinking: true,
 };
+
+/// A record's kind and sub-agent, marked when it is redacted, and the keys
+/// JSON writes for how the sub-agent was started (type, description, parent call), or `None` for
+/// a kind without them.
+type SpawnKeys = (String, Option<[String; 3]>);
 
 /// A transcript root in a temp dir.
 struct Root {
@@ -156,6 +164,7 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
             around: None,
             excerpt: None,
             mentions: None,
+            spawns: false,
             subagents: true,
             usage: false,
         },
@@ -171,6 +180,241 @@ fn a_subagent_takes_the_title_of_its_session() -> TestResult {
             record.subagent(),
         )?;
     }
+    Ok(())
+}
+
+/// The `SpawnKeys` of `turn`.
+fn spawn_keys(turn: &Turn) -> Result<SpawnKeys, Box<dyn Error>> {
+    let value = serde_json::to_value(turn)?;
+    let key = |name: &str| value.get(name).and_then(Value::as_str).map(str::to_owned);
+    let keys = match (
+        key("subagent_type"),
+        key("subagent_description"),
+        key("parent_tool_use_id"),
+    ) {
+        (Some(kind), Some(description), Some(parent)) => Some([kind, description, parent]),
+        _ => None,
+    };
+    let redacted = if value.get("redacted") == Some(&Value::Bool(true)) {
+        " (redacted)"
+    } else {
+        ""
+    };
+    let name = format!(
+        "{} {}{redacted}",
+        key("type").unwrap_or_default(),
+        turn.subagent()
+    );
+    Ok((name, keys))
+}
+
+#[test]
+fn a_subagent_record_names_the_call_that_started_it_with_its_masked_type_and_description()
+-> TestResult {
+    let root = Root::new()?;
+    let key_id = format!("AKIA{}", "Q".repeat(16));
+    root.write(
+        "-Users-alice-blog/hhhh.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"user","uuid":"h-1","sessionId":"hhhh","timestamp":"2026-10-15T00:00:00Z","message":{"role":"user","content":"find the total"}}"#,
+            r#"{"type":"assistant","uuid":"h-2","sessionId":"hhhh","timestamp":"2026-10-15T00:00:01Z","message":{"content":[{"type":"tool_use","id":"toolu_p1","name":"Agent","input":{"description":"Find the total","prompt":"Look","subagent_type":"corp-explorer"}}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"user","uuid":"s-1","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:02Z","message":{"role":"user","content":"Look"}}"#,
+            r#"{"type":"assistant","uuid":"s-2","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:03Z","message":{"content":[{"type":"thinking","thinking":"where?"},{"type":"text","text":"Searching."},{"type":"tool_use","id":"toolu_c1","name":"Agent","input":{"description":"Look deeper","prompt":"Deeper"}}]}}"#,
+            r#"{"type":"user","uuid":"s-3","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:05Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_c1","content":"found it"}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.meta.json",
+        "2026-10-15T01:00:00Z",
+        &[&format!(
+            r#"{{"agentType":"corp-explorer","description":"Find the total with {key_id}","toolUseId":"toolu_p1"}}"#
+        )],
+    )?;
+    // Started by agent-9, not by the session: a nested sub-agent.
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-8.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"n-1","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:04Z","message":{"content":[{"type":"text","text":"Deeper."}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-8.meta.json",
+        "2026-10-15T01:00:00Z",
+        &[r#"{"agentType":"Explore","description":"Look deeper","toolUseId":"toolu_c1"}"#],
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading {
+            spawns: true,
+            subagents: true,
+            ..Reading::default()
+        },
+        &Query::default(),
+        &masking(&[("corp", "\u{FF3B}org\u{FF3D}", "org")])?,
+        || Records::new(ALL),
+    )?;
+    let started = |kind: &str, description: &str, parent: &str| {
+        Some([kind.to_owned(), description.to_owned(), parent.to_owned()])
+    };
+    let by_agent_9 = || {
+        started(
+            "\u{FF3B}org\u{FF3D}-explorer",
+            "Find the total with ***REDACTED***",
+            "toolu_p1",
+        )
+    };
+    check_eq(
+        &corpus
+            .records
+            .iter()
+            .map(spawn_keys)
+            .collect::<Result<Vec<_>, _>>()?,
+        &vec![
+            ("prompt ".to_owned(), None),
+            // Its input names the masked type.
+            ("call  (redacted)".to_owned(), started("", "", "")),
+            ("thinking agent-9 (redacted)".to_owned(), by_agent_9()),
+            ("reply agent-9 (redacted)".to_owned(), by_agent_9()),
+            ("call agent-9 (redacted)".to_owned(), by_agent_9()),
+            ("result agent-9 (redacted)".to_owned(), by_agent_9()),
+            (
+                "reply agent-8".to_owned(),
+                started("Explore", "Look deeper", "toolu_c1"),
+            ),
+        ],
+        "records",
+    )?;
+    let counted = corpus
+        .records
+        .iter()
+        .find(|record| record.subagent() == "agent-9")
+        .map(|record| record.masked().ranked());
+    check_eq(
+        &counted,
+        &Some(vec![
+            ("aws-key-id".to_owned(), 1),
+            ("values/org".to_owned(), 1),
+        ]),
+        "what masking the type and the description counted",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_subagent_names_the_call_that_started_it_when_its_session_is_not_read() -> TestResult {
+    let root = Root::new()?;
+    // Last written before the range: not opened.
+    root.write(
+        "-Users-alice-blog/hhhh.jsonl",
+        "2026-10-10T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"h-1","sessionId":"hhhh","timestamp":"2026-10-10T00:00:00Z","message":{"content":[{"type":"tool_use","id":"toolu_p1","name":"Agent","input":{"description":"Find","prompt":"Look"}}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"s-1","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"text","text":"Found."}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.meta.json",
+        "2026-10-15T01:00:00Z",
+        &[r#"{"agentType":"Explore","description":"Find","toolUseId":"toolu_p1"}"#],
+    )?;
+    // Out of the range too: its broken meta file is not read.
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-1.jsonl",
+        "2026-10-10T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"o-1","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-10T00:00:00Z","message":{"content":[{"type":"text","text":"Old."}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-1.meta.json",
+        "2026-10-10T01:00:00Z",
+        &[r#"{"agentType":"#],
+    )?;
+    let corpus = collect(
+        root.path(),
+        Reading {
+            spawns: true,
+            subagents: true,
+            ..Reading::default()
+        },
+        &Query {
+            range: DayRange::parse("2026-10-14", "", &TimeZone::UTC)?,
+            ..Query::default()
+        },
+        &masking(&[])?,
+        || Records::new(ALL),
+    )?;
+    check_eq(
+        &corpus
+            .records
+            .iter()
+            .map(spawn_keys)
+            .collect::<Result<Vec<_>, _>>()?,
+        &vec![(
+            "reply agent-9".to_owned(),
+            Some([
+                "Explore".to_owned(),
+                "Find".to_owned(),
+                "toolu_p1".to_owned(),
+            ]),
+        )],
+        "records",
+    )?;
+    check_eq(&corpus.warnings, &Vec::<String>::new(), "warnings")?;
+    Ok(())
+}
+
+#[test]
+fn a_subagent_is_not_said_how_it_was_started_unless_asked_for() -> TestResult {
+    // As stats and sessions read: they write none of the keys, so a broken
+    // meta file is not read, nor warned about.
+    let root = Root::new()?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.jsonl",
+        "2026-10-15T01:00:00Z",
+        &[
+            r#"{"type":"assistant","uuid":"s-1","sessionId":"hhhh","isSidechain":true,"timestamp":"2026-10-15T00:00:00Z","message":{"content":[{"type":"text","text":"Found."}]}}"#,
+        ],
+    )?;
+    root.write(
+        "-Users-alice-blog/hhhh/subagents/agent-9.meta.json",
+        "2026-10-15T01:00:00Z",
+        &[r#"{"agentType":"#],
+    )?;
+    let mask = masking(&[])?;
+    let read = |spawns| {
+        collect(
+            root.path(),
+            Reading {
+                spawns,
+                subagents: true,
+                ..Reading::default()
+            },
+            &Query::default(),
+            &mask,
+            || Records::new(ALL),
+        )
+    };
+    check_eq(
+        &read(false)?.warnings,
+        &Vec::<String>::new(),
+        "not asked for",
+    )?;
+    check_eq(&read(true)?.warnings.len(), &1, "asked for")?;
     Ok(())
 }
 
@@ -355,6 +599,7 @@ fn a_response_s_tokens_go_to_its_first_record_and_count_once_per_session() -> Te
             around: None,
             excerpt: None,
             mentions: None,
+            spawns: false,
             subagents: false,
             usage: true,
         },

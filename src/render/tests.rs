@@ -14,7 +14,7 @@ use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
     AGENT, Group, Head, Kind, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS,
-    Search, Session, Source, Summary, ToolCall, ToolResult, Touch, Turn,
+    Search, Session, Source, Spawned, Summary, ToolCall, ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
@@ -483,6 +483,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         model: "claude-opus-5-5".to_owned(),
         skill: "weekly-report".to_owned(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         redacted: false,
         source: source(BLOG_FILE, 5, "a-1"),
         search: Search::default(),
@@ -503,6 +504,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         }),
         skill: "weekly-report".to_owned(),
         subagent: "agent-1".to_owned(),
+        spawned: Spawned::default(),
         redacted: false,
         source: source(
             "/home/alice/.claude/projects/-Users-alice-blog/1111/subagents/agent-1.jsonl",
@@ -522,6 +524,7 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
         denial: String::new(),
         text: "fatal: not a git repository".to_owned(),
         subagent: "agent-1".to_owned(),
+        spawned: Spawned::default(),
         redacted: false,
         source: source(
             "/home/alice/.claude/projects/-Users-alice-blog/1111/subagents/agent-1.jsonl",
@@ -588,6 +591,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         model: String::new(),
         skill: String::new(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         usage: None,
         redacted: false,
         source: source(BLOG_FILE, 2, "a-1"),
@@ -604,6 +608,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         result: None,
         skill: String::new(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         usage: None,
         redacted: false,
         source: source(BLOG_FILE, 3, "a-2"),
@@ -620,6 +625,7 @@ fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult
         denial: String::new(),
         text: String::new(),
         subagent: String::new(),
+        spawned: Spawned::default(),
         redacted: false,
         source: source(BLOG_FILE, 4, "u-1"),
         search: Search::default(),

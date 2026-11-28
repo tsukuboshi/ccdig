@@ -409,7 +409,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.6","schema":8,"filter":"strict-v5"}
+{"version":"0.0.6","schema":9,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -529,9 +529,9 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 | 種類 | 間に入るキー |
 | --- | --- |
-| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `usage` |
-| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
-| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
+| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id`, `usage` |
+| `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id`, `usage` |
+| `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent`, `subagent_type`, `subagent_description`, `parent_tool_use_id` |
 | `summary` | `text` |
 
 `--fields` で除かない限り、どのキーも常に出力されます。依頼文の `kind` は打ち方（`slash` か `text`）で、
@@ -613,6 +613,16 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
   `agent-1a2b` のようなファイル名です。サブエージェントのレコードは、
   そのセッションの `session_id` と `session_title` を持ちます。セッション
   本体の transcript の最終書き込みが `--since` より前なら、タイトルは空です。
+- `subagent_type`・`subagent_description`・`parent_tool_use_id` は、
+  サブエージェントがどう起動されたかを表します。順に、`Explore` のような種別、
+  呼び出し側が書いた目的（本文と同じくマスクします）、起動した呼び出しの
+  `tool_use_id` です。その呼び出しはセッション本体の transcript にあり、
+  別のサブエージェントが起動したサブエージェントなら、そのサブエージェントの
+  transcript にあります。つまり、サブエージェント自身のファイルの外でその
+  `tool_use_id` を持つレコードが親です。値はサブエージェントの transcript の隣の
+  `.meta.json` から取ります（Claude Code が書く形式を観測したもの）。
+  セッション本体、そのファイルが無いとき、書かれていないとき（呼び出しから
+  起動されない、フォークしたサブエージェントで動くスキルなど）は空です。
 - `input` は `tool_use` ブロックの入力に、Claude Code が行の
   `wireToolInputs` に保存した切り詰められていない値を重ねたものです。
   そのため、`ExitPlanMode` の `plan` のようにモデルが送らなかったキーも
@@ -656,7 +666,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":8,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":9,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -698,6 +708,8 @@ Markdown には上限より少ないレコードが出ることがあります�
 エスケープを戻します。JSON と JSON Lines は、ツールが書いたままにします。サブエージェントのレコードは、自分の見出しの末尾にも
 サブエージェント名を付けます（例: ``### 2026-10-13 10:25:01 JST - Tool call -
 `agent-1` ``）。セッション本体のレコードと見分けられます。
+サブエージェントの transcript の見出しには、種別と、1 行にまとめた目的も
+出します（例: ``- Subagent type: `Explore` ``）。
 
 `--context` を付けると、レコードは全文の代わりに一致した行を出します。
 隣り合う行のかたまりごとに、どの行か、そのうちどれが一致したかを箇条書きで
@@ -744,7 +756,10 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 
 - 読むのは通常のファイルだけです。`<root>/<project>/<session>.jsonl` と、
   `--subagents` を付けたときは `<root>/<project>/<session>/subagents/*.jsonl`
-  も読みます。
+  も読みます。`records` は、読むサブエージェントの transcript ごとに、隣にある
+  同じ名前の `.meta.json`（1 MiB まで）も読みます。無いものと通常のファイルで
+  ないものは何も表さず、読めないものやデコードできないものは警告します
+  （`--on-skip fail` はこの警告も数えます）。
 - シンボリックリンクはたどりません。
 - 再開したセッションは以前のエントリを繰り返しますが、両方の transcript を
   同じ実行で読めば、各エントリ（`uuid` と行内の位置で識別）は元の
@@ -816,7 +831,7 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 
 これらのマスクと `--mask-values` は、本文でないフィールド、つまり
 `project`・`cwd`・`git_branch`・ファイルのパス・`tool`・`model`・
-`skill`・`subagent`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
+`skill`・`subagent`・`subagent_type`・`command`・ツールの入力のキーと、stderr の警告にもかかります。
 ツールの入力のキーには組み込みのルールもかけるので、トークンのような秘密が
 キーになっていてもマスクされます。
 

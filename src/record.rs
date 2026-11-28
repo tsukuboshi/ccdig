@@ -18,7 +18,7 @@ pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
 /// them, for `--fields`.
-pub const RECORD_KEYS: [&str; 29] = [
+pub const RECORD_KEYS: [&str; 32] = [
     "type",
     "agent",
     "session_id",
@@ -43,6 +43,9 @@ pub const RECORD_KEYS: [&str; 29] = [
     "model",
     "skill",
     "subagent",
+    "subagent_type",
+    "subagent_description",
+    "parent_tool_use_id",
     "usage",
     "redacted",
     "source",
@@ -271,6 +274,8 @@ pub trait Record {
     fn search(&self) -> &Search;
     /// Where the line is.
     fn source(&self) -> &Source;
+    /// How the sub-agent was started, for a kind that says.
+    fn spawned(&self) -> Option<&Spawned>;
     /// The sub-agent file name, or empty for the session itself.
     fn subagent(&self) -> &str;
 }
@@ -294,10 +299,13 @@ pub struct Reply {
     pub skill: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
+    /// How the sub-agent was started.
+    #[serde(flatten)]
+    pub spawned: Spawned,
     /// The tokens of the response, on the first record of the response in
     /// the file; `null` on the others and when the line has none.
     pub usage: Option<Usage>,
-    /// Whether masking changed the text.
+    /// Whether masking changed the text or the sub-agent's description.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
@@ -462,6 +470,24 @@ pub struct Source {
     pub uuid: String,
 }
 
+/// How the sub-agent a record comes from was started, from the
+/// `.meta.json` next to its transcript; empty for the session itself, and
+/// when that file is missing or does not say.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "the JSON keys follow the declaration order"
+)]
+pub struct Spawned {
+    /// The kind of sub-agent, such as `Explore`.
+    pub subagent_type: String,
+    /// What the caller wrote the sub-agent was for, masked.
+    pub subagent_description: String,
+    /// The `tool_use_id` of the call that started the sub-agent, in its
+    /// session's transcript or in another sub-agent's.
+    pub parent_tool_use_id: String,
+}
+
 /// A tool call: a `call` of `ccdig records`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[expect(
@@ -486,9 +512,13 @@ pub struct ToolCall {
     pub skill: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
+    /// How the sub-agent was started.
+    #[serde(flatten)]
+    pub spawned: Spawned,
     /// The tokens of the response, as for a reply.
     pub usage: Option<Usage>,
-    /// Whether masking changed the input or the result's text.
+    /// Whether masking changed the input, the result's text, or the
+    /// sub-agent's description.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
@@ -563,7 +593,11 @@ pub struct ToolResult {
     pub text: String,
     /// The sub-agent file name, or empty for the session itself.
     pub subagent: String,
-    /// Whether masking changed the text or the input.
+    /// How the sub-agent was started.
+    #[serde(flatten)]
+    pub spawned: Spawned,
+    /// Whether masking changed the text, the input, or the sub-agent's
+    /// description.
     pub redacted: bool,
     /// Where the line is.
     pub source: Source,
@@ -653,6 +687,10 @@ impl Record for Prompt {
         &self.source
     }
 
+    fn spawned(&self) -> Option<&Spawned> {
+        None
+    }
+
     fn subagent(&self) -> &'static str {
         ""
     }
@@ -673,6 +711,10 @@ impl Record for Reply {
 
     fn source(&self) -> &Source {
         &self.source
+    }
+
+    fn spawned(&self) -> Option<&Spawned> {
+        Some(&self.spawned)
     }
 
     fn subagent(&self) -> &str {
@@ -697,6 +739,10 @@ impl Record for Summary {
         &self.source
     }
 
+    fn spawned(&self) -> Option<&Spawned> {
+        None
+    }
+
     fn subagent(&self) -> &'static str {
         ""
     }
@@ -719,6 +765,10 @@ impl Record for ToolCall {
         &self.source
     }
 
+    fn spawned(&self) -> Option<&Spawned> {
+        Some(&self.spawned)
+    }
+
     fn subagent(&self) -> &str {
         &self.subagent
     }
@@ -739,6 +789,10 @@ impl Record for ToolResult {
 
     fn source(&self) -> &Source {
         &self.source
+    }
+
+    fn spawned(&self) -> Option<&Spawned> {
+        Some(&self.spawned)
     }
 
     fn subagent(&self) -> &str {
@@ -861,6 +915,10 @@ where
         (**self).source()
     }
 
+    fn spawned(&self) -> Option<&Spawned> {
+        (**self).spawned()
+    }
+
     fn subagent(&self) -> &str {
         (**self).subagent()
     }
@@ -881,6 +939,10 @@ impl Record for Turn {
 
     fn source(&self) -> &Source {
         self.inner().source()
+    }
+
+    fn spawned(&self) -> Option<&Spawned> {
+        self.inner().spawned()
     }
 
     fn subagent(&self) -> &str {

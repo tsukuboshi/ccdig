@@ -19,10 +19,11 @@ use self::mask::{Draft, Mask};
 use self::read::{Mention, Skipped, read_file};
 use crate::failure::Failure;
 use crate::filter::Query;
-use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Touch};
+use crate::record::{AGENT, Head, Outcome, Record, Search, Session, Spawned, Touch};
 use crate::redact::Counts;
 use crate::text::clean_text;
 use crate::transcript::entry::{Entry, Usage};
+use crate::transcript::meta::Spawn;
 use crate::transcript::reader::{MAX_LINE_BYTES, Roles};
 use crate::transcript::walk::{self, SessionFile};
 use crate::when::Stamp;
@@ -51,6 +52,9 @@ pub struct Reading {
     /// let through rather than only the prompts the patterns match; `None`
     /// otherwise.
     pub mentions: Option<Types>,
+    /// Whether to read how each sub-agent was started, for the records
+    /// that say it; the others read none of its meta file.
+    pub spawns: bool,
     /// Whether to read sub-agent transcripts too.
     pub subagents: bool,
     /// Whether to add up the tokens of each session's responses in the
@@ -169,6 +173,8 @@ pub struct Spot<'file> {
     pub line: usize,
     /// The masking to apply.
     pub mask: &'file Mask,
+    /// How the sub-agent whose transcript this is was started.
+    pub started: &'file Started,
     /// When the line was written.
     pub timestamp: Stamp,
     /// The session title when the line was written, masked; empty in a
@@ -205,9 +211,62 @@ impl Spot<'_> {
         }
     }
 
+    /// How the sub-agent was started, adding what masking its description
+    /// counted to `masked`, as each of its records counts it again.
+    pub fn spawned(&self, masked: &mut Counts) -> Spawned {
+        masked.merge(&self.started.masked);
+        self.started.spawned.clone()
+    }
+
     /// The sub-agent file name, or empty for the session itself.
     pub fn subagent(&self) -> String {
         self.file.subagent.clone().unwrap_or_default()
+    }
+}
+
+/// How the sub-agent of a file was started, with its description masked
+/// once for all its records; empty for a session's own transcript.
+#[derive(Default)]
+pub struct Started {
+    /// What masking the description counted.
+    pub masked: Counts,
+    /// Whether masking changed the description.
+    pub redacted: bool,
+    /// The keys its records carry.
+    pub spawned: Spawned,
+}
+
+impl Started {
+    /// `spawn` with its description masked by `mask`. The type is masked
+    /// with the other labels when a record is sealed.
+    pub fn of(spawn: Spawn, mask: &Mask) -> Self {
+        let mut masked = Counts::default();
+        let (description, redacted) = mask.text(&spawn.description, &mut masked);
+        Self {
+            masked,
+            redacted,
+            spawned: Spawned {
+                subagent_type: spawn.agent_type,
+                subagent_description: description,
+                parent_tool_use_id: spawn.tool_use_id,
+            },
+        }
+    }
+
+    /// How the sub-agent of `file` was started, read from its meta file
+    /// when `reading` asks for it, with a warning when that file cannot be
+    /// used; empty for a session's own transcript.
+    fn read(file: &SessionFile, reading: Reading, mask: &Mask, warnings: &mut Vec<String>) -> Self {
+        if !reading.spawns || file.parent.is_none() {
+            return Self::default();
+        }
+        match walk::read_spawn(&file.path) {
+            Ok(spawn) => Self::of(spawn, mask),
+            Err(warning) => {
+                warnings.push(warning_line(&warning.path, &warning.error.to_string()));
+                Self::default()
+            }
+        }
     }
 }
 
@@ -267,7 +326,8 @@ where
         if !session.is_none_or(|id| query.may_hold_session(&id.to_string_lossy())) {
             continue;
         }
-        match read_file(file, query, mask, new_picker(), reading) {
+        let started = Started::read(file, reading, mask, &mut warnings);
+        match read_file(file, &started, query, mask, new_picker(), reading) {
             Ok(mut read) => {
                 if let Some(ref parent) = file.parent
                     && let Some(theirs) = read.mentions.take()
@@ -300,15 +360,7 @@ where
             Err(error) => warnings.push(warning_line(&file.path, &error)),
         }
     }
-    if troubled_files > 0 {
-        warnings.push(format!(
-            "ccdig: warning: skipped {} undecodable, {} timestamp-less, and {} over-{}-MiB line(s) in {troubled_files} file(s)",
-            skipped.undecodable,
-            skipped.untimed,
-            skipped.oversized,
-            MAX_LINE_BYTES >> 20_u32,
-        ));
-    }
+    warnings.extend(skipped_warning(skipped, troubled_files));
     for session in &mut sessions {
         inherit_title(session.file, &mut session.records, &titles, &own_titles);
         if let Some(theirs) = delegated.remove(&session.file.path)
@@ -346,6 +398,20 @@ where
         reading.around.unwrap_or_default(),
         &query.grep,
     ))
+}
+
+/// The warning for the lines `skipped` in `troubled_files` files, or `None`
+/// when no file had any.
+fn skipped_warning(skipped: Skipped, troubled_files: usize) -> Option<String> {
+    (troubled_files > 0).then(|| {
+        format!(
+            "ccdig: warning: skipped {} undecodable, {} timestamp-less, and {} over-{}-MiB line(s) in {troubled_files} file(s)",
+            skipped.undecodable,
+            skipped.untimed,
+            skipped.oversized,
+            MAX_LINE_BYTES >> 20_u32,
+        )
+    })
 }
 
 /// A warning about `path`. Control characters are neutralized because the

@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- With `--subagents`, a sub-agent's reply, thinking, call, and result
+  have three new keys from the `.meta.json` next to its transcript:
+  `subagent_type`, `subagent_description`, masked as text is, and
+  `parent_tool_use_id`, the `tool_use_id` of the call that started it, in
+  its session or in the sub-agent that started it. Markdown shows the type
+  and the description under the sub-agent's heading. The schema is now 9.
+
 ## [0.0.6] - 2026-11-28
 
 ### Added

@@ -5,10 +5,16 @@
     reason = "listing the transcript files is the start of the pipeline"
 )]
 
-use std::fs::{self, DirEntry};
-use std::io::{self, ErrorKind};
+use std::fs::{self, DirEntry, File};
+use std::io::{self, ErrorKind, Read as _};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+use crate::transcript::meta::{self, Spawn};
+
+/// The size of the largest `.meta.json` read. The ones observed hold a few
+/// short values; a larger file is not one.
+pub const MAX_META_BYTES: u64 = 0x0010_0000;
 
 /// The transcripts under a root, and what could not be listed.
 #[derive(Debug, Default)]
@@ -197,6 +203,52 @@ fn is(entry: &DirEntry, test: fn(&fs::FileType) -> bool) -> bool {
 /// cannot be told, as when the path is gone.
 pub fn is_dir(path: &str) -> bool {
     fs::metadata(path).is_ok_and(|metadata| metadata.is_dir())
+}
+
+/// How the sub-agent whose transcript is at `transcript` was started, from
+/// the `.meta.json` of the same name next to it. A missing file, or one
+/// that is not a regular file, says nothing.
+///
+/// # Errors
+///
+/// When the file cannot be read, is larger than `MAX_META_BYTES`, or is
+/// not a JSON object.
+pub fn read_spawn(transcript: &Path) -> Result<Spawn, Warning> {
+    // `agent-1.jsonl` to `agent-1.meta.json`, keeping a name that is not
+    // UTF-8.
+    let path = transcript.with_extension("meta.json");
+    let warning = |error| Warning {
+        error,
+        path: path.clone(),
+    };
+    // Not following a symlink, which could lead outside the root, nor
+    // opening a FIFO, which would block.
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return Ok(Spawn::default()),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Spawn::default()),
+        Err(error) => return Err(warning(error)),
+    }
+    let mut bytes = Vec::new();
+    // One byte past the limit tells a file over it.
+    File::open(&path)
+        .and_then(|file| {
+            file.take(MAX_META_BYTES.saturating_add(1))
+                .read_to_end(&mut bytes)
+        })
+        .map_err(warning)?;
+    if u64::try_from(bytes.len()).map_or(true, |len| len > MAX_META_BYTES) {
+        return Err(warning(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("larger than {} KiB", MAX_META_BYTES >> 10_u32),
+        )));
+    }
+    meta::decode(&bytes).ok_or_else(|| {
+        warning(io::Error::new(
+            ErrorKind::InvalidData,
+            "not a sub-agent's meta file",
+        ))
+    })
 }
 
 #[cfg(test)]

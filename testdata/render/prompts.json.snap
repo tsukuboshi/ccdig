@@ -2,7 +2,7 @@
 source: src/testing.rs
 ---
 {
-  "schema": 8,
+  "schema": 9,
   "filter": "strict-v3",
   "ccdig": "0.1.0",
   "run": {

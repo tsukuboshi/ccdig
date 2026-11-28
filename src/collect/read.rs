@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use super::excerpt::excerpt;
 use super::kinds::Records;
 use super::mask::{Draft, Mask, Title};
-use super::{Pick, Reading, Select, Spot};
+use super::{Pick, Reading, Select, Spot, Started};
 use jiff::Timestamp;
 use regex::Regex;
 
@@ -248,18 +248,20 @@ impl Titles {
     }
 
     /// Where line `line` of `file` is, written at `timestamp`, with the
-    /// title then.
+    /// title then and how the file's sub-agent was `started`.
     fn spot<'file>(
         &'file self,
         file: &'file SessionFile,
         line: usize,
         mask: &'file Mask,
+        started: &'file Started,
         timestamp: Stamp,
     ) -> Spot<'file> {
         Spot {
             file,
             line,
             mask,
+            started,
             timestamp,
             title: &self.then,
             title_masked: &self.then_masked,
@@ -508,15 +510,17 @@ where
     })
 }
 
-/// Reads one transcript and returns its selected records in file order,
-/// with the lines `--grep` matched when `reading` asks for an excerpt, and
-/// when it asks for usage, the tokens of each response in the range, once.
+/// Reads one transcript, whose sub-agent was `started` so, and returns its
+/// selected records in file order, with the lines `--grep` matched when
+/// `reading` asks for an excerpt, and when it asks for usage, the tokens of
+/// each response in the range, once.
 ///
 /// # Errors
 ///
 /// When the file cannot be opened or read, as a message for the warning.
 pub fn read_file<P>(
     file: &SessionFile,
+    started: &Started,
     query: &Query,
     mask: &Mask,
     mut picker: P,
@@ -567,7 +571,7 @@ where
         {
             found.extend(mentioned(
                 tally,
-                &titles.spot(file, line, mask, timestamp),
+                &titles.spot(file, line, mask, started, timestamp),
                 &entry,
                 query,
             ));
@@ -582,7 +586,7 @@ where
             untimed = untimed.saturating_add(1);
             continue;
         };
-        let spot = titles.spot(file, line, mask, timestamp);
+        let spot = titles.spot(file, line, mask, started, timestamp);
         let response = Response::of(&entry, line);
         for drafted in picker.pick(&spot, &entry) {
             let found = verdict(query, &drafted.1);

@@ -15,6 +15,7 @@ mod properties;
 mod responses;
 mod resume;
 mod stats;
+mod subagents;
 mod timeline;
 mod touched;
 
@@ -718,7 +719,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":8,\"filter\":\"strict-v5\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":9,\"filter\":\"strict-v5\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -2112,7 +2113,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(8_i32)),
+        &Some(&serde_json::json!(9_i32)),
         "schema",
     )?;
     check_eq(

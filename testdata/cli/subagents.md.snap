@@ -1,0 +1,87 @@
+---
+source: src/testing.rs
+---
+# Records
+
+- Records: 6 (reply 4, call 2)
+
+## Cart total
+
+- Project: `-Users-alice-shop`
+- Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+
+### 2026-10-13 12:00:05 JST - turn 1 - Tool call
+
+- Tool: `Agent`
+
+```json
+{
+  "description": "Find the cart total",
+  "prompt": "Find where the cart total is computed.",
+  "subagent_type": "Explore"
+}
+```
+
+- Result: ok
+
+```text
+In src/cart.rs.
+```
+
+### 2026-10-13 12:01:05 JST - turn 1 - Reply
+
+```text
+The total is computed in src/cart.rs.
+```
+
+## Cart total
+
+- Project: `-Users-alice-shop`
+- Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+- Subagent: `agent-a1`
+- Subagent type: `Explore`
+- Description: Find the cart total
+
+### 2026-10-13 12:00:10 JST - Reply - `agent-a1`
+
+```text
+Searching src.
+```
+
+### 2026-10-13 12:00:10 JST - Tool call - `agent-a1`
+
+- Tool: `Agent`
+
+```json
+{
+  "description": "Look in src",
+  "prompt": "Look for the total in src.",
+  "subagent_type": "general-purpose"
+}
+```
+
+- Result: ok
+
+```text
+src/cart.rs
+```
+
+### 2026-10-13 12:00:45 JST - Reply - `agent-a1`
+
+```text
+In src/cart.rs.
+```
+
+## Cart total
+
+- Project: `-Users-alice-shop`
+- Session: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee`
+- Subagent: `agent-a2`
+- Subagent type: `general-purpose`
+- Description: Look in \*src\* and # lib
+
+### 2026-10-13 12:00:30 JST - Reply - `agent-a2`
+
+```text
+Found src/cart.rs.
+```

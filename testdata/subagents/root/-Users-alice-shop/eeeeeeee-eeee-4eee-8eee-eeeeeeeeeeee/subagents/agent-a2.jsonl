@@ -1,0 +1,2 @@
+{"type":"user","uuid":"a2-1","sessionId":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"agentId":"a2","timestamp":"2026-10-13T03:00:11.000Z","cwd":"/Users/alice/shop","gitBranch":"main","message":{"role":"user","content":"Look for the total in src."}}
+{"type":"assistant","uuid":"a2-2","sessionId":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","isSidechain":true,"agentId":"a2","timestamp":"2026-10-13T03:00:30.000Z","cwd":"/Users/alice/shop","gitBranch":"main","message":{"role":"assistant","model":"claude-haiku-5-5","content":[{"type":"text","text":"Found src/cart.rs."}]}}

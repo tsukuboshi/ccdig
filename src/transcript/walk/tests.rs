@@ -5,15 +5,17 @@
     reason = "the tests build transcript trees on disk"
 )]
 
+use core::error::Error;
 use core::time::Duration;
 use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::os::unix::fs::{PermissionsExt as _, symlink};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::{Found, find_sessions};
+use super::{Found, MAX_META_BYTES, find_sessions, read_spawn};
 use crate::testing::{TestResult, check_eq};
+use crate::transcript::meta::Spawn;
 
 /// Creates empty files at the slash-separated `paths` under `root`.
 fn make_tree(root: &Path, paths: &[&str]) -> TestResult {
@@ -223,5 +225,88 @@ fn an_unreadable_project_is_a_warning_and_the_rest_is_listed() -> TestResult {
         &vec![(locked, ErrorKind::PermissionDenied)],
         "warnings",
     )?;
+    Ok(())
+}
+
+/// What `read_spawn` makes of a meta file holding `meta` next to the
+/// sub-agent transcript `agent-1.jsonl`: the spawn, or the path warned
+/// about.
+fn spawn_of(meta: &str) -> Result<Result<Spawn, PathBuf>, Box<dyn Error>> {
+    let dir = tempfile::tempdir()?;
+    fs::write(dir.path().join("agent-1.meta.json"), meta)?;
+    Ok(
+        read_spawn(&dir.path().join("agent-1.jsonl")).map_err(|warning| {
+            warning
+                .path
+                .strip_prefix(dir.path())
+                .map_or_else(|_| warning.path.clone(), Path::to_path_buf)
+        }),
+    )
+}
+
+#[test]
+fn a_subagent_is_said_how_it_was_started_by_the_meta_file_of_its_name() -> TestResult {
+    check_eq(
+        &spawn_of(
+            r#"{"agentType":"Explore","description":"Find the cart","toolUseId":"toolu_1"}"#,
+        )?,
+        &Ok(Spawn {
+            agent_type: "Explore".to_owned(),
+            description: "Find the cart".to_owned(),
+            tool_use_id: "toolu_1".to_owned(),
+        }),
+        "spawn",
+    )?;
+    // No meta file: an older transcript.
+    let dir = tempfile::tempdir()?;
+    check_eq(
+        &read_spawn(&dir.path().join("agent-1.jsonl")).map_err(|warning| warning.path),
+        &Ok(Spawn::default()),
+        "missing",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn a_meta_file_that_cannot_be_used_is_a_warning() -> TestResult {
+    let big = format!(
+        r#"{{"description":"{}"}}"#,
+        "x".repeat(usize::try_from(MAX_META_BYTES)?)
+    );
+    for (name, meta) in [
+        ("broken JSON", r#"{"agentType":"#.to_owned()),
+        ("not an object", r#"["Explore"]"#.to_owned()),
+        ("too large", big),
+    ] {
+        check_eq(
+            &spawn_of(&meta)?,
+            &Err(Path::new("agent-1.meta.json").to_path_buf()),
+            name,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_meta_file_that_is_not_a_regular_file_is_not_read() -> TestResult {
+    // A shared archive could point the meta file at a file outside --root.
+    let outside = tempfile::tempdir()?;
+    fs::write(
+        outside.path().join("private.json"),
+        r#"{"description":"outside the root"}"#,
+    )?;
+    let dir = tempfile::tempdir()?;
+    symlink(
+        outside.path().join("private.json"),
+        dir.path().join("agent-1.meta.json"),
+    )?;
+    fs::create_dir_all(dir.path().join("agent-2.meta.json"))?;
+    for agent in ["agent-1.jsonl", "agent-2.jsonl"] {
+        check_eq(
+            &read_spawn(&dir.path().join(agent)).map_err(|warning| warning.path),
+            &Ok(Spawn::default()),
+            agent,
+        )?;
+    }
     Ok(())
 }

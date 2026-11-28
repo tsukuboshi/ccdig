@@ -190,6 +190,18 @@ where
             if subagent && !first.subagent().is_empty() {
                 facts.push(format!("- Subagent: {}\n", code_span(first.subagent())));
             }
+            if let Some(spawned) = first.spawned() {
+                if fields.keeps("subagent_type") && !spawned.subagent_type.is_empty() {
+                    facts.push(format!(
+                        "- Subagent type: {}\n",
+                        code_span(&spawned.subagent_type)
+                    ));
+                }
+                let description = one_line(&spawned.subagent_description);
+                if fields.keeps("subagent_description") && !description.is_empty() {
+                    facts.push(format!("- Description: {}\n", escape_inline(&description)));
+                }
+            }
             if !facts.is_empty() {
                 out.push('\n');
                 out.extend(facts);
