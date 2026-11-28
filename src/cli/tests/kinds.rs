@@ -350,11 +350,11 @@ fn a_kind_filter_without_a_kind_it_applies_to_is_an_error() -> TestResult {
         ),
         (
             &["records", "--type", "prompt", "--skill", "tdd"][..],
-            "ccdig: --skill needs --type reply, call, or result",
+            "ccdig: --skill needs --type reply, thinking, call, or result",
         ),
         (
             &["records", "--type", "prompt", "--subagents"][..],
-            "ccdig: --subagents needs --type reply, call, or result",
+            "ccdig: --subagents needs --type reply, thinking, call, or result",
         ),
     ] {
         let ran = history.run(args);
@@ -676,7 +676,13 @@ fn every_record_names_the_turn_of_the_prompt_it_follows() -> TestResult {
         "every kind",
     )?;
     let md = history
-        .run(&[&base[..], &["--type", "reply", "--format", "md"]].concat())
+        .run(
+            &[
+                &base[..],
+                &["--type", "reply", "--format", "md", "--tz", "Asia/Tokyo"],
+            ]
+            .concat(),
+        )
         .out;
     check_eq(
         &md.contains("### 2026-10-15 09:00:08 JST - turn 2 - Reply\n"),
@@ -687,6 +693,207 @@ fn every_record_names_the_turn_of_the_prompt_it_follows() -> TestResult {
         &md.contains("### 2026-10-15 09:00:00 JST - Reply\n"),
         &true,
         &md,
+    )?;
+    Ok(())
+}
+
+/// A session whose one response thinks with text, without text twice, and
+/// then replies, with `secret` in the thinking.
+fn history_with_thoughts(secret: &str) -> Result<History, Box<dyn Error>> {
+    let history = History::new("kinds/root")?;
+    let response = json!({
+        "type": "assistant",
+        "uuid": "t-2",
+        "sessionId": "tttt",
+        "timestamp": "2026-10-15T00:00:02Z",
+        "message": {
+            "id": "msg_t",
+            "model": "claude-fable-5-2",
+            "usage": {"input_tokens": 3_i32, "output_tokens": 40_i32},
+            "content": [
+                {"type": "thinking", "thinking": "", "signature": "s1"},
+                {"type": "thinking", "thinking": format!("try password={secret} first"), "signature": "s2"},
+                {"type": "redacted_thinking", "data": "opaque"},
+                {"type": "text", "text": "Trying it."},
+            ],
+        },
+    })
+    .to_string();
+    history.write(
+        "-Users-alice-shop/tttt.jsonl",
+        fixture_time()?,
+        &[
+            r#"{"type":"user","uuid":"t-1","sessionId":"tttt","timestamp":"2026-10-15T00:00:01Z","message":{"role":"user","content":"log in"}}"#,
+            &response,
+        ],
+    )?;
+    Ok(history)
+}
+
+#[test]
+fn thinking_lists_the_blocks_with_text_masked_and_the_tokens_on_the_first() -> TestResult {
+    // Assembled at run time so that no secret-shaped literal is committed.
+    let secret = "a1B2".repeat(5);
+    let history = history_with_thoughts(&secret)?;
+    let ran = history.run(&[
+        "records",
+        "--session",
+        "tttt",
+        "--type",
+        "thinking,reply",
+        "--mask-report",
+        "text",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    let listed = json_lines(ran)?;
+    check_eq(
+        &strings(&listed, "type"),
+        &vec!["thinking", "reply"],
+        "the empty and redacted blocks are left out",
+    )?;
+    check_eq(
+        &strings(&listed, "text"),
+        &vec!["try password=***REDACTED*** first", "Trying it."],
+        "texts",
+    )?;
+    check_eq(
+        &strings(&listed, "model"),
+        &vec!["claude-fable-5-2", "claude-fable-5-2"],
+        "models",
+    )?;
+    check_eq(&turns(&listed), &vec![Some(1), Some(1)], "turns")?;
+    let usage: Vec<Option<u64>> = listed
+        .iter()
+        .map(|record| record.pointer("/usage/output").and_then(Value::as_u64))
+        .collect();
+    check_eq(&usage, &vec![Some(40), None], "tokens on the first record")?;
+    let report = history.run(&[
+        "records",
+        "--session",
+        "tttt",
+        "--type",
+        "thinking",
+        "--mask-report",
+        "text",
+    ]);
+    check_eq(
+        report.err.as_str(),
+        "ccdig: masked 1 by credential-assignment\n",
+        "mask report",
+    )?;
+    check_eq(&report.out.contains(&secret), &false, "no secret")?;
+    Ok(())
+}
+
+#[test]
+fn stats_count_the_thinking_blocks_without_text_apart() -> TestResult {
+    let history = history_with_thoughts(&"a1B2".repeat(5))?;
+    let by_model = records(
+        &history,
+        &[
+            "stats",
+            "--session",
+            "tttt",
+            "--type",
+            "thinking",
+            "--by",
+            "model",
+        ],
+    )?;
+    let [ref group] = by_model[..] else {
+        return Err(format!("want one group, got {by_model:?}").into());
+    };
+    check_eq(
+        &group.get("model"),
+        &Some(&json!("claude-fable-5-2")),
+        "model",
+    )?;
+    check_eq(&group.get("count"), &Some(&json!(1_i32)), "with text")?;
+    check_eq(&group.get("empty"), &Some(&json!(2_i32)), "without text")?;
+    check_eq(
+        &group.get("chars"),
+        &Some(&json!("try password=***REDACTED*** first".chars().count())),
+        "the text alone is counted",
+    )?;
+    check_eq(&group.get("sessions"), &Some(&json!(1_i32)), "sessions")?;
+    let by_type = records(
+        &history,
+        &[
+            "stats",
+            "--session",
+            "tttt",
+            "--type",
+            "thinking,reply",
+            "--by",
+            "type",
+        ],
+    )?;
+    check_eq(
+        &by_type
+            .iter()
+            .map(|line| (line.get("type").cloned(), line.get("empty").cloned()))
+            .collect::<Vec<_>>(),
+        &vec![
+            (Some(json!("reply")), Some(json!(0_i32))),
+            (Some(json!("thinking")), Some(json!(2_i32))),
+        ],
+        "by type",
+    )?;
+    let table = history.run(&[
+        "stats",
+        "--session",
+        "tttt",
+        "--type",
+        "thinking",
+        "--by",
+        "model",
+        "--format",
+        "md",
+        "--fields",
+        "model,count,empty,chars",
+    ]);
+    check_eq(&table.code, &0, &table.err)?;
+    check_eq(
+        &table.out.lines().skip(4).collect::<Vec<_>>(),
+        &vec![
+            "| Model | Count | Empty | Chars |",
+            "| --- | ---: | ---: | ---: |",
+            "| `claude-fable-5-2` | 1 | 2 | 33 |",
+        ],
+        "markdown",
+    )?;
+    let replies = records(&history, &["stats", "--session", "tttt", "--type", "reply"])?;
+    check_eq(
+        &replies.iter().any(|line| line.get("empty").is_some()),
+        &false,
+        "no empty key without thinking",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn sessions_count_the_thinking_a_search_matches() -> TestResult {
+    let history = history_with_thoughts(&"a1B2".repeat(5))?;
+    let found = records(
+        &history,
+        &[
+            "sessions",
+            "--session",
+            "tttt",
+            "--grep",
+            "password|Trying",
+            "--type",
+            "thinking",
+        ],
+    )?;
+    let [ref session] = found[..] else {
+        return Err(format!("want one session, got {found:?}").into());
+    };
+    check_eq(&session.get("match_count"), &Some(&json!(1_i32)), "matches")?;
+    check_eq(
+        &session.pointer("/first_match/type"),
+        &Some(&json!("thinking")),
+        "first match",
     )?;
     Ok(())
 }

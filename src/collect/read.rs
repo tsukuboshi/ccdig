@@ -26,6 +26,10 @@ use crate::when::Stamp;
 
 /// What a transcript file yielded.
 pub struct Read<T> {
+    /// The working directory of the first line that has one, in the range
+    /// or not, as written: where the session started, which `resume`
+    /// needs, as Claude Code keeps a session under it.
+    pub cwd: String,
     /// The time of the last prompt, reply, tool call, or tool result read
     /// in the range, whether the filters kept it or not.
     pub last: Option<Stamp>,
@@ -540,11 +544,15 @@ where
     let mut used = Vec::new();
     let mut responses = HashSet::new();
     let mut last: Option<Stamp> = None;
+    let mut cwd = String::new();
     for item in &mut lines {
         let (line, entry) = item.map_err(|error| format!("read transcript: {error}"))?;
         if entry.role == Role::AiTitle {
             titles.see(entry.title, file.parent.is_none(), mask);
             continue;
+        }
+        if cwd.is_empty() {
+            entry.cwd.clone_into(&mut cwd);
         }
         last = later(last, &entry, query);
         if reading.usage {
@@ -599,6 +607,7 @@ where
     let records = seal_all(kept.drafts, &picker, query, mask, &sealing);
     let stats = lines.stats();
     Ok(Read {
+        cwd,
         last,
         mentions: keeper.mentions(),
         records,

@@ -76,7 +76,7 @@ fn comment(answer: Answer<'_>) -> Option<String> {
 pub fn comment_in(entry: &Entry) -> Option<String> {
     entry.content.blocks.iter().find_map(|block| match *block {
         Block::ToolResult(ref result) => denial(Answer::of(entry, result)).comment,
-        Block::Other | Block::Text(_) | Block::ToolUse(_) => None,
+        Block::Other | Block::Text(_) | Block::Thinking(_) | Block::ToolUse(_) => None,
     })
 }
 

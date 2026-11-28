@@ -193,5 +193,11 @@ fn is(entry: &DirEntry, test: fn(&fs::FileType) -> bool) -> bool {
     entry.file_type().is_ok_and(|kind| test(&kind))
 }
 
+/// Whether `path` names a directory, following symlinks; `false` when that
+/// cannot be told, as when the path is gone.
+pub fn is_dir(path: &str) -> bool {
+    fs::metadata(path).is_ok_and(|metadata| metadata.is_dir())
+}
+
 #[cfg(test)]
 mod tests;

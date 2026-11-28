@@ -14,10 +14,13 @@ use crate::when::Stamp;
 /// One element of a message's content.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Block {
-    /// Anything else: thinking, images, and blocks with missing fields.
+    /// Anything else: images, and blocks with missing fields.
     Other,
     /// Text written by the user or the assistant.
     Text(String),
+    /// The assistant's thinking, or empty when the line keeps only its
+    /// signature, or the block is `redacted_thinking`.
+    Thinking(String),
     /// The output of a tool call.
     ToolResult(ToolResult),
     /// A tool call made by the assistant.
@@ -341,6 +344,14 @@ fn block(item: &Value) -> Block {
             .get("text")
             .and_then(Value::as_str)
             .map_or(Block::Other, |text| Block::Text(text.to_owned())),
+        Some("thinking") => Block::Thinking(
+            fields
+                .get("thinking")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        Some("redacted_thinking") => Block::Thinking(String::new()),
         Some("tool_result") => tool_result(fields),
         Some("tool_use") => tool_use(fields),
         Some(_) | None => Block::Other,
@@ -423,7 +434,10 @@ fn tool_result(fields: &Map<String, Value>) -> Block {
                 .iter()
                 .filter_map(|part| match block(part) {
                     Block::Text(text) => Some(text),
-                    Block::Other | Block::ToolResult(_) | Block::ToolUse(_) => None,
+                    Block::Other
+                    | Block::Thinking(_)
+                    | Block::ToolResult(_)
+                    | Block::ToolUse(_) => None,
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),

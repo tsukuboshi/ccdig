@@ -55,6 +55,8 @@ pub struct Grouping {
     /// The keys, in the order the lines write them; none for one line of
     /// every record.
     pub by: Vec<By>,
+    /// Whether the lines write `empty`: with `--type thinking`.
+    pub empty: bool,
     /// How many groups to keep after sorting, `None` for all of them.
     pub limit: Option<usize>,
     /// The fewest records a group needs to be kept.
@@ -103,8 +105,10 @@ type Key = Vec<(bool, String)>;
 struct Tally<'records> {
     /// How many characters.
     chars: usize,
-    /// How many records.
+    /// How many records, the thinking blocks without text left out.
     count: usize,
+    /// How many thinking blocks without text.
+    empty: usize,
     /// The time of the first record.
     first: Stamp,
     /// The time of the last record.
@@ -158,19 +162,23 @@ impl By {
             Self::Day => head.timestamp.date_label(zone)?,
             Self::Denial => match *turn {
                 Turn::Result(ref result) => result.denial.clone(),
-                Turn::Call(_) | Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => {
-                    String::new()
-                }
+                Turn::Call(_)
+                | Turn::Prompt(_)
+                | Turn::Reply(_)
+                | Turn::Summary(_)
+                | Turn::Thinking(_) => String::new(),
             },
             Self::Kind => match *turn {
                 Turn::Prompt(ref prompt) => prompt.kind.name().to_owned(),
-                Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => {
-                    String::new()
-                }
+                Turn::Call(_)
+                | Turn::Reply(_)
+                | Turn::Result(_)
+                | Turn::Summary(_)
+                | Turn::Thinking(_) => String::new(),
             },
             Self::Model => match *turn {
                 Turn::Call(ref call) => call.model.clone(),
-                Turn::Reply(ref reply) => reply.model.clone(),
+                Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply.model.clone(),
                 Turn::Prompt(_) | Turn::Result(_) | Turn::Summary(_) => String::new(),
             },
             Self::Month => head.timestamp.month_label(zone)?,
@@ -178,21 +186,25 @@ impl By {
             Self::Session => head.session_id.clone(),
             Self::Skill => match *turn {
                 Turn::Call(ref call) => call.skill.clone(),
-                Turn::Reply(ref reply) => reply.skill.clone(),
+                Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply.skill.clone(),
                 Turn::Result(ref result) => result.skill.clone(),
                 Turn::Prompt(_) | Turn::Summary(_) => String::new(),
             },
             Self::Status => match *turn {
                 Turn::Result(ref result) => if result.is_error { "error" } else { "ok" }.to_owned(),
-                Turn::Call(_) | Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => {
-                    String::new()
-                }
+                Turn::Call(_)
+                | Turn::Prompt(_)
+                | Turn::Reply(_)
+                | Turn::Summary(_)
+                | Turn::Thinking(_) => String::new(),
             },
             Self::Subagent => turn.subagent().to_owned(),
             Self::Tool => match *turn {
                 Turn::Call(ref call) => call.tool.clone(),
                 Turn::Result(ref result) => result.tool.clone(),
-                Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) => String::new(),
+                Turn::Prompt(_) | Turn::Reply(_) | Turn::Summary(_) | Turn::Thinking(_) => {
+                    String::new()
+                }
             },
             Self::Type => turn.type_name().to_owned(),
             Self::Week => head.timestamp.week_label(zone)?,
@@ -218,8 +230,12 @@ impl<'records> Tally<'records> {
     /// Adds `turn` to the group.
     fn add(&mut self, turn: &'records Turn) {
         let head = turn.head();
-        self.count = self.count.saturating_add(1);
-        self.chars = self.chars.saturating_add(chars(turn));
+        if is_empty_thinking(turn) {
+            self.empty = self.empty.saturating_add(1);
+        } else {
+            self.count = self.count.saturating_add(1);
+            self.chars = self.chars.saturating_add(chars(turn));
+        }
         self.sessions.insert(&head.session_id);
         if head.timestamp.instant() < self.first.instant() {
             self.first = head.timestamp;
@@ -235,8 +251,10 @@ impl<'records> Tally<'records> {
         }
     }
 
-    /// The line of the group whose keys have the values in `key`.
-    fn group(self, key: Key, by: &[By]) -> Group {
+    /// The line of the group whose keys have the values in `key`, grouped
+    /// as `grouping` says.
+    fn group(self, key: Key, grouping: &Grouping) -> Group {
+        let by = &grouping.by;
         let names = columns(by);
         let mut values = key.into_iter().map(|(none, text)| (!none).then_some(text));
         let keys = names
@@ -253,6 +271,7 @@ impl<'records> Tally<'records> {
         Group {
             keys,
             count: self.count,
+            empty: grouping.empty.then_some(self.empty),
             chars: self.chars,
             sessions: Group::writes_sessions(&names).then_some(self.sessions.len()),
             first: self.first,
@@ -271,6 +290,7 @@ impl<'records> Tally<'records> {
         Self {
             chars: 0,
             count: 0,
+            empty: 0,
             first: at,
             last: at,
             lead: turn,
@@ -337,8 +357,9 @@ pub fn tally(
     }
     let mut groups: Vec<Group> = tallies
         .into_iter()
-        .filter(|entry| entry.1.count >= grouping.min_count)
-        .map(|(key, tally)| tally.group(key, &grouping.by))
+        // A group of thinking blocks without text alone still has records.
+        .filter(|entry| entry.1.count.saturating_add(entry.1.empty) >= grouping.min_count)
+        .map(|(key, tally)| tally.group(key, grouping))
         .collect();
     // A stable sort, so groups that tie stay in the order of their keys.
     match grouping.sort {
@@ -370,10 +391,15 @@ fn chars(turn: &Turn) -> usize {
             }
         }
         Turn::Prompt(ref prompt) => prompt.text.chars().count(),
-        Turn::Reply(ref reply) => reply.text.chars().count(),
+        Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply.text.chars().count(),
         Turn::Result(ref result) => result.text.chars().count(),
         Turn::Summary(ref summary) => summary.text.chars().count(),
     }
+}
+
+/// Whether `turn` is a thinking block that kept no text.
+const fn is_empty_thinking(turn: &Turn) -> bool {
+    matches!(*turn, Turn::Thinking(ref thought) if thought.text.is_empty())
 }
 
 /// The tokens of a group, none counting as zero, for sorting.
@@ -386,7 +412,7 @@ fn tokens(group: &Group) -> Usage {
 const fn usage(turn: &Turn) -> Option<Usage> {
     match *turn {
         Turn::Call(ref call) => call.usage,
-        Turn::Reply(ref reply) => reply.usage,
+        Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply.usage,
         Turn::Prompt(_) | Turn::Result(_) | Turn::Summary(_) => None,
     }
 }

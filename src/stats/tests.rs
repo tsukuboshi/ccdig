@@ -146,6 +146,7 @@ const fn tokens(output: u64, cache_read: u64) -> Usage {
 fn by(by: &[By]) -> Grouping {
     Grouping {
         by: by.to_vec(),
+        empty: false,
         min_count: 0,
         sort: Sort::Count,
         limit: None,
@@ -457,5 +458,71 @@ fn the_type_and_kind_keys_hold_the_names_records_writes() -> TestResult {
         let kind = written.get("kind").cloned().unwrap_or(Value::Null);
         check_eq(&keys.get("kind"), &Some(&kind), "kind")?;
     }
+    Ok(())
+}
+
+/// A thinking block of `model` with `text`, empty when it kept none.
+fn thought(session: &str, time: &str, text: &str, model: &str) -> Result<Turn, String> {
+    let Turn::Reply(block) = reply(session, time, text, model, None)? else {
+        return Err("reply makes a reply".to_owned());
+    };
+    Ok(Turn::Thinking(block))
+}
+
+#[test]
+fn thinking_without_text_counts_as_empty_but_still_places_the_group() -> TestResult {
+    let records = vec![
+        thought("s1", "2026-10-13T01:00:00Z", "", "opus")?,
+        thought("s1", "2026-10-13T01:01:00Z", "plan", "opus")?,
+        thought("s2", "2026-10-13T01:05:00Z", "", "sonnet")?,
+    ];
+    let grouping = Grouping {
+        empty: true,
+        ..by(&[By::Model])
+    };
+    check_eq(
+        &as_json(&tally(&records, &grouping, &TimeZone::UTC)?)?,
+        &json!([
+            {
+                "model": "opus",
+                "count": 1_i32,
+                "empty": 1_i32,
+                "chars": 4_i32,
+                "sessions": 1_i32,
+                "first": "2026-10-13T01:00:00Z",
+                "last": "2026-10-13T01:01:00Z",
+                "usage": null,
+            },
+            {
+                "model": "sonnet",
+                "count": 0_i32,
+                "empty": 1_i32,
+                "chars": 0_i32,
+                "sessions": 1_i32,
+                "first": "2026-10-13T01:05:00Z",
+                "last": "2026-10-13T01:05:00Z",
+                "usage": null,
+            },
+        ]),
+        "groups",
+    )?;
+    let at_least_one = Grouping {
+        min_count: 1,
+        ..grouping
+    };
+    check_eq(
+        &tally(&records, &at_least_one, &TimeZone::UTC)?
+            .iter()
+            .map(|group| group.keys.get("model").cloned())
+            .collect::<Vec<_>>(),
+        &vec![Some(json!("opus")), Some(json!("sonnet"))],
+        "--min-count counts the blocks without text too",
+    )?;
+    let plain = tally(&records, &by(&[By::Model]), &TimeZone::UTC)?;
+    check_eq(
+        &plain.iter().map(|group| group.empty).collect::<Vec<_>>(),
+        &vec![None, None],
+        "not written without --type thinking",
+    )?;
     Ok(())
 }

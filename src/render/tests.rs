@@ -128,6 +128,8 @@ fn sample_session() -> Result<Session, String> {
         prompt_count: 2,
         match_count: None,
         first_match: None,
+        resume: Some("cd /Users/alice/blog && claude --resume aaaa".to_owned()),
+        resume_unavailable: None,
         matched_types: Vec::new(),
     })
 }
@@ -147,6 +149,7 @@ fn sample_groups() -> Result<Vec<Group>, Box<dyn Error>> {
         Group {
             keys: keys(BLOG_SESSION, Some("Weekly report | draft"))?,
             count: 12,
+            empty: None,
             chars: 3_456,
             sessions: None,
             first: at("2026-10-13T01:23:45.678Z")?,
@@ -161,6 +164,7 @@ fn sample_groups() -> Result<Vec<Group>, Box<dyn Error>> {
         Group {
             keys: keys("22222222-2222-4222-8222-222222222222", None)?,
             count: 1,
+            empty: None,
             chars: 0,
             sessions: None,
             first: at("2026-10-14T00:05:00Z")?,
@@ -702,15 +706,18 @@ fn the_keys_fields_takes_are_the_keys_stats_writes() -> TestResult {
         .into_iter()
         .filter(|key| *key != "sessions")
         .collect();
-    for (keys, want) in [
-        (&every[..], every_but_sessions),
+    // With every `--by` key and `--type thinking`, and with neither.
+    for (keys, empty, want) in [
+        (&every[..], true, every_but_sessions),
         (
             &[][..],
+            false,
             vec!["count", "chars", "sessions", "first", "last", "usage"],
         ),
     ] {
         let grouping = Grouping {
             by: keys.to_vec(),
+            empty,
             ..Grouping::default()
         };
         let groups = tally(&records, &grouping, &TimeZone::UTC)?;

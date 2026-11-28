@@ -12,12 +12,15 @@ use super::{Corpus, Select};
 use crate::filter::Filter;
 use crate::record::{AGENT, Record, Session};
 use crate::redact::Counts;
+use crate::text::shell_quote;
 use crate::transcript::entry::Usage;
-use crate::transcript::walk::SessionFile;
+use crate::transcript::walk::{SessionFile, is_dir};
 use crate::when::Stamp;
 
 /// A file's selected records, with what the session record needs of it.
 pub struct FileRecords<'file, T> {
+    /// The working directory the transcript starts in, unmasked.
+    pub cwd: String,
     /// The transcript file.
     pub file: &'file SessionFile,
     /// The time of the last record read in the range.
@@ -55,6 +58,8 @@ where
     // The matched prompts and replies already counted, which a resumed copy
     // repeats.
     let mut mentioned: HashSet<(String, usize)> = HashSet::new();
+    // Whether each working directory seen is there, looked up once.
+    let mut dirs: HashMap<String, bool> = HashMap::new();
     let mut corpus = Corpus {
         records: Vec::new(),
         sessions: Vec::new(),
@@ -115,12 +120,7 @@ where
             }
             None => (None, None),
         };
-        let mut usage = Usage::default();
-        for (id, tokens) in session.usage {
-            if id.is_empty() || priced.insert(id) {
-                usage.add(tokens);
-            }
-        }
+        let usage = unpriced(session.usage, &mut priced);
         let head = first.head();
         let last_kept = last.head().timestamp;
         let mut masked = head.masked.clone();
@@ -129,6 +129,7 @@ where
             masked.merge(earliest.masked());
         }
         let shown_file = mask.meta(&session.file.path.to_string_lossy(), &mut masked);
+        let (resume, resume_unavailable) = resume(&head.session_id, &session.cwd, mask, &mut dirs);
         corpus.sessions.push(Session {
             agent: AGENT,
             id: head.session_id.clone(),
@@ -150,6 +151,8 @@ where
             match_count,
             first_match: first_match.map(|earliest| earliest.first_match(grep)),
             usage,
+            resume,
+            resume_unavailable,
             masked,
             matched_types,
         });
@@ -230,4 +233,55 @@ pub fn inherit_title<T>(
         head.masked.merge(counts);
         head.masked.merge(counts);
     }
+}
+
+/// The command that resumes session `id` in `cwd`, the unmasked
+/// directory its transcript starts in, or why there is none: `no-cwd` when
+/// the transcript gave none, `cwd-masked` when `mask` changes it, so the
+/// command would print what the masks hide, and `cwd-missing` when it is
+/// not a directory now. `dirs` keeps what was found for each directory, so
+/// each is looked up once.
+fn resume(
+    id: &str,
+    cwd: &str,
+    mask: &Mask,
+    dirs: &mut HashMap<String, bool>,
+) -> (Option<String>, Option<&'static str>) {
+    if cwd.is_empty() {
+        return (None, Some("no-cwd"));
+    }
+    // Nothing is printed when the masks change it, so nothing is counted.
+    if mask.meta(cwd, &mut Counts::default()) != cwd {
+        return (None, Some("cwd-masked"));
+    }
+    let there = if let Some(&known) = dirs.get(cwd) {
+        known
+    } else {
+        let found = is_dir(cwd);
+        dirs.insert(cwd.to_owned(), found);
+        found
+    };
+    if !there {
+        return (None, Some("cwd-missing"));
+    }
+    (
+        Some(format!(
+            "cd {} && claude --resume {}",
+            shell_quote(cwd),
+            shell_quote(id)
+        )),
+        None,
+    )
+}
+
+/// The sum of the tokens of `responses` not in `priced`, each then added
+/// to it; a response without an ID is always counted.
+fn unpriced(responses: Vec<(String, Usage)>, priced: &mut HashSet<String>) -> Usage {
+    let mut usage = Usage::default();
+    for (id, tokens) in responses {
+        if id.is_empty() || priced.insert(id) {
+            usage.add(tokens);
+        }
+    }
+    usage
 }

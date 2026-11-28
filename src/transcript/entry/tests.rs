@@ -195,6 +195,31 @@ fn a_mistyped_block_empties_the_prompt_text() -> TestResult {
 }
 
 #[test]
+fn a_thinking_block_keeps_its_text_and_one_without_text_is_empty() -> TestResult {
+    let entry = decode(concat!(
+        r#"{"type":"assistant","message":{"content":["#,
+        r#"{"type":"thinking","thinking":"weighing it","signature":"s1"},"#,
+        r#"{"type":"thinking","thinking":"","signature":"s2"},"#,
+        r#"{"type":"thinking","signature":"s3"},"#,
+        r#"{"type":"thinking","thinking":7},"#,
+        r#"{"type":"redacted_thinking","data":"opaque"}]}}"#,
+    ))?;
+    check_eq(
+        &entry.content.blocks,
+        &vec![
+            Block::Thinking("weighing it".to_owned()),
+            Block::Thinking(String::new()),
+            Block::Thinking(String::new()),
+            Block::Thinking(String::new()),
+            Block::Thinking(String::new()),
+        ],
+        "blocks",
+    )?;
+    check_eq(entry.content.text.as_str(), "", "no prompt text")?;
+    Ok(())
+}
+
+#[test]
 fn an_assistant_line_keeps_every_block_in_order() -> TestResult {
     let entry = decode(concat!(
         r#"{"type":"assistant","uuid":"a-1","attributionSkill":"tdd","#,
@@ -209,7 +234,7 @@ fn an_assistant_line_keeps_every_block_in_order() -> TestResult {
     check_eq(
         &entry.content.blocks,
         &vec![
-            Block::Other,
+            Block::Thinking("hmm".to_owned()),
             Block::Text("Running the tests.".to_owned()),
             Block::ToolUse(ToolUse {
                 id: "toolu_1".to_owned(),
@@ -281,7 +306,7 @@ fn wire_tool_inputs_replace_the_input_of_the_call_with_the_same_id() -> TestResu
         .iter()
         .filter_map(|block| match *block {
             Block::ToolUse(ref call) => Some(call.input.clone()),
-            Block::Other | Block::Text(_) | Block::ToolResult(_) => None,
+            Block::Other | Block::Text(_) | Block::Thinking(_) | Block::ToolResult(_) => None,
         })
         .collect();
     check_eq(

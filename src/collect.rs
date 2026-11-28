@@ -287,6 +287,7 @@ where
                 }
                 if !read.records.is_empty() {
                     sessions.push(FileRecords {
+                        cwd: read.cwd,
                         file,
                         last: read.last,
                         modified,

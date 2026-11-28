@@ -103,7 +103,9 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             kinds,
             shared,
         } => {
-            let corpus = gather(&shared, SessionSort::Time, || Records::new(kinds))?;
+            let corpus = gather(&shared, SessionSort::Time, || {
+                Records::counting_empty_thinking(kinds)
+            })?;
             let groups = tally(&corpus.records, &grouping, &shared.zone)?;
             let keys = columns(&grouping.by);
             let out = write(format, &fields, &groups, &shared.run, |lines| {

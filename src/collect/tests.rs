@@ -26,6 +26,7 @@ const ALL: Types = Types {
     replies: true,
     results: true,
     summaries: true,
+    thinking: true,
 };
 
 /// A transcript root in a temp dir.
@@ -75,14 +76,16 @@ fn masking(values: &[(&str, &str, &str)]) -> Result<Mask, Box<dyn Error>> {
 fn text(turn: &Turn) -> &str {
     match *turn {
         Turn::Prompt(ref prompt) => &prompt.text,
-        Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => "",
+        Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) | Turn::Thinking(_) => {
+            ""
+        }
     }
 }
 
 /// The tokens a reply or a tool call carries, or `None`.
 fn usage(turn: &Turn) -> Option<Usage> {
     match *turn {
-        Turn::Reply(ref reply) => reply.usage,
+        Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply.usage,
         Turn::Call(ref call) => call.usage,
         Turn::Prompt(_) | Turn::Result(_) | Turn::Summary(_) => None,
     }

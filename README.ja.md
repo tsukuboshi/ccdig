@@ -168,7 +168,7 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 
 | コマンド | 出すもの | 専用のオプション |
 | --- | --- | --- |
-| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
+| `records` | `--type` で選んだ種類の依頼文・返答・ツールの呼び出し・ツールの結果・要約・思考ブロック 1 件につき 1 レコード。書かれた順に並ぶ | `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--around`, `--context`, `--format`, `--fields`, `--message-chars`, `--tool-chars` |
 | `sessions` | 選ばれた依頼文を含むセッション 1 つにつき 1 レコード | `--type`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `stats` | `records` が出すレコードを `--by` のキーでまとめたグループ 1 つにつき 1 レコード | `--by`, `--min-count`, `--type`, `--tool`, `--touched`, `--status`, `--denial`, `--skill`, `--kind`, `--superseded`, `--subagents`, `--format`, `--fields`, `--sort` |
 | `digest` | サイズ上限付きの、依頼文の Markdown ダイジェスト | `--kind`, `--superseded`, `--max-prompt-chars`, `--max-session-chars` |
@@ -188,6 +188,12 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 | `call` | ツールの呼び出しと、その結果 |
 | `result` | ツールの結果。呼び出しのツールと入力付き |
 | `summary` | コンテキストを圧縮したときに Claude Code が書く要約 |
+| `thinking` | assistant の思考ブロックのうち、本文が残っているもの |
+
+`thinking` は assistant の思考ブロックを、ほかの種類と同じくマスクして出します。
+Claude Code は多くの思考ブロックで署名だけを残し、本文を残しません。
+そうしたブロックは出さず、`stats` が `empty` に数えます。
+本文が無いので、`!` で始まらないパターンには一致しません。
 
 次の 8 つのオプションは、一部の種類にだけ効きます。
 
@@ -197,10 +203,10 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 | `--touched` | `call`, `result` | このファイル、またはこのディレクトリ以下のファイルの編集・書き込みと、それを名指す Bash のコマンド |
 | `--status` | `result` | この状態の結果。`error` か `ok` |
 | `--denial` | `result` | この理由で実行されなかった呼び出しの結果。`user-rejected` など |
-| `--skill` | `reply`, `call`, `result` | そのスキルの実行中に書かれたレコード |
+| `--skill` | `reply`, `thinking`, `call`, `result` | そのスキルの実行中に書かれたレコード |
 | `--kind` | `prompt` | この打ち方の依頼文。`text`・`slash`・`rejection`・`answer`・`typed-answer`・`approval` のいずれか |
 | `--superseded` | `prompt` | `true` なら、代わりに別の依頼文を送り直された依頼文。`false` ならそれ以外 |
-| `--subagents` | `reply`, `call`, `result` | サブエージェントの履歴も含める |
+| `--subagents` | `reply`, `thinking`, `call`, `result` | サブエージェントの履歴も含める |
 
 - `--tool`・`--touched`・`--denial`・`--skill`・`--kind` は、共通の絞り込みと同じく
   繰り返し指定でき、先頭の `!` も使えます。`--status` は `--type` と同じく
@@ -296,6 +302,15 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
   `--limit` は並べ替えた後の先頭 N 件を残します。`!` で始まらない
   パターンが必要です。既定の `--sort time` は、選ばれた最初の依頼文の
   時刻順に並べます。
+- `resume` は、そのセッションを transcript が始まったディレクトリで再開する
+  コマンドです。範囲や絞り込みで何が残っても、そのディレクトリを使います。例えば
+  `cd /Users/alice/blog && claude --resume <session id>` の形で、POSIX シェルで
+  クォートが要る部分はクォートします。Claude Code はセッションをそのディレクトリ
+  ごとに保存するため、そこで実行する形にしています。コマンドを
+  作れないときは `resume` が `null` になり、`resume_unavailable` が理由を示します。
+  transcript に `cwd` が無ければ `no-cwd`、マスクで書き換わるなら `cwd-masked`、
+  worktree を消した後のように今はディレクトリが無ければ `cwd-missing` です。
+  Markdown にはどちらも出しません。
 
 レコードは次のキーをこの順に持ちます。
 
@@ -310,6 +325,7 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 | `mtime` | ファイルの最終書き込み時刻 |
 | `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | 上のとおり |
 | `usage` | トークン数。「トークン数」の節を参照 |
+| `resume`, `resume_unavailable` | 上のとおり |
 
 ### stats
 
@@ -334,14 +350,14 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | フラグ | 働き |
 | --- | --- |
 | `--by KEY` | これらのキーで、指定した順にまとめる（カンマ区切りか繰り返しで指定）。キーは `session`・`project`・`branch`・`type`・`tool`・`skill`・`subagent`・`model`・`kind`・`denial`・`status`・`day`・`week`・`month`。省くと全レコードで 1 グループで、レコードが無ければ何も出さない |
-| `--min-count N` | レコードが N 件未満のグループを出さない |
+| `--min-count N` | レコードが N 件未満のグループを出さない。`--type thinking` のときは、本文が残っていない思考ブロックも数える |
 | `--sort SORT` | `count`（既定）・`chars`・`output`・`cache_read` は多い順、`key` はキーの値の順。同じ値のグループはキーの順に並ぶ |
 | `--limit N` | 並べ替えた後の先頭 N グループを残す |
 
 - `day` は `2026-11-25`、`week` は月曜始まりの ISO 8601 週で `2026-W48`、
   `month` は `2026-11` の形で書き、どれも `--tz` のタイムゾーンで決めます。
-- `kind` は `kind` キーと同じく依頼文の打ち方で、`model` は返答かツールの
-  呼び出しのモデルです。`denial` と `status` はツールの結果のもので、
+- `kind` は `kind` キーと同じく依頼文の打ち方で、`model` は返答・思考ブロック・
+  ツールの呼び出しのモデルです。`denial` と `status` はツールの結果のもので、
   `--denial` と `--status` が取る語で書きます。そのため
   `--type result --by denial,tool` で、実行されなかった呼び出しを理由と
   ツールごとに数えられます。`--type result` か、`--denial` のように結果を
@@ -360,7 +376,8 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 | --- | --- |
 | `--by` のキー | その値。`--by` で指定した順に並ぶ。値が無ければ `null` |
 | `session_title`, `project`, `file` | `--by session` のときだけ、セッションの最後のタイトル・プロジェクト・transcript のファイル。空なら `null`。`records --session` にそのまま渡せる |
-| `count` | レコードの件数 |
+| `count` | レコードの件数。`--type thinking` のときは、本文が残っている思考ブロックだけを数える |
+| `empty` | `--type thinking` のときだけ、本文が残っていない思考ブロックの件数。`count` と `chars` には入らない。ほかのときは書かない |
 | `chars` | マスク後の本文の文字数。ツールの呼び出しは入力の compact JSON、ほかの種類は本文を数える。トークン数はモデルに依存するので、`usage` が持つ。`--tool-chars` は入力の文字列を 1 つずつ切るので、測るものが違う |
 | `sessions` | レコードを含むセッションの数。`--by session` のときは書かない |
 | `first`, `last` | 最初と最後のレコードの時刻。`timestamp` と同じ形で書く |
@@ -392,7 +409,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.5","schema":7,"filter":"strict-v5"}
+{"version":"0.0.5","schema":8,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -512,7 +529,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 
 | 種類 | 間に入るキー |
 | --- | --- |
-| `reply` | `text`, `model`, `skill`, `subagent`, `usage` |
+| `reply`, `thinking` | `text`, `model`, `skill`, `subagent`, `usage` |
 | `call` | `tool`, `input`, `tool_use_id`, `result`, `skill`, `subagent`, `usage` |
 | `result` | `tool`, `input`, `tool_use_id`, `is_error`, `denial`, `text`, `subagent` |
 | `summary` | `text` |
@@ -616,11 +633,12 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 ```
 
 - 1 回の応答は同じトークン数を持つ複数の行に分けて書かれるため、ファイルの
-  中で、その応答のうち絞り込みで残った最初の返答か呼び出しだけが値を
-  持ちます。残りと、
+  中で、その応答のうち絞り込みで残った最初の返答・思考ブロック・呼び出しだけが
+  値を持ちます。残りと、
   トークン数の無い行は `null` です。
 - 記録を足しても全体になるとは限りません。思考だけの応答のように返答も
-  呼び出しも無い応答は、トークン数を載せる記録がありません。`--type` や
+  呼び出しも無い応答は、`--type thinking` でそのブロックを出さない限り、
+  トークン数を載せる記録がありません。`--type` や
   絞り込みで記録がすべて外れた応答も同じです。
 - `sessions` のレコードは最後に、範囲内のセッションの応答を 1 回ずつ足した
   同じ 4 つのキーを `usage` に持ちます。そのため `sessions` は assistant の
@@ -638,7 +656,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":7,"filter":"strict-v5","ccdig":"0.0.5",
+{"schema":8,"filter":"strict-v5","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
@@ -720,7 +738,7 @@ Markdown とダイジェストの出力は、履歴のフィールドを信頼�
 ルール 4 は `origin.kind` が `human` でも適用されます。Claude Code は `!` に
 よるシェルエスケープを人間の入力として記録するためです。Claude Code が
 `origin` を書くようになる前に記録されたセッションでは、ルール 2 を飛ばします。
-thinking ブロックは決して出力しません。
+思考ブロックは `--type thinking` のときだけ、本文が残っているものに限って出力します。
 
 ### ファイル
 

@@ -32,6 +32,9 @@ struct Call {
 /// Picks the records of the kinds in `types`, in the order they were
 /// written.
 pub struct Records {
+    /// Whether the thinking blocks without text are picked too, for
+    /// `stats` to count them.
+    empty_thinking: bool,
     /// When the calls carry their results: for each call picked so far in
     /// the file, by its ID, what it came to, unmasked, once its result is
     /// seen.
@@ -69,6 +72,8 @@ pub struct Types {
     pub results: bool,
     /// Compaction summaries.
     pub summaries: bool,
+    /// The assistant's thinking blocks.
+    pub thinking: bool,
 }
 
 /// Picks the prompts a person typed, and what they answered through a
@@ -102,6 +107,13 @@ pub struct Summaries;
 /// Picks the assistant's text blocks.
 pub struct Replies;
 
+/// Picks the assistant's thinking blocks: with `empty`, those without text
+/// too.
+pub struct Thoughts {
+    /// Whether the blocks without text are picked too.
+    pub empty: bool,
+}
+
 /// Picks tool calls.
 pub struct Tools;
 
@@ -123,6 +135,7 @@ impl Types {
         replies: true,
         results: false,
         summaries: false,
+        thinking: false,
     };
 
     /// Prompts alone, which `--kind` and `--superseded` pick without
@@ -133,20 +146,31 @@ impl Types {
         replies: false,
         results: false,
         summaries: false,
+        thinking: false,
     };
 
     /// Whether any of the kinds is on an assistant line, or needs one, as
     /// a result needs its call.
     pub const fn reads_assistant(self) -> bool {
-        self.replies || self.calls || self.results
+        self.replies || self.calls || self.results || self.thinking
     }
 }
 
 impl Records {
+    /// Picks the kinds in `types` as `new` does, and the thinking blocks
+    /// without text too, for `stats` to count them.
+    pub fn counting_empty_thinking(types: Types) -> Self {
+        Self {
+            empty_thinking: true,
+            ..Self::new(types)
+        }
+    }
+
     /// Picks the kinds in `types`, the calls without their results, for
     /// what counts the records and prints none.
     pub fn new(types: Types) -> Self {
         Self {
+            empty_thinking: false,
             outcomes: None,
             plans: HashMap::new(),
             prompts: Prompts::default(),
@@ -243,6 +267,15 @@ impl Pick for Records {
                     let replies = Replies.pick(spot, entry).into_iter();
                     turns.extend(replies.map(|(index, reply)| (index, reply.map(Turn::Reply))));
                 }
+                if self.types.thinking {
+                    let mut thoughts = Thoughts {
+                        empty: self.empty_thinking,
+                    };
+                    let picked = thoughts.pick(spot, entry).into_iter();
+                    turns.extend(
+                        picked.map(|(index, thought)| (index, thought.map(Turn::Thinking))),
+                    );
+                }
                 if self.types.calls {
                     let calls = Tools.pick(spot, entry);
                     if let Some(ref mut outcomes) = self.outcomes {
@@ -286,7 +319,11 @@ impl Pick for Records {
     fn superseded(&self, record: &Turn) -> bool {
         match *record {
             Turn::Prompt(ref prompt) => self.prompts.superseded(prompt),
-            Turn::Call(_) | Turn::Reply(_) | Turn::Result(_) | Turn::Summary(_) => false,
+            Turn::Call(_)
+            | Turn::Reply(_)
+            | Turn::Result(_)
+            | Turn::Summary(_)
+            | Turn::Thinking(_) => false,
         }
     }
 
@@ -310,7 +347,7 @@ impl Pick for Records {
             Role::User => {
                 result || prompt || (self.types.summaries && reason == Reason::CompactSummary)
             }
-            Role::Assistant => self.types.replies || self.types.calls,
+            Role::Assistant => self.types.replies || self.types.calls || self.types.thinking,
             Role::AiTitle | Role::Other => false,
         }
     }
@@ -400,7 +437,11 @@ impl Prompts {
                 Block::Text(ref written) if !is_no_response(&entry.model, written) => {
                     written.lines().map(str::trim).find(|line| !line.is_empty())
                 }
-                Block::Other | Block::Text(_) | Block::ToolResult(_) | Block::ToolUse(_) => None,
+                Block::Other
+                | Block::Text(_)
+                | Block::Thinking(_)
+                | Block::ToolResult(_)
+                | Block::ToolUse(_) => None,
             });
         let reply = match own {
             Some(line) => {
@@ -552,23 +593,39 @@ impl Pick for Replies {
             Block::Text(ref written)
                 if !written.trim().is_empty() && !is_no_response(&entry.model, written) =>
             {
-                let mut masked = Counts::default();
-                let (text, redacted) = spot.mask.text(written.trim(), &mut masked);
-                let source = source(spot, entry, &mut masked);
-                Some(Reply {
-                    head: spot.head(entry),
-                    text,
-                    model: entry.model.clone(),
-                    skill: entry.skill.clone(),
-                    subagent: spot.subagent(),
-                    usage: None,
-                    redacted,
-                    source,
-                    search: Search::default(),
-                    masked,
-                })
+                Some(assistant_block(spot, entry, written))
             }
-            Block::Text(_) | Block::Other | Block::ToolResult(_) | Block::ToolUse(_) => None,
+            Block::Text(_)
+            | Block::Other
+            | Block::Thinking(_)
+            | Block::ToolResult(_)
+            | Block::ToolUse(_) => None,
+        })
+    }
+
+    fn roles(&self) -> Roles {
+        Roles::ASSISTANT
+    }
+
+    fn wants(&mut self, entry: &Entry) -> bool {
+        entry.role == Role::Assistant
+    }
+}
+
+impl Pick for Thoughts {
+    type Record = Reply;
+
+    fn pick(&mut self, spot: &Spot<'_>, entry: &Entry) -> Vec<(usize, Draft<Reply>)> {
+        let empty = self.empty;
+        blocks(entry, |block| match *block {
+            Block::Thinking(ref written) if empty || !written.trim().is_empty() => {
+                Some(assistant_block(spot, entry, written))
+            }
+            Block::Other
+            | Block::Text(_)
+            | Block::Thinking(_)
+            | Block::ToolResult(_)
+            | Block::ToolUse(_) => None,
         })
     }
 
@@ -618,7 +675,7 @@ impl Pick for Results {
                     masked,
                 })
             }
-            Block::Other | Block::Text(_) | Block::ToolUse(_) => None,
+            Block::Other | Block::Text(_) | Block::Thinking(_) | Block::ToolUse(_) => None,
         })
     }
 
@@ -682,7 +739,7 @@ impl Pick for Tools {
                     masked,
                 })
             }
-            Block::Other | Block::Text(_) | Block::ToolResult(_) => None,
+            Block::Other | Block::Text(_) | Block::Thinking(_) | Block::ToolResult(_) => None,
         })
     }
 
@@ -876,7 +933,8 @@ impl Select for Turn {
     }
 
     fn kind(&self) -> &'static str {
-        selected(self).kind()
+        // A thinking block is a `Reply`, whose own kind is `reply`.
+        self.type_name()
     }
 
     fn labels_mut(&mut self) -> Vec<&mut String> {
@@ -981,6 +1039,26 @@ fn drafted(
     })
 }
 
+/// The record of `written`, a text or thinking block of the assistant line
+/// `entry`, trimmed and masked.
+fn assistant_block(spot: &Spot<'_>, entry: &Entry, written: &str) -> Reply {
+    let mut masked = Counts::default();
+    let (text, redacted) = spot.mask.text(written.trim(), &mut masked);
+    let source = source(spot, entry, &mut masked);
+    Reply {
+        head: spot.head(entry),
+        text,
+        model: entry.model.clone(),
+        skill: entry.skill.clone(),
+        subagent: spot.subagent(),
+        usage: None,
+        redacted,
+        source,
+        search: Search::default(),
+        masked,
+    }
+}
+
 /// The records `make` builds from the blocks of `entry`, each with its
 /// block's index.
 fn blocks<T>(entry: &Entry, make: impl Fn(&Block) -> Option<T>) -> Vec<(usize, Draft<T>)>
@@ -1009,7 +1087,7 @@ fn typed_prompt(entry: &Entry) -> (usize, String, Kind, String) {
 fn selected(turn: &Turn) -> &dyn Select {
     match *turn {
         Turn::Prompt(ref prompt) => prompt,
-        Turn::Reply(ref reply) => reply,
+        Turn::Reply(ref reply) | Turn::Thinking(ref reply) => reply,
         Turn::Call(ref call) => call,
         Turn::Result(ref result) => result,
         Turn::Summary(ref summary) => summary,
@@ -1054,7 +1132,7 @@ fn strings_in<'value>(
 fn selected_mut(turn: &mut Turn) -> &mut dyn Select {
     match *turn {
         Turn::Prompt(ref mut prompt) => prompt,
-        Turn::Reply(ref mut reply) => reply,
+        Turn::Reply(ref mut reply) | Turn::Thinking(ref mut reply) => reply,
         Turn::Call(ref mut call) => call,
         Turn::Result(ref mut result) => result,
         Turn::Summary(ref mut summary) => summary,

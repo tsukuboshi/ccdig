@@ -4,6 +4,7 @@ mod properties;
 
 use super::{
     Span, clean_text, code_span, cut_span, escape_inline, escape_pipes, heading_text, one_line,
+    shell_quote,
 };
 use crate::testing::{TestResult, check_eq};
 
@@ -145,5 +146,29 @@ fn cut_span_keeps_a_range_and_says_what_is_before_and_after() -> TestResult {
         &"(1 characters before) \u{2026}\u{672c}\u{2026} (1 more characters, next: 3-3)".to_owned(),
         "characters, not bytes",
     )?;
+    Ok(())
+}
+
+#[test]
+fn shell_quote_leaves_plain_words_and_single_quotes_the_rest() -> TestResult {
+    for (text, want) in [
+        ("b951b9fe-0c1d-4e2f", "b951b9fe-0c1d-4e2f"),
+        (
+            "/Users/alice/work/ccdig_v2.1",
+            "/Users/alice/work/ccdig_v2.1",
+        ),
+        ("", "''"),
+        ("/Users/alice/my work", "'/Users/alice/my work'"),
+        ("it's", r"'it'\''s'"),
+        ("$(rm -rf ~)", "'$(rm -rf ~)'"),
+        ("a;b|c&d", "'a;b|c&d'"),
+        (
+            "/Users/\u{30A2}\u{30EA}\u{30B9}",
+            "'/Users/\u{30A2}\u{30EA}\u{30B9}'",
+        ),
+        ("line\nbreak", "'line\nbreak'"),
+    ] {
+        check_eq(shell_quote(text).as_str(), want, text)?;
+    }
     Ok(())
 }

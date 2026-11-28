@@ -558,6 +558,8 @@ pub enum RecordType {
     Result,
     /// The summaries Claude Code writes when it compacts the context.
     Summary,
+    /// The assistant's thinking blocks that kept their text.
+    Thinking,
 }
 
 /// What `--status` can keep.
