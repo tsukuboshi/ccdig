@@ -212,6 +212,8 @@ fn fields_picks_what_markdown_shows_by_the_same_keys() -> TestResult {
         "prompt",
         "--format",
         "md",
+        "--tz",
+        "Asia/Tokyo",
     ];
     let only_text = history.run(&[&base[..], &["--fields", "text"]].concat());
     check_eq(&only_text.code, &0, &only_text.err)?;

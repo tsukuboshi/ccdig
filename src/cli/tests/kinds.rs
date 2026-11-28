@@ -676,7 +676,13 @@ fn every_record_names_the_turn_of_the_prompt_it_follows() -> TestResult {
         "every kind",
     )?;
     let md = history
-        .run(&[&base[..], &["--type", "reply", "--format", "md"]].concat())
+        .run(
+            &[
+                &base[..],
+                &["--type", "reply", "--format", "md", "--tz", "Asia/Tokyo"],
+            ]
+            .concat(),
+        )
         .out;
     check_eq(
         &md.contains("### 2026-10-15 09:00:08 JST - turn 2 - Reply\n"),
