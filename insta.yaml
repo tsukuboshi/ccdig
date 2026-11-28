@@ -1,0 +1,7 @@
+---
+# Read by insta in both cargo test and cargo insta test.
+behavior:
+  # Without it, a snapshot also matches output with extra line breaks at the
+  # start, through insta's fallback for its legacy format. testing::snapshot
+  # checks the end of the output itself.
+  require_full_match: true

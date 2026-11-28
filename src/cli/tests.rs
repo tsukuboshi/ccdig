@@ -1,4 +1,4 @@
-//! Tests for the command line, against golden files and synthetic history.
+//! Tests for the command line, against snapshots and synthetic history.
 
 #![expect(
     clippy::disallowed_methods,
@@ -30,12 +30,12 @@ use tempfile::TempDir;
 use super::environment::Environment;
 use super::resolve::user_name;
 use crate::pipeline::VERSION;
-use crate::testing::{TestResult, check_eq, golden, time, write_transcript};
+use crate::testing::{TestResult, check_eq, snapshot, time, write_transcript};
 
 /// The home directory the runs see, whatever the test process has.
 const HOME: &str = "/home/tester";
 
-/// The flags that pin the sample week, in JST so the goldens do not
+/// The flags that pin the sample week, in JST so the snapshots do not
 /// depend on the host's zone.
 const WEEK: [&str; 6] = [
     "--since",
@@ -195,29 +195,26 @@ fn line_count(text: &str) -> usize {
 }
 
 #[test]
-fn prompts_as_json_lines_match_the_golden() -> TestResult {
+fn prompts_as_json_lines_match_the_snapshot() -> TestResult {
     let ran = History::new("root")?.run_week(&["records", "--type", "prompt"]);
     check_eq(&ran.code, &0, "exit")?;
-    golden("cli/prompts.jsonl.golden", &ran.out)
+    snapshot("cli/prompts.jsonl", &ran.out)
 }
 
 #[test]
-fn sessions_as_markdown_and_json_lines_match_the_goldens() -> TestResult {
+fn sessions_as_markdown_and_json_lines_match_the_snapshots() -> TestResult {
     let history = History::new("root")?;
-    golden(
-        "cli/sessions.md.golden",
+    snapshot(
+        "cli/sessions.md",
         &history.run_week(&["sessions", "--format", "md"]).out,
     )?;
-    golden(
-        "cli/sessions.jsonl.golden",
-        &history.run_week(&["sessions"]).out,
-    )
+    snapshot("cli/sessions.jsonl", &history.run_week(&["sessions"]).out)
 }
 
 #[test]
-fn the_digest_matches_the_golden() -> TestResult {
-    golden(
-        "cli/digest.md.golden",
+fn the_digest_matches_the_snapshot() -> TestResult {
+    snapshot(
+        "cli/digest.md",
         &History::new("root")?.run_week(&["digest"]).out,
     )
 }
@@ -1484,7 +1481,7 @@ fn tool_chars_cuts_long_strings_of_a_tool_input_in_markdown() -> TestResult {
         "10",
     ]);
     check_eq(&cut.code, &0, &cut.err)?;
-    golden("cli/records-cut.md.golden", &cut.out)?;
+    snapshot("cli/records-cut.md", &cut.out)?;
     let whole = history.run_week(&["records", "--session", "wwww", "--type", "call"]);
     check_eq(
         &whole.out.contains(r#""content":"0123456789abcdefghij""#),
@@ -1824,7 +1821,7 @@ fn type_summary_lists_the_compaction_summaries_only_when_asked_for() -> TestResu
         "--format",
         "md",
     ]);
-    golden("cli/summaries.md.golden", &markdown.out)?;
+    snapshot("cli/summaries.md", &markdown.out)?;
     Ok(())
 }
 

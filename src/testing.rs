@@ -5,17 +5,17 @@
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "golden files are read and written on disk"
+    reason = "tests write synthetic transcripts to disk"
 )]
 
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
 use core::hash::BuildHasher as _;
+use std::fs;
 use std::fs::File;
 use std::hash::RandomState;
 use std::path::Path;
 use std::time::SystemTime;
-use std::{env, fs};
 
 use jiff::Timestamp;
 use jiff::tz::{TimeZone, TimeZoneDatabase};
@@ -87,17 +87,30 @@ where
     })
 }
 
-/// Compares `got` with `testdata/<name>`, after rewriting the file from
-/// `got` when `UPDATE_GOLDEN` is set. Review the diff before committing.
-pub fn golden(name: &str, got: &str) -> TestResult {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("testdata")
-        .join(name);
-    if env::var_os("UPDATE_GOLDEN").is_some() {
-        fs::write(&path, got)?;
-    }
-    let want = fs::read_to_string(&path)?;
-    check_eq(got, want.as_str(), name)?;
+/// Compares `got` with the snapshot `testdata/<name>.snap`, where `name` is
+/// `<dir>/<file>`. Review a change with `cargo insta review` before
+/// committing.
+///
+/// A mismatch panics inside insta, as no insta API returns it; the error
+/// covers only a bad name and output insta would store changed.
+pub fn snapshot(name: &str, got: &str) -> TestResult {
+    // insta trims the end and reads CRLF as LF before comparing, and stores
+    // the text with one final line break. Output in any other form would
+    // match a snapshot it is not byte for byte.
+    let stored = format!("{}\n", got.trim_end().replace("\r\n", "\n"));
+    check_eq(got, stored.as_str(), name)?;
+    let (dir, file) = name
+        .rsplit_once('/')
+        .ok_or("a snapshot name is `<dir>/<file>`")?;
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata")
+            .join(dir),
+    );
+    settings.set_prepend_module_to_snapshot(false);
+    settings.set_omit_expression(true);
+    settings.bind(|| insta::assert_snapshot!(file, got));
     Ok(())
 }
 

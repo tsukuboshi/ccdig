@@ -1,3 +1,6 @@
+---
+source: src/testing.rs
+---
 {
   "schema": 8,
   "filter": "strict-v3",

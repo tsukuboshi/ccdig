@@ -9,7 +9,9 @@ pins the toolchain used for development and CI, with clippy and rustfmt;
 `cargo` installs it on first use. For the dependency check, install
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny); for the
 module structure check, [ast-grep](https://ast-grep.github.io/) 0.51.0
-(`cargo install ast-grep --locked --version 0.51.0`); and for the
+(`cargo install ast-grep --locked --version 0.51.0`); for the snapshot
+review, [cargo-insta](https://insta.rs/docs/cli/) 1.49.0
+(`cargo install cargo-insta --locked --version 1.49.0`); and for the
 coverage check, [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)
 0.9.1 (`cargo install cargo-llvm-cov --locked --version 0.9.1`).
 
@@ -52,8 +54,14 @@ one line only with `// ast-grep-ignore: <rule-id>` and a reason next to it.
 - Write a failing test first, then the smallest change that makes it pass.
 - Tests return `Result` and compare with `check_eq` from `src/testing.rs`,
   since `assert_eq!` panics. Prefer table-driven tests.
-- Rendered output is checked against golden files under `testdata/`;
-  regenerate them with `UPDATE_GOLDEN=1 cargo test` and review the diff.
+- Rendered output is checked against [insta](https://insta.rs/) snapshots
+  under `testdata/`, through `snapshot` in `src/testing.rs`. A mismatch
+  panics inside insta, the one exception to the rule above. When output
+  changes on purpose, `cargo test` fails and writes a `.snap.new` next to
+  the snapshot; accept or reject each change with `cargo insta review`.
+  With `CI` set, insta writes nothing, so run `cargo insta test --review`
+  instead. `cargo insta test --check --unreferenced=reject` fails on a
+  snapshot no test uses any more.
 - A table lists the cases you thought of; a property states what holds for
   any input, such as "no generated token is left in the output", and
   proptest looks for the input that breaks it. Write properties in the

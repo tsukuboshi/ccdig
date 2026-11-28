@@ -3,3 +3,6 @@
 
 # Local, never committed
 *.local.*
+
+# Snapshots waiting for cargo insta review
+*.snap.new

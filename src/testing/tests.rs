@@ -4,8 +4,22 @@ use core::cell::Cell;
 
 use proptest::arbitrary::any;
 
-use super::{check_eq, for_all, for_all_cases};
+use super::{check_eq, for_all, for_all_cases, snapshot};
 use crate::testing::TestResult;
+
+#[test]
+fn a_snapshot_rejects_output_insta_would_store_changed() -> TestResult {
+    for (case, got) in [
+        ("no final line break", "# Title"),
+        ("a blank line at the end", "# Title\n\n"),
+        ("spaces at the end", "# Title\n  \n"),
+        ("CRLF line breaks", "# Title\r\nbody\r\n"),
+    ] {
+        // Rejected before insta reads or writes any file.
+        check_eq(&snapshot("render/never-written", got).is_err(), &true, case)?;
+    }
+    Ok(())
+}
 
 #[test]
 fn equal_values_pass() -> TestResult {
