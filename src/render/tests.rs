@@ -1,4 +1,4 @@
-//! Tests for the writers, against golden files.
+//! Tests for the writers, against snapshots.
 
 mod properties;
 
@@ -18,7 +18,7 @@ use crate::record::{
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
-use crate::testing::{TestResult, check_eq, golden, zone};
+use crate::testing::{TestResult, check_eq, snapshot, zone};
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
 
@@ -186,8 +186,8 @@ fn tokyo() -> Result<TimeZone, jiff::Error> {
 
 #[test]
 fn prompts_as_json_lines() -> TestResult {
-    golden(
-        "render/prompts.jsonl.golden",
+    snapshot(
+        "render/prompts.jsonl",
         &lines(&prompt_turns(sample_prompts()?), &Fields::default())?,
     )
 }
@@ -195,8 +195,8 @@ fn prompts_as_json_lines() -> TestResult {
 #[test]
 fn prompts_as_a_json_document() -> TestResult {
     let prompts = prompt_turns(sample_prompts()?);
-    golden(
-        "render/prompts.json.golden",
+    snapshot(
+        "render/prompts.json",
         &document(
             "strict-v3",
             "0.1.0",
@@ -209,8 +209,8 @@ fn prompts_as_a_json_document() -> TestResult {
 
 #[test]
 fn an_empty_json_document_has_an_empty_list() -> TestResult {
-    golden(
-        "render/empty.json.golden",
+    snapshot(
+        "render/empty.json",
         &document::<Prompt>(
             "strict-v3",
             "0.1.0",
@@ -239,24 +239,24 @@ fn prompts_as_markdown() -> TestResult {
             "# not a heading\nfix this:\n```go\nfmt.Println(1)\n```",
         )
     });
-    golden(
-        "render/prompts.md.golden",
+    snapshot(
+        "render/prompts.md",
         &markdown::records(&prompt_turns(prompts), &tokyo()?, &Fields::default())?,
     )
 }
 
 #[test]
 fn sessions_as_json_lines() -> TestResult {
-    golden(
-        "render/sessions.jsonl.golden",
+    snapshot(
+        "render/sessions.jsonl",
         &lines(&[sample_session()?], &Fields::default())?,
     )
 }
 
 #[test]
 fn sessions_as_a_markdown_table() -> TestResult {
-    golden(
-        "render/sessions.md.golden",
+    snapshot(
+        "render/sessions.md",
         &markdown::sessions(&[sample_session()?], &tokyo()?, false, &Fields::default())?,
     )
 }
@@ -264,12 +264,9 @@ fn sessions_as_a_markdown_table() -> TestResult {
 #[test]
 fn stats_as_json_lines_and_a_markdown_table() -> TestResult {
     let groups = sample_groups()?;
-    golden(
-        "render/stats.jsonl.golden",
-        &lines(&groups, &Fields::default())?,
-    )?;
-    golden(
-        "render/stats.md.golden",
+    snapshot("render/stats.jsonl", &lines(&groups, &Fields::default())?)?;
+    snapshot(
+        "render/stats.md",
         &markdown::stats(
             &groups,
             &columns(&[By::Session]),
@@ -286,8 +283,8 @@ fn stats_by_a_key_without_a_value_leaves_the_cell_empty_and_counts_sessions() ->
         sessions: Some(2),
         ..sample_groups()?.swap_remove(1)
     };
-    golden(
-        "render/stats-tool.md.golden",
+    snapshot(
+        "render/stats-tool.md",
         &markdown::stats(
             &[group],
             &columns(&[By::Tool]),
@@ -383,10 +380,7 @@ fn the_digest_cuts_prompts_and_sessions_to_the_limits() -> TestResult {
         prompt_chars: 10,
         session_chars: 25,
     };
-    golden(
-        "render/digest.md.golden",
-        &digest(&prompts, &tokyo()?, limits)?,
-    )
+    snapshot("render/digest.md", &digest(&prompts, &tokyo()?, limits)?)
 }
 
 /// The line the digest writes for a lone prompt of `kind` with `text`.
@@ -552,30 +546,21 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     };
     let zone = tokyo()?;
     let replies = [Turn::Reply(reply)];
-    golden(
-        "kinds/replies.jsonl.golden",
-        &lines(&replies, &Fields::default())?,
-    )?;
-    golden(
-        "kinds/replies.md.golden",
+    snapshot("kinds/replies.jsonl", &lines(&replies, &Fields::default())?)?;
+    snapshot(
+        "kinds/replies.md",
         &markdown::records(&replies, &zone, &Fields::default())?,
     )?;
     let calls = [Turn::Call(call)];
-    golden(
-        "kinds/tools.jsonl.golden",
-        &lines(&calls, &Fields::default())?,
-    )?;
-    golden(
-        "kinds/tools.md.golden",
+    snapshot("kinds/tools.jsonl", &lines(&calls, &Fields::default())?)?;
+    snapshot(
+        "kinds/tools.md",
         &markdown::records(&calls, &zone, &Fields::default())?,
     )?;
     let results = [Turn::Result(result), Turn::Result(orphan)];
-    golden(
-        "kinds/results.jsonl.golden",
-        &lines(&results, &Fields::default())?,
-    )?;
-    golden(
-        "kinds/results.md.golden",
+    snapshot("kinds/results.jsonl", &lines(&results, &Fields::default())?)?;
+    snapshot(
+        "kinds/results.md",
         &markdown::records(&results, &zone, &Fields::default())?,
     )
 }

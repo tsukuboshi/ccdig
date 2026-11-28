@@ -6,7 +6,7 @@ use core::error::Error;
 use serde_json::{Value, json};
 
 use super::{History, fixture_time, json_lines};
-use crate::testing::{TestResult, check_eq, golden};
+use crate::testing::{TestResult, check_eq, snapshot};
 
 /// A history with a session `eeee` that mentions the cloud edition in a
 /// reply of many lines, in a tool call's input, and in a tool result read
@@ -207,7 +207,7 @@ fn markdown_prints_the_matched_lines_in_place_of_the_whole_text() -> TestResult 
         "md",
     ]);
     check_eq(&ran.code, &0, &ran.err)?;
-    golden("cli/records-context.md.golden", &ran.out)
+    snapshot("cli/records-context.md", &ran.out)
 }
 
 #[test]

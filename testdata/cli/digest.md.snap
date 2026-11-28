@@ -1,3 +1,6 @@
+---
+source: src/testing.rs
+---
 ## 2026-10-13 | ~/blog | Weekly report draft
 - `/weekly-report last week`
 - `log in with export AWS_SECRET_ACCESS_KEY=***REDACTED*** and <b>draft</b> it`

@@ -58,6 +58,22 @@ jobs:
       - run: rustup toolchain install
       - run: cargo test --locked
 
+  # Fails on a snapshot under testdata that no test compares with any more.
+  # cargo insta test takes no --locked; the jobs above catch a stale
+  # Cargo.lock.
+  cargo-insta:
+    name: cargo insta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f  # v2.90.6
+        with:
+          tool: cargo-insta@1.49.0
+      - run: cargo insta test --check --unreferenced=reject
+
   cargo-deny:
     name: cargo deny
     runs-on: ubuntu-latest
