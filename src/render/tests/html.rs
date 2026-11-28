@@ -623,9 +623,9 @@ fn sessions_show_as_one_table_without_the_match_columns_when_nothing_was_searche
         Lang::En,
         &Masking::Off,
     )?;
-    let head = "<thead>\n<tr><th>Started</th><th>Session</th><th>Project</th><th>Cwd</th><th class=\"number\">Prompts</th><th>Title</th></tr>\n</thead>";
+    let head = "<thead>\n<tr><th>Started</th><th>Ended</th><th>Session</th><th>Project</th><th>Cwd</th><th>Branch</th><th class=\"number\">Prompts</th><th>Models</th><th>First prompt</th><th>Title</th></tr>\n</thead>";
     let row = format!(
-        "<tr><td><time datetime=\"2026-10-13T01:23:45.678Z\">2026-10-13 10:23 JST</time></td><td><code>{BLOG_SESSION}</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class=\"number\">2</td><td>Weekly report | draft</td></tr>"
+        "<tr><td><time datetime=\"2026-10-13T01:23:45.678Z\">2026-10-13 10:23 JST</time></td><td><time datetime=\"2026-10-13T01:30:00Z\">2026-10-13 10:30 JST</time></td><td><code>{BLOG_SESSION}</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td><code>main</code></td><td class=\"number\">2</td><td><code>claude-fable-5-2</code>, <code>claude-haiku-5-5</code></td><td>Draft the weekly report from these notes</td><td>Weekly report | draft</td></tr>"
     );
     // (what, the markup)
     for (what, markup) in [
@@ -749,7 +749,7 @@ fn a_search_adds_the_match_columns_and_counts_the_matches() -> TestResult {
         ),
         (
             "the match columns",
-            "<th class=\"number\">Prompts</th><th class=\"number\">Matches</th><th>First match</th><th>Title</th>",
+            "<th class=\"number\">Prompts</th><th class=\"number\">Matches</th><th>First match</th><th>Models</th><th>First prompt</th><th>Title</th>",
         ),
         (
             "the first match on one line, escaped",

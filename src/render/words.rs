@@ -16,14 +16,18 @@ use crate::record::Kind;
 use crate::text::{Lang, escape_inline, one_line};
 
 /// The columns of the `sessions` table, in the order they are shown.
-pub const SESSION_COLUMNS: [Column; 8] = [
+pub const SESSION_COLUMNS: [Column; 12] = [
     Column::text("started_at", "Started", "開始"),
+    Column::text("ended_at", "Ended", "終了"),
     Column::text("session_id", "Session", "セッション"),
     Column::text("project", "Project", "プロジェクト"),
     Column::text("cwd", "Cwd", "作業ディレクトリ"),
+    Column::text("git_branch", "Branch", "ブランチ"),
     Column::number("prompt_count", "Prompts", "プロンプト数"),
     Column::number("match_count", "Matches", "一致数"),
     Column::text("first_match", "First match", "最初の一致"),
+    Column::text("models", "Models", "モデル"),
+    Column::text("first_prompt", "First prompt", "最初のプロンプト"),
     Column::text("title", "Title", "タイトル"),
 ];
 

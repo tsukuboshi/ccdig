@@ -1,6 +1,5 @@
 ---
 source: src/testing.rs
-assertion_line: 114
 ---
 <!doctype html>
 <html lang="en">
@@ -24,11 +23,11 @@ assertion_line: 114
 <div class="table">
 <table>
 <thead>
-<tr><th>Started</th><th>Session</th><th>Project</th><th>Cwd</th><th class="number">Prompts</th><th class="number">Matches</th><th>First match</th><th>Title</th></tr>
+<tr><th>Started</th><th>Ended</th><th>Session</th><th>Project</th><th>Cwd</th><th>Branch</th><th class="number">Prompts</th><th class="number">Matches</th><th>First match</th><th>Models</th><th>First prompt</th><th>Title</th></tr>
 </thead>
 <tbody>
-<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class="number">2</td><td class="number">0</td><td></td><td>Weekly report | draft</td></tr>
-<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class="number">2</td><td class="number">2</td><td>use &lt;b&gt;bold&lt;/b&gt; second line</td><td>&lt;script&gt;x&lt;/script&gt;</td></tr>
+<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><time datetime="2026-10-13T01:30:00Z">2026-10-13 10:30 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td><code>main</code></td><td class="number">2</td><td class="number">0</td><td></td><td><code>claude-fable-5-2</code>, <code>claude-haiku-5-5</code></td><td>Draft the weekly report from these notes</td><td>Weekly report | draft</td></tr>
+<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><time datetime="2026-10-13T01:30:00Z">2026-10-13 10:30 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td><code>main</code></td><td class="number">2</td><td class="number">2</td><td>use &lt;b&gt;bold&lt;/b&gt; second line</td><td><code>claude-fable-5-2</code>, <code>claude-haiku-5-5</code></td><td>Draft the weekly report from these notes</td><td>&lt;script&gt;x&lt;/script&gt;</td></tr>
 </tbody>
 </table>
 </div>

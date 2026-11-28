@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-use super::{History, fixture_time, json_lines};
+use super::{History, fixture_time, the_session};
 use crate::testing::{TestResult, check_eq};
 
 /// Adds session `rrrr`, one prompt with `cwd` as its working directory.
@@ -27,12 +27,7 @@ fn with_session_in(history: &History, cwd: &str) -> Result<(), Box<dyn Error>> {
 /// The `resume` and `resume_unavailable` of session `rrrr`, run with
 /// `extra` flags.
 fn resume_of(history: &History, extra: &[&str]) -> Result<(Value, Value), Box<dyn Error>> {
-    let mut args = vec!["sessions", "--session", "rrrr"];
-    args.extend_from_slice(extra);
-    let sessions = json_lines(history.run_week(&args))?;
-    let [ref session] = sessions[..] else {
-        return Err(format!("want one session, got {}", sessions.len()).into());
-    };
+    let session = the_session(history, "rrrr", extra)?;
     Ok((
         session.get("resume").cloned().unwrap_or(Value::Null),
         session

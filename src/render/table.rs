@@ -30,8 +30,11 @@ pub struct Heading {
 /// What a cell holds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Cell<'records> {
-    /// A value read as written, such as an ID or a path.
+    /// A value read as written, such as an ID or a path; empty when it is
+    /// empty.
     Code(&'records str),
+    /// Values read as written, such as model names, in order.
+    Codes(&'records [String]),
     /// A count.
     Count(usize),
     /// Nothing: a key without a value, or tokens that are `null`.
@@ -101,15 +104,20 @@ pub fn sessions<'records>(
                 .iter()
                 .map(|column| match column.key {
                     "started_at" => Cell::Time(session.started_at),
+                    "ended_at" => Cell::Time(session.ended_at),
                     "session_id" => Cell::Code(&session.id),
                     "project" => Cell::Code(&session.project),
                     "cwd" => Cell::Code(&session.cwd),
+                    "git_branch" => Cell::Code(&session.git_branch),
                     "prompt_count" => Cell::Count(session.prompt_count),
                     "match_count" => Cell::Count(session.match_count.unwrap_or_default()),
                     "first_match" => session
                         .first_match
                         .as_ref()
                         .map_or(Cell::Empty, |found| Cell::Text(&found.text)),
+                    "models" if session.models.is_empty() => Cell::Empty,
+                    "models" => Cell::Codes(&session.models),
+                    "first_prompt" => Cell::Text(&session.first_prompt),
                     _ => Cell::Title(&session.title),
                 })
                 .collect()

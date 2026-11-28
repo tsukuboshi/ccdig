@@ -154,11 +154,11 @@ fn fields_names_an_unknown_key() -> TestResult {
     for (args, want) in [
         (
             &["sessions", "--fields", "txt"][..],
-            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, first_match, usage, resume, or resume_unavailable\n",
+            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, first_prompt, match_count, first_match, usage, models, resume, or resume_unavailable\n",
         ),
         (
             &["sessions", "--fields", "!title,!txt"][..],
-            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, match_count, first_match, usage, resume, or resume_unavailable\n",
+            "ccdig: --fields: unknown key \"txt\": use agent, session_id, title, project, cwd, git_branch, file, mtime, started_at, ended_at, prompt_count, first_prompt, match_count, first_match, usage, models, resume, or resume_unavailable\n",
         ),
         (
             &["records", "--fields", "txt", "--format", "md"][..],

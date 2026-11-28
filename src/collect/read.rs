@@ -46,7 +46,19 @@ pub struct Read<T> {
     /// What masking the title counted.
     pub title_masked: Counts,
     /// The tokens of each response in the range, by response ID.
-    pub usage: Vec<(String, Usage)>,
+    pub usage: Vec<Spent>,
+}
+
+/// What one response in the range spent: its ID, which a resumed copy
+/// repeats, the model that wrote it, and its tokens.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Spent {
+    /// The response's ID, or empty for a line without one.
+    pub id: String,
+    /// The model that wrote it, or empty when the line does not say.
+    pub model: String,
+    /// Its tokens.
+    pub tokens: Usage,
 }
 
 /// A record the including patterns matched, for `sessions`. Only
@@ -418,18 +430,17 @@ fn mentioned(counter: &mut Records, spot: &Spot<'_>, entry: &Entry, query: &Quer
 /// Adds the tokens of the assistant line `entry` to `used` when it is in
 /// the range of `query` and the first line of its response, by
 /// `responses`; a line without a response ID is a response of its own.
-fn tally(
-    entry: &Entry,
-    query: &Query,
-    responses: &mut HashSet<String>,
-    used: &mut Vec<(String, Usage)>,
-) {
+fn tally(entry: &Entry, query: &Query, responses: &mut HashSet<String>, used: &mut Vec<Spent>) {
     if entry.role == Role::Assistant
         && let (Some(tokens), Some(timestamp)) = (entry.usage, entry.timestamp)
         && query.range.contains(timestamp.instant())
         && (entry.message_id.is_empty() || responses.insert(entry.message_id.clone()))
     {
-        used.push((entry.message_id.clone(), tokens));
+        used.push(Spent {
+            id: entry.message_id.clone(),
+            model: entry.model.clone(),
+            tokens,
+        });
     }
 }
 
