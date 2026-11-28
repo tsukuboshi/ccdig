@@ -13,14 +13,18 @@ use super::digest::{Limits, digest};
 use super::json::{Fields, Run, document, lines};
 use super::markdown;
 use crate::record::{
-    AGENT, Group, Head, Kind, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS, STATS_KEYS,
-    Search, Session, Source, Spawned, Summary, ToolCall, ToolResult, Touch, Turn,
+    AGENT, Group, Head, Kind, MatchLine, Outcome, Prompt, RECORD_KEYS, Reply, SESSION_KEYS,
+    STATS_KEYS, Search, Session, Source, Spawned, Summary, ToolCall, ToolResult, Touch, Turn,
 };
 use crate::redact::Counts;
 use crate::stats::{By, Grouping, columns, tally};
 use crate::testing::{TestResult, check_eq, snapshot, zone};
 use crate::transcript::entry::Usage;
 use crate::when::Stamp;
+
+/// A sub-agent's transcript file in the blog session.
+const AGENT_FILE: &str =
+    "/home/alice/.claude/projects/-Users-alice-blog/1111/subagents/agent-7.jsonl";
 
 /// The blog session's transcript file.
 const BLOG_FILE: &str = "/home/alice/.claude/projects/-Users-alice-blog/1111.jsonl";
@@ -568,6 +572,261 @@ fn the_new_kinds_as_json_lines_and_markdown() -> TestResult {
     )
 }
 
+/// A record the search matched, listing `lines` as `(field, line, text, hit)`.
+fn found(lines: &[(&str, usize, &str, bool)]) -> Search {
+    Search {
+        matched: true,
+        matches: lines
+            .iter()
+            .map(|&(field, line, text, hit)| MatchLine {
+                field: field.to_owned(),
+                line,
+                text: text.to_owned(),
+                hit,
+            })
+            .collect(),
+    }
+}
+
+/// A record `--around` added as context.
+fn context() -> Search {
+    Search {
+        matched: false,
+        matches: Vec::new(),
+    }
+}
+
+/// A reply in the blog session at `time`, at line `line` of `file`.
+fn reply_at(time: &str, file: &str, line: usize, text: &str) -> Result<Reply, String> {
+    Ok(Reply {
+        usage: None,
+        masked: Counts::default(),
+        head: blog_head(time)?,
+        text: text.to_owned(),
+        model: String::new(),
+        skill: String::new(),
+        subagent: String::new(),
+        spawned: Spawned::default(),
+        redacted: false,
+        source: source(file, line, ""),
+        search: Search::default(),
+    })
+}
+
+/// A call of `tool` with `input` and ID `id` in the blog file, at line
+/// `line`, that came to `result`.
+fn call_at(
+    line: usize,
+    tool: &str,
+    input: serde_json::Value,
+    id: &str,
+    result: Option<Outcome>,
+) -> Result<ToolCall, String> {
+    Ok(ToolCall {
+        model: String::new(),
+        usage: None,
+        masked: Counts::default(),
+        head: Head {
+            turn: 2,
+            ..blog_head("2026-10-13T01:25:00Z")?
+        },
+        tool: tool.to_owned(),
+        input,
+        tool_use_id: id.to_owned(),
+        touched: Touch::Nothing,
+        result,
+        skill: String::new(),
+        subagent: String::new(),
+        spawned: Spawned::default(),
+        redacted: false,
+        source: source(BLOG_FILE, line, ""),
+        search: Search::default(),
+    })
+}
+
+/// The result of the call `id` of `tool` in the blog file, at line `line`,
+/// as `outcome` says.
+fn result_at(line: usize, tool: &str, id: &str, outcome: &Outcome) -> Result<ToolResult, String> {
+    Ok(ToolResult {
+        masked: Counts::default(),
+        head: Head {
+            turn: 2,
+            ..blog_head("2026-10-13T01:25:01Z")?
+        },
+        tool: tool.to_owned(),
+        input: json!({}),
+        tool_use_id: id.to_owned(),
+        touched: Touch::Nothing,
+        is_error: outcome.is_error,
+        denial: outcome.denial.clone(),
+        text: outcome.text.clone(),
+        subagent: String::new(),
+        spawned: Spawned::default(),
+        redacted: false,
+        source: source(BLOG_FILE, line, ""),
+        search: Search::default(),
+        skill: String::new(),
+    })
+}
+
+/// What a call came to.
+fn outcome(is_error: bool, denial: &str, text: &str) -> Outcome {
+    Outcome {
+        is_error,
+        denial: denial.to_owned(),
+        text: text.to_owned(),
+    }
+}
+
+/// Records with every part the Markdown of `records` can show: each label,
+/// context, matched lines, the inputs a call can have, and the results that
+/// show under their call or on their own; then a sub-agent's file whose
+/// description is blank.
+fn every_part() -> Result<Vec<Turn>, String> {
+    let prompt = |kind: Kind, text: &str| -> Result<Turn, String> {
+        Ok(Turn::Prompt(Prompt {
+            kind,
+            head: Head {
+                turn: 1,
+                ..blog_head("2026-10-13T01:23:00Z")?
+            },
+            ..bare_prompt(blog_head("2026-10-13T01:23:00Z")?, BLOG_FILE, text)
+        }))
+    };
+    let ran = outcome(false, "", "a.txt\nb.txt");
+    let denied = outcome(true, "user-rejected", "The user said no.");
+    let failed = outcome(true, "", "exit 1");
+    Ok(vec![
+        prompt(Kind::Text, "plain")?,
+        prompt(Kind::Answer, "\"A?\"=\"a\"")?,
+        prompt(Kind::Approval, "the plan")?,
+        prompt(Kind::Rejection, "not that")?,
+        prompt(Kind::TypedAnswer, "\"B?\"=\"my own\"")?,
+        Turn::Thinking(reply_at(
+            "2026-10-13T01:24:00Z",
+            BLOG_FILE,
+            2,
+            "Let me think.",
+        )?),
+        Turn::Reply(Reply {
+            search: context(),
+            ..reply_at("2026-10-13T01:24:01Z", BLOG_FILE, 3, "Nearby.")?
+        }),
+        Turn::Reply(Reply {
+            search: found(&[
+                ("text", 1, "first hit", true),
+                ("text", 3, "before", false),
+                ("text", 4, "second hit", true),
+            ]),
+            ..reply_at("2026-10-13T01:24:02Z", BLOG_FILE, 4, "ignored")?
+        }),
+        // The result shows under its call.
+        Turn::Call(call_at(
+            5,
+            "Bash",
+            json!({"command": "ls", "plan": "step 1\nstep 2\n"}),
+            "toolu_a",
+            Some(ran.clone()),
+        )?),
+        Turn::Result(result_at(6, "Bash", "toolu_a", &ran)?),
+        // The result lists matched lines, so it shows on its own.
+        Turn::Call(call_at(
+            7,
+            "ExitPlanMode",
+            json!({"plan": "one\ntwo"}),
+            "toolu_b",
+            Some(denied.clone()),
+        )?),
+        Turn::Result(ToolResult {
+            search: found(&[("text", 1, "The user said no.", true)]),
+            ..result_at(8, "ExitPlanMode", "toolu_b", &denied)?
+        }),
+        // A search matched the result and not its call.
+        Turn::Call(ToolCall {
+            search: context(),
+            ..call_at(
+                9,
+                "Bash",
+                json!({"command": "false"}),
+                "toolu_c",
+                Some(failed.clone()),
+            )?
+        }),
+        Turn::Result(result_at(10, "Bash", "toolu_c", &failed)?),
+        // Matched lines of the input stand for it.
+        Turn::Call(ToolCall {
+            search: found(&[
+                ("input.command", 1, "git add .", true),
+                ("input.command", 2, "git commit", true),
+            ]),
+            ..call_at(11, "Bash", json!({}), "toolu_d", None)?
+        }),
+        Turn::Summary(Summary {
+            head: blog_head("2026-10-13T01:26:00Z")?,
+            text: "Compacted.".to_owned(),
+            redacted: false,
+            source: source(BLOG_FILE, 12, ""),
+            search: Search::default(),
+            masked: Counts::default(),
+        }),
+        Turn::Reply(Reply {
+            subagent: "agent-7".to_owned(),
+            spawned: Spawned {
+                subagent_type: "Explore".to_owned(),
+                subagent_description: " \n ".to_owned(),
+                parent_tool_use_id: "toolu_a".to_owned(),
+            },
+            ..reply_at("2026-10-13T01:25:30Z", AGENT_FILE, 1, "Looked.")?
+        }),
+    ])
+}
+
+/// The `--fields` of `include` and `exclude`.
+fn fields(include: &[&str], exclude: &[&str]) -> Fields {
+    Fields {
+        include: include.iter().map(|key| (*key).to_owned()).collect(),
+        exclude: exclude.iter().map(|key| (*key).to_owned()).collect(),
+    }
+}
+
+#[test]
+fn record_markdown_shows_each_part_fields_keeps() -> TestResult {
+    let turns = every_part()?;
+    let zone = tokyo()?;
+    for (name, kept) in [
+        ("parts", Fields::default()),
+        ("parts-no-tool-input", fields(&[], &["tool", "input"])),
+        (
+            "parts-no-result",
+            fields(&[], &["result", "is_error", "denial"]),
+        ),
+        ("parts-no-text", fields(&[], &["text"])),
+        ("parts-no-matches", fields(&[], &["matches"])),
+        (
+            "parts-no-heading-facts",
+            fields(
+                &[],
+                &[
+                    "timestamp",
+                    "turn",
+                    "project",
+                    "session_id",
+                    "subagent",
+                    "subagent_type",
+                    "subagent_description",
+                ],
+            ),
+        ),
+        ("parts-only-type", fields(&["type"], &[])),
+    ] {
+        snapshot(
+            &format!("render/{name}.md"),
+            &markdown::records(&turns, &zone, &kept)?,
+        )?;
+    }
+    Ok(())
+}
+
 /// The keys of `item` as JSON, in the order it writes them.
 fn json_keys<T>(item: &T) -> Result<Vec<String>, Box<dyn Error>>
 where
@@ -585,53 +844,9 @@ where
 fn the_keys_fields_takes_are_the_keys_the_records_write_in_order() -> TestResult {
     let head = blog_head("2026-10-13T01:00:00Z")?;
     let prompt = bare_prompt(head.clone(), BLOG_FILE, "hi");
-    let reply = Reply {
-        head: head.clone(),
-        text: "hello".to_owned(),
-        model: String::new(),
-        skill: String::new(),
-        subagent: String::new(),
-        spawned: Spawned::default(),
-        usage: None,
-        redacted: false,
-        source: source(BLOG_FILE, 2, "a-1"),
-        search: Search::default(),
-        masked: Counts::default(),
-    };
-    let call = ToolCall {
-        model: String::new(),
-        head: head.clone(),
-        tool: "Bash".to_owned(),
-        input: json!({}),
-        tool_use_id: String::new(),
-        touched: Touch::Nothing,
-        result: None,
-        skill: String::new(),
-        subagent: String::new(),
-        spawned: Spawned::default(),
-        usage: None,
-        redacted: false,
-        source: source(BLOG_FILE, 3, "a-2"),
-        search: Search::default(),
-        masked: Counts::default(),
-    };
-    let result = ToolResult {
-        head: head.clone(),
-        tool: "Bash".to_owned(),
-        input: json!({}),
-        tool_use_id: String::new(),
-        touched: Touch::Nothing,
-        is_error: false,
-        denial: String::new(),
-        text: String::new(),
-        subagent: String::new(),
-        spawned: Spawned::default(),
-        redacted: false,
-        source: source(BLOG_FILE, 4, "u-1"),
-        search: Search::default(),
-        skill: String::new(),
-        masked: Counts::default(),
-    };
+    let reply = reply_at("2026-10-13T01:00:00Z", BLOG_FILE, 2, "hello")?;
+    let call = call_at(3, "Bash", json!({}), "", None)?;
+    let result = result_at(4, "Bash", "", &outcome(false, "", ""))?;
     let summary = Summary {
         head,
         text: String::new(),
