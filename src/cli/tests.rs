@@ -752,9 +752,14 @@ fn help_shows_examples_and_where_the_record_flags_are() -> TestResult {
     let history = History::new("root")?;
     let examples = [
         "Examples:\n",
-        "  ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n",
+        "  # Share a log with people\n",
+        "  ccdig records --session 1a2b --type prompt,reply,call --format html --mask-report text > session.html\n",
+        "  # Search past sessions\n",
+        "  ccdig sessions --igrep deploy --sort matches --format md --limit 10\n",
+        "  # Review how you use Claude Code\n",
         "  ccdig records --type result --tool Bash --status error --subagents --format md\n",
-        "  ccdig sessions --igrep deploy --format md\n",
+        "  # Count usage\n",
+        "  ccdig stats --by project,month --since 2026-11-01\n",
         "ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",
     ];
     for args in [&[][..], &["--help"][..], &["-h"][..]] {

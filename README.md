@@ -60,16 +60,20 @@ in a file, and they read as labels such as `［repo1］`, while
 `--mask-report` writes what was masked, and how many times, on stderr, so
 a log can be checked and shown outside the team as it is. A PR or a
 weekly report can be given a digest of the prompts on its branch or in
-its week as the story of the work, and someone in another time zone the
-times in theirs with `--tz`.
+its week as the story of the work, leaving out with `--superseded false`
+the prompts the user sent another in place of, and someone in another
+time zone the times in theirs with `--tz`. `--no-mask` prints the log as
+it was written, to compare on your own machine with what masking hid;
+never pass that output on.
 
 `records --format html` writes the same records as one page, with each
 tool call folded under its tool, what it was about, and how it ended. The
 page runs no script and loads nothing, so it can be attached to a PR as
 the story of the work, handed to a customer as a record of what the agent
 ran and changed, printed to a PDF for a report, or shared as an example of
-a session that went well. See [HTML](#html) for what it shows and what to
-check before it goes out.
+a session that went well. `--lang ja` writes its headings and labels in
+Japanese. See [HTML](#html) for what it shows and what to check before it
+goes out.
 
 ```sh
 # One session, also masking emails, IPs, the user name, and a file's values
@@ -79,12 +83,17 @@ ccdig records --session 1a2b --format md --mask email,ip,user \
 # The prompts on the branch feature/login, as a digest to attach to a PR
 ccdig digest --branch feature/login
 
-# A week's prompts for a weekly report, 300 characters a prompt, 2000 a session
-ccdig digest --since 2026-10-05 --until 2026-10-11 \
+# A week's prompts for a weekly report, without those sent again in
+# another's place, 300 characters a prompt, 2000 a session
+ccdig digest --since 2026-10-05 --until 2026-10-11 --superseded false \
   --max-prompt-chars 300 --max-session-chars 2000
 
 # A log for a teammate on the US west coast, in their local time
 ccdig records --session 1a2b --format md --tz America/Los_Angeles
+
+# The same session unmasked, to check the masks on your own machine;
+# never pass this output on
+ccdig records --session 1a2b --format md --no-mask
 
 # The sessions on a PR's branch, with the tool calls, as one page
 ccdig records --branch feature/login --type prompt,reply,call --format html > pr.html
@@ -95,22 +104,31 @@ ccdig records --session 1a2b --touched src/billing --type call --format html > b
 
 # Each tool's input and output cut to 2000 characters
 ccdig records --session 1a2b --type prompt,reply,call --tool-chars 2000 --format html > session.html
+
+# The same session as a page with its headings and labels in Japanese
+ccdig records --session 1a2b --type prompt,reply,call --format html --lang ja > session-ja.html
 ```
 
-### Let Claude Code search past sessions
+### Search past sessions
 
 Run ccdig from inside Claude Code, and it finds what was decided or tried
 in the other sessions; `current` leaves out the session that is running,
 and leaving out the keys every session repeats and cutting the texts
-keeps the tokens of reading the results down.
+keeps the tokens of reading the results down. `--igrep` ignores case,
+`--grep` does not, and a pattern with a leading `!` leaves out the
+records it matches.
 Find the sessions that matched most with `sessions` first, then read
 around each match with `records --around` to follow the prompts and
 replies of the time as they went.
 
+Search the edits and writes by path, and it finds the sessions that
+changed a file and when, to check later which request a change came from.
+
 ```sh
-# The other sessions' prompts, replies, and tool calls, 20 at most
+# The other sessions' prompts, replies, and tool calls on deploying,
+# but not those that mention WIP in capitals, 20 at most
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
-  --format md --limit 20
+  --grep '!WIP' --format md --limit 20
 
 # The same search, without repeated keys, texts and tool I/O cut short
 ccdig records --session '!current' --type prompt,reply,call --igrep deploy \
@@ -125,25 +143,23 @@ ccdig records --session b799 --igrep deploy --around 2 --format md
 
 # Of a long reply, only the lines that matched and 1 line around each
 ccdig records --type reply --igrep deploy --context 1 --format md
-```
 
-### Find the sessions that changed a file
-
-Search the edits and writes by path to find the sessions that changed a
-file and when, and check later which request a change came from.
-
-```sh
 # The calls that changed src/main.rs, with the session, time, and tool
 ccdig records --touched src/main.rs --fields session_id,timestamp,tool
 ```
 
-### Review the calls that went wrong
+### Review how you use Claude Code
 
 Count the calls a permission rule stopped and those you turned down, per
 tool, as material for tuning the allow and deny lists of
 `settings.json`. The failed calls can be read with the sub-agents', so a
 command that keeps failing stands out, and narrowed to a skill, they show
 where in its steps the skill fails.
+
+A session where plans were turned down or asked for again and again is a
+sign that the first prompt left conditions out. The comment typed when
+turning one down is kept as a prompt whose `kind` is `rejection`, so the
+conditions added later can be read as they were typed.
 
 ```sh
 # The calls a permission rule stopped, per tool
@@ -157,16 +173,7 @@ ccdig records --type result --tool Bash --status error --subagents --format md
 
 # The calls that failed while the skill weekly-report ran
 ccdig records --type result --skill weekly-report --status error --format md
-```
 
-### Review how you ask
-
-A session where plans were turned down or asked for again and again is a
-sign that the first prompt left conditions out. The comment typed when
-turning one down is kept as a prompt whose `kind` is `rejection`, so the
-conditions added later can be read as they were typed.
-
-```sh
 # The sessions that asked to approve a plan twice or more
 ccdig stats --by session --type call --tool ExitPlanMode --min-count 2
 
@@ -178,6 +185,12 @@ ccdig records --kind rejection --fields session_title,text
 
 Count the records, sessions, and tokens per project, month, or skill, to
 see how much AI each project used or which skills are used most.
+`--root` counts the transcripts kept elsewhere, such as a copy from
+another machine. For a script, `--format json` writes the range and the
+masks of the run with the counts, and `--on-skip fail` ends with status
+1 when a line cannot be read, so a gap does not pass for a quiet month;
+write to a new file and move it over the old one only when ccdig
+succeeds, as a redirect empties the old one first.
 
 ```sh
 # Records and tokens per project and month
@@ -188,6 +201,11 @@ ccdig stats --project blog --by month
 
 # Output tokens per skill, most first
 ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
+
+# A month's counts from a copy of the transcripts, as JSON for a script
+ccdig stats --by project,month --since 2026-10-01 --until 2026-10-31 \
+  --root ~/backup/claude/projects --format json --on-skip fail > usage.json.new &&
+  mv usage.json.new usage.json
 ```
 
 ## Commands

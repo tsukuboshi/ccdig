@@ -33,10 +33,14 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   Your user name and other personal data stay unless you\n\
                   add them, as with --mask user, before you share the logs.",
     after_help = "Examples:\n\
-                  \x20 ccdig records --session '!current' --type prompt,reply,call --igrep deploy --format md --limit 20\n\
+                  \x20 # Share a log with people\n\
+                  \x20 ccdig records --session 1a2b --type prompt,reply,call --format html --mask-report text > session.html\n\
+                  \x20 # Search past sessions\n\
+                  \x20 ccdig sessions --igrep deploy --sort matches --format md --limit 10\n\
+                  \x20 # Review how you use Claude Code\n\
                   \x20 ccdig records --type result --tool Bash --status error --subagents --format md\n\
-                  \x20 ccdig sessions --igrep deploy --format md\n\
-                  \x20 ccdig stats --by tool --type call --since 2026-11-01\n\
+                  \x20 # Count usage\n\
+                  \x20 ccdig stats --by project,month --since 2026-11-01\n\
                   \n\
                   ccdig records --help lists --type, --tool, --status, --skill, --subagents, --around, and --context.",
     disable_help_subcommand = true,

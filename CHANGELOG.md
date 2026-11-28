@@ -46,6 +46,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one diff, each line taken out marked `-` and each put in marked `+`,
   colored on the page.
 
+### Changed
+
+- The README has four use cases in place of six: sharing a log,
+  searching past sessions, reviewing how you use Claude Code, and
+  counting usage. Their examples now use `--grep`, `--superseded`,
+  `--no-mask`, `--lang`, `--root`, `--on-skip`, and `--format json` too.
+- `ccdig --help` shows one example of each use case, under its name.
+
 ## [0.0.6] - 2026-11-28
 
 ### Added
