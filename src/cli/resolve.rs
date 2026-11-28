@@ -13,7 +13,7 @@ use super::values::{self, Values};
 use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
-use crate::config::{Config, Format, RecordsFormat, SessionSort, Shared};
+use crate::config::{Config, Format, SessionSort, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, names_a_path, patterns};
 use crate::record::{Cuts, Kind, RECORD_KEYS, SESSION_KEYS, STATS_KEYS};
@@ -147,8 +147,8 @@ impl Flags {
     }
 
     /// What to read and how to report it, with the filters in `narrowing`,
-    /// and the language of the words when `worded`, as in Markdown and the
-    /// digest. The checks run in the order the errors are reported.
+    /// and the language of the words when `worded`, as in Markdown, HTML,
+    /// and the digest. The checks run in the order the errors are reported.
     fn shared(
         self,
         narrowing: Narrowing,
@@ -676,7 +676,7 @@ pub fn resolve(
                 return Err(Failure::SupersededWithAround);
             }
             let (kinds, picks) = picked(selection, activity, prompted)?;
-            let format: RecordsFormat = output.format.into();
+            let format: Format = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS)?;
             let cuts = Cuts {
                 message: char_span(message_chars, "--message-chars")?,
@@ -777,9 +777,9 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
         usage: true,
         ..Narrowing::default()
     };
-    let format: Format = given.output.format.try_into()?;
+    let format: Format = given.output.format.into();
     let picked = fields(given.output.fields, &SESSION_KEYS)?;
-    let shared = flags.shared(narrowing, format == Format::Markdown, environment)?;
+    let shared = flags.shared(narrowing, format.is_read(), environment)?;
     let counts = shared.reading.mentions.is_some();
     for (flagged, flag) in [
         (!given.types.is_empty(), "--type"),
@@ -805,7 +805,7 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
 fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, Failure> {
     let subagents = given.activity.subagents;
     let (kinds, narrowing) = picked(given.selection, given.activity, given.prompted)?;
-    let format: Format = given.output.format.try_into()?;
+    let format: Format = given.output.format.into();
     let picked_fields = fields(given.output.fields, &STATS_KEYS)?;
     let keys = grouping_keys(given.by, given.sort)?;
     // Only a result has a denial and a status, so without one every
@@ -823,7 +823,7 @@ fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, 
         return Err(Failure::ByNeedsSubagents);
     }
     let flags = Flags::with_env(given.common, environment)?;
-    let mut shared = flags.shared(narrowing, format == Format::Markdown, environment)?;
+    let mut shared = flags.shared(narrowing, format.is_read(), environment)?;
     let limit = shared.limit.take();
     Ok(Config::Stats {
         fields: picked_fields,

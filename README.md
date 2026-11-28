@@ -9,8 +9,8 @@ for time, project, session, branch, text, record type, tool, outcome, and
 skill to narrow the history down to the part that matters, and count the
 records and tokens with `stats`. `records`, `sessions`, and `stats` write
 JSON Lines to process by default, on a terminal and in a pipe alike; give
-`--format md` for Markdown to read, or with `records`, `--format html` for
-one page to pass on. Common secrets are masked by default,
+`--format md` for Markdown to read, or `--format html` for one page to
+pass on. Common secrets are masked by default,
 and email addresses, IP addresses, your user name, and values you list
 can be masked too.
 
@@ -294,14 +294,14 @@ Four options shape the output:
 | Flag | Does |
 | --- | --- |
 | `--context N` | Lists the lines `--grep` or `--igrep` matched in each record, with N lines before and after each, in `matches`. Markdown and HTML print those lines in place of the whole text. Without it, JSON and JSON Lines list the matched lines alone |
-| `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, `md` Markdown to read, and `html` one page to pass on, which only `records` writes |
+| `--format` | `jsonl` (default) writes one JSON object per line, `json` one document, `md` Markdown to read, and `html` one page to pass on |
 | `--message-chars N` | Keeps the first N characters of the text of each prompt, reply, and summary, followed by `… (M more characters, next: N+1-2N)`. `--message-chars FROM-TO` keeps the characters from FROM to TO, counted from 1 as `cut -c` counts, after `(K characters before) …`, so the range a cut names reads on where it left off |
 | `--tool-chars N` | Does the same to each string in a tool's input, and to each tool result's output, the one a call carries too, so a `Write` of a whole file does not fill the output. It also takes `FROM-TO`, which leaves whole a string of an input no longer than TO - FROM + 1 characters, one the cut of that many left whole, such as a file's path |
 
 ### sessions
 
 One record per session that has a selected prompt: the filters apply to
-the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
+the prompts. `--format` takes `jsonl` (default), `json`, `md`, or `html`.
 
 - `--grep` and `--igrep` pick the sessions whose prompts or replies they
   match, and `match_count` says how many of them matched in each, so the
@@ -365,7 +365,7 @@ writes one record per group. `--type`, `--tool`, `--touched`,
 `--status`, `--denial`, `--skill`, `--kind`, `--superseded`,
 `--subagents`, and the filters pick the records as they do for
 `records`, so `--type` defaults to `prompt,reply` here too. `--format`
-takes `jsonl` (default), `json`, or `md`, a table.
+takes `jsonl` (default), `json`, or `md` or `html`, a table.
 
 ```sh
 # Tool calls per tool in a week, with how long their input is
@@ -826,6 +826,13 @@ no script and loads nothing: its `Content-Security-Policy` allows only the
 styles written in it. Text is escaped, raw HTML in a reply shows as text,
 a link goes only to an `http` or `https` address, and an image shows only
 its description, so opening the page sends no request.
+
+`sessions --format html` and `stats --format html` write the table of
+Markdown as one page, with the same top: the title, the count lines, and
+how the records were masked. It has the columns Markdown has, with the
+numbers aligned right and the times in `<time>` elements. IDs, paths, and
+names stay on one line, and a table wider than the page scrolls on its
+own.
 
 Before a page goes outside the team:
 

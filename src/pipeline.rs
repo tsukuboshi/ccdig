@@ -9,17 +9,15 @@ use serde::Serialize;
 use crate::classify::human::FILTER_VERSION;
 use crate::collect::kinds::{Prompts, Records, Types};
 use crate::collect::{Corpus, Pick, Select as _, collect};
-use crate::config::{
-    Config, Format, MaskReport, OnSkip, RecordsFormat, SessionSort, Shared, VersionFormat,
-};
+use crate::config::{Config, Format, MaskReport, OnSkip, SessionSort, Shared, VersionFormat};
 use crate::failure::Failure;
-use crate::record::{Cuts, Record};
+use crate::record::{Cuts, Group, Record, Session};
 use crate::redact::Counts;
 use crate::render::digest::digest;
 use crate::render::html::{self, Masking};
 use crate::render::json::{Fields, Run, document, lines, version};
 use crate::render::markdown;
-use crate::stats::{columns, tally};
+use crate::stats::{Grouping, columns, tally};
 
 /// The version of this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -34,6 +32,14 @@ pub struct Printed {
     pub report: Option<String>,
     /// The warning lines for stderr.
     pub warnings: Vec<String>,
+}
+
+/// How a subcommand writes its records in the formats a person reads.
+struct Writers<H, M> {
+    /// The page.
+    html: H,
+    /// The Markdown.
+    markdown: M,
 }
 
 /// Runs the subcommand in `config` and returns its output.
@@ -64,46 +70,14 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             format,
             shared,
             sort,
-        } => {
-            let corpus = gather(&shared, sort, Prompts::default)?;
-            let out = write(format, &fields, &corpus.sessions, &shared.run, |sessions| {
-                markdown::sessions(
-                    sessions,
-                    &shared.zone,
-                    shared.reading.mentions.is_some(),
-                    &fields,
-                    shared.lang,
-                )
-            })?;
-            printed(
-                &shared,
-                out,
-                corpus.warnings,
-                corpus.sessions.iter().map(|session| session.masked.clone()),
-            )
-        }
+        } => sessions(&fields, format, &shared, sort),
         Config::Stats {
             fields,
             format,
             grouping,
             kinds,
             shared,
-        } => {
-            let corpus = gather(&shared, SessionSort::Time, || {
-                Records::counting_empty_thinking(kinds)
-            })?;
-            let groups = tally(&corpus.records, &grouping, &shared.zone)?;
-            let keys = columns(&grouping.by);
-            let out = write(format, &fields, &groups, &shared.run, |lines| {
-                markdown::stats(lines, &keys, &shared.zone, &fields, shared.lang)
-            })?;
-            printed(
-                &shared,
-                out,
-                corpus.warnings,
-                corpus.records.iter().map(Record::masked),
-            )
-        }
+        } => stats(&fields, format, &grouping, kinds, &shared),
         Config::Version { format } => Ok(Printed {
             on_skip: OnSkip::default(),
             out: match format {
@@ -116,12 +90,95 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
     }
 }
 
+/// Runs `sessions`: lists the sessions in the order `sort` asks for, and
+/// writes the keys `fields` keeps in `format`.
+fn sessions(
+    fields: &Fields,
+    format: Format,
+    shared: &Shared,
+    sort: SessionSort,
+) -> Result<Printed, Failure> {
+    let corpus = gather(shared, sort, Prompts::default)?;
+    let matches = shared.reading.mentions.is_some();
+    let out = write(
+        format,
+        fields,
+        &corpus.sessions,
+        &shared.run,
+        Writers {
+            html: |sessions: &[Session]| {
+                let masked = sessions.iter().map(|session| session.masked.clone());
+                html::sessions(
+                    sessions,
+                    &shared.zone,
+                    matches,
+                    fields,
+                    shared.lang,
+                    &masking(shared, masked),
+                )
+            },
+            markdown: |sessions: &[Session]| {
+                markdown::sessions(sessions, &shared.zone, matches, fields, shared.lang)
+            },
+        },
+    )?;
+    printed(
+        shared,
+        out,
+        corpus.warnings,
+        corpus.sessions.iter().map(|session| session.masked.clone()),
+    )
+}
+
+/// Runs `stats`: counts the records of `kinds` in the groups `grouping`
+/// makes, and writes the keys `fields` keeps in `format`.
+fn stats(
+    fields: &Fields,
+    format: Format,
+    grouping: &Grouping,
+    kinds: Types,
+    shared: &Shared,
+) -> Result<Printed, Failure> {
+    let corpus = gather(shared, SessionSort::Time, || {
+        Records::counting_empty_thinking(kinds)
+    })?;
+    let groups = tally(&corpus.records, grouping, &shared.zone)?;
+    let keys = columns(&grouping.by);
+    let out = write(
+        format,
+        fields,
+        &groups,
+        &shared.run,
+        Writers {
+            html: |lines: &[Group]| {
+                html::stats(
+                    lines,
+                    &keys,
+                    &shared.zone,
+                    fields,
+                    shared.lang,
+                    &masking(shared, corpus.records.iter().map(Record::masked)),
+                )
+            },
+            markdown: |lines: &[Group]| {
+                markdown::stats(lines, &keys, &shared.zone, fields, shared.lang)
+            },
+        },
+    )?;
+    printed(
+        shared,
+        out,
+        corpus.warnings,
+        corpus.records.iter().map(Record::masked),
+    )
+}
+
 /// Runs `records`: picks the records of `kinds`, cuts their texts to
 /// `cuts`, and writes the parts `fields` keeps in `format`.
 fn records(
     cuts: Cuts,
     fields: &Fields,
-    format: RecordsFormat,
+    format: Format,
     kinds: Types,
     shared: &Shared,
 ) -> Result<Printed, Failure> {
@@ -133,21 +190,25 @@ fn records(
         }
         record.cut(cuts, shared.lang);
     }
-    let out = match format {
-        RecordsFormat::Html => {
-            let masking = if shared.run.no_mask {
-                Masking::Off
-            } else {
-                Masking::On(total(corpus.records.iter().map(Record::masked)).ranked())
-            };
-            html::records(&corpus.records, &shared.zone, fields, shared.lang, &masking)?
-        }
-        RecordsFormat::Shared(listed) => {
-            write(listed, fields, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone, fields, shared.lang)
-            })?
-        }
-    };
+    let out = write(
+        format,
+        fields,
+        &corpus.records,
+        &shared.run,
+        Writers {
+            html: |records: &[_]| {
+                let masked = records.iter().map(Record::masked);
+                html::records(
+                    records,
+                    &shared.zone,
+                    fields,
+                    shared.lang,
+                    &masking(shared, masked),
+                )
+            },
+            markdown: |records: &[_]| markdown::records(records, &shared.zone, fields, shared.lang),
+        },
+    )?;
     printed(
         shared,
         out,
@@ -265,6 +326,17 @@ fn mask_report(format: MaskReport, total: &Counts) -> Result<String, Failure> {
     }
 }
 
+/// How the records were masked, as the top of a page says it: off with
+/// `--no-mask`, or else what masking counted in all of `masked`, most
+/// first, which the `--mask-report` line adds up the same way.
+fn masking(shared: &Shared, masked: impl Iterator<Item = Counts>) -> Masking {
+    if shared.run.no_mask {
+        Masking::Off
+    } else {
+        Masking::On(total(masked).ranked())
+    }
+}
+
 /// What masking counted in all of `masked`, added up.
 fn total(masked: impl Iterator<Item = Counts>) -> Counts {
     let mut total = Counts::default();
@@ -295,20 +367,23 @@ fn printed(
 }
 
 /// Writes `records` in `format`, with the keys `fields` keeps, using
-/// `markdown` for Markdown and `run` in the JSON envelope.
-fn write<T>(
+/// `writers` for HTML and Markdown and `run` in the JSON envelope.
+fn write<T, H, M>(
     format: Format,
     fields: &Fields,
     records: &[T],
     run: &Run,
-    markdown: impl FnOnce(&[T]) -> Result<String, Failure>,
+    writers: Writers<H, M>,
 ) -> Result<String, Failure>
 where
     T: Serialize,
+    H: FnOnce(&[T]) -> Result<String, Failure>,
+    M: FnOnce(&[T]) -> Result<String, Failure>,
 {
     match format {
+        Format::Html => (writers.html)(records),
         Format::Json => document(FILTER_VERSION, VERSION, run, records, fields),
         Format::Jsonl => lines(records, fields),
-        Format::Markdown => markdown(records),
+        Format::Markdown => (writers.markdown)(records),
     }
 }

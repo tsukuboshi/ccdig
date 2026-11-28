@@ -1,5 +1,5 @@
-//! Tests for `records --format html`: one page on stdout, which only
-//! `records` writes.
+//! Tests for `--format html`: one page on stdout, the records of
+//! `records`, or the table of `sessions` or `stats`.
 
 use super::{History, WEEK};
 use crate::testing::{TestResult, check_eq, snapshot, without_style};
@@ -21,17 +21,36 @@ fn records_write_one_page_that_loads_and_runs_nothing() -> TestResult {
 }
 
 #[test]
-fn html_is_an_error_for_the_tables() -> TestResult {
+fn sessions_and_stats_write_one_page_with_one_table() -> TestResult {
     let history = History::new("root")?;
-    for command in ["sessions", "stats"] {
-        let ran = history.run(&[command, "--format", "html"]);
-        check_eq(&ran.code, &1, command)?;
-        check_eq(&ran.out.as_str(), &"", command)?;
+    // (the command, its title in Japanese: セッション and 集計)
+    for (command, japanese) in [
+        (
+            "sessions",
+            "<h1>\u{30bb}\u{30c3}\u{30b7}\u{30e7}\u{30f3}</h1>",
+        ),
+        ("stats", "<h1>\u{96c6}\u{8a08}</h1>"),
+    ] {
+        let mut args = vec![command, "--format", "html"];
+        args.extend(WEEK);
+        let ran = history.run(&args);
+        check_eq(&ran.code, &0, &ran.err)?;
+        check_eq(&ran.out.lines().next(), &Some("<!doctype html>"), command)?;
+        check_eq(&ran.out.contains(POLICY), &true, command)?;
         check_eq(
-            &ran.err.as_str(),
-            &"ccdig: --format html is for records, as sessions and stats write tables\n",
-            command,
+            &ran.out.matches("<div class=\"table\">\n<table>").count(),
+            &1,
+            &ran.out,
         )?;
+        check_eq(
+            &ran.out.ends_with("</table>\n</div>\n</body>\n</html>\n"),
+            &true,
+            &ran.out,
+        )?;
+        args.extend(["--lang", "ja"]);
+        let worded = history.run(&args);
+        check_eq(&worded.code, &0, &worded.err)?;
+        check_eq(&worded.out.contains(japanese), &true, &worded.out)?;
     }
     Ok(())
 }

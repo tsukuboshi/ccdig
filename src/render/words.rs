@@ -148,7 +148,7 @@ pub fn plain_title(lang: Lang, title: &str) -> String {
     .to_owned()
 }
 
-/// The title of the Markdown of `sessions`.
+/// The title of the Markdown and the page of `sessions`.
 pub const fn sessions_title(lang: Lang) -> &'static str {
     match lang {
         Lang::En => "Sessions",
@@ -158,26 +158,54 @@ pub const fn sessions_title(lang: Lang) -> &'static str {
 
 /// The line under the title of `sessions` that counts them.
 pub fn session_count(lang: Lang, sessions: usize) -> String {
+    format!("- {}\n", sessions_counted(lang, sessions))
+}
+
+/// How many sessions there are, as the top of `sessions` says it.
+pub fn sessions_counted(lang: Lang, sessions: usize) -> String {
     match lang {
-        Lang::En => format!("- Sessions: {sessions}\n"),
-        Lang::Ja => format!("- セッション: {sessions}\n"),
+        Lang::En => format!("Sessions: {sessions}"),
+        Lang::Ja => format!("セッション: {sessions}"),
     }
 }
 
 /// The line of `sessions` that counts the matches, `total`, with `by_type`
 /// after the number.
 pub fn match_count(lang: Lang, total: usize, by_type: &str) -> String {
+    format!("- {}\n", matches_counted(lang, total, by_type))
+}
+
+/// How many matches there are, `total`, with `by_type` after the number,
+/// as the top of `sessions` says it.
+pub fn matches_counted(lang: Lang, total: usize, by_type: &str) -> String {
     match lang {
-        Lang::En => format!("- Matches: {total}{by_type}\n"),
-        Lang::Ja => format!("- 一致: {total}{by_type}\n"),
+        Lang::En => format!("Matches: {total}{by_type}"),
+        Lang::Ja => format!("一致: {total}{by_type}"),
     }
 }
 
 /// The title of the Markdown of `stats` and how many groups there are.
 pub fn stats_head(lang: Lang, groups: usize) -> String {
+    format!(
+        "# {}\n\n- {}\n",
+        stats_title(lang),
+        groups_counted(lang, groups)
+    )
+}
+
+/// The title of the Markdown and the page of `stats`.
+pub const fn stats_title(lang: Lang) -> &'static str {
     match lang {
-        Lang::En => format!("# Stats\n\n- Groups: {groups}\n"),
-        Lang::Ja => format!("# 集計\n\n- グループ: {groups}\n"),
+        Lang::En => "Stats",
+        Lang::Ja => "集計",
+    }
+}
+
+/// How many groups there are, as the top of `stats` says it.
+pub fn groups_counted(lang: Lang, groups: usize) -> String {
+    match lang {
+        Lang::En => format!("Groups: {groups}"),
+        Lang::Ja => format!("グループ: {groups}"),
     }
 }
 

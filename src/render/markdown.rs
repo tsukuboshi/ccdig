@@ -3,14 +3,12 @@
 
 use jiff::tz::TimeZone;
 
-use serde_json::Value;
-
 use super::json::Fields;
+use super::table::{self, Cell, Table};
 use super::view::{
     self, Body, CallBody, Change, Count, Ending, Fact, Input, Passage, ResultBody, Run, Tool, View,
-    count_types,
 };
-use super::words::{self, Column, Item, SESSION_COLUMNS};
+use super::words::{self, Item};
 use crate::failure::Failure;
 
 use crate::record::{Group, Session, Turn};
@@ -147,67 +145,16 @@ pub fn sessions(
     fields: &Fields,
     lang: Lang,
 ) -> Result<String, Failure> {
+    let shown = table::sessions(records, matches, fields, lang);
     let mut out = format!(
         "# {}\n\n{}",
         words::sessions_title(lang),
-        words::session_count(lang, records.len())
+        words::session_count(lang, shown.count)
     );
-    if matches {
-        let total: usize = records
-            .iter()
-            .filter_map(|session| session.match_count)
-            .sum();
-        let types: Vec<&str> = records
-            .iter()
-            .flat_map(|session| session.matched_types.iter().copied())
-            .collect();
-        out.push_str(&words::match_count(
-            lang,
-            total,
-            &words::by_type(&count_types(&types)),
-        ));
+    if let Some((total, ref types)) = shown.matches {
+        out.push_str(&words::match_count(lang, total, &words::by_type(types)));
     }
-    let shown: Vec<Column> = SESSION_COLUMNS
-        .into_iter()
-        .filter(|column| {
-            fields.keeps(column.key)
-                && (matches || !matches!(column.key, "match_count" | "first_match"))
-        })
-        .collect();
-    if shown.is_empty() {
-        return Ok(out);
-    }
-    let names: Vec<&str> = shown.iter().map(|column| column.heading(lang)).collect();
-    let aligns: Vec<&str> = shown
-        .iter()
-        .map(|column| if column.number { "---:" } else { "---" })
-        .collect();
-    out.extend([
-        "\n| ",
-        &names.join(" | "),
-        " |\n| ",
-        &aligns.join(" | "),
-        " |\n",
-    ]);
-    for session in records {
-        let mut cells = Vec::new();
-        for column in &shown {
-            cells.push(match column.key {
-                "started_at" => session.started_at.minute_label(zone)?,
-                "session_id" => escape_pipes(&code_span(&session.id)),
-                "project" => escape_pipes(&code_span(&session.project)),
-                "cwd" => escape_pipes(&code_span(&session.cwd)),
-                "prompt_count" => session.prompt_count.to_string(),
-                "match_count" => session.match_count.unwrap_or_default().to_string(),
-                "first_match" => session
-                    .first_match
-                    .as_ref()
-                    .map_or_else(String::new, |found| escape_inline(&one_line(&found.text))),
-                _ => words::title(lang, &session.title),
-            });
-        }
-        out.extend(["| ", &cells.join(" | "), " |\n"]);
-    }
+    write_table(&mut out, &shown.table, zone, lang)?;
     Ok(out)
 }
 
@@ -226,101 +173,61 @@ pub fn stats(
     fields: &Fields,
     lang: Lang,
 ) -> Result<String, Failure> {
-    let sessions = Group::writes_sessions(columns);
-    let empty = groups.iter().any(|group| group.empty.is_some());
-    let mut names: Vec<&str> = columns.to_vec();
-    names.push("count");
-    if empty {
-        names.push("empty");
-    }
-    names.push("chars");
-    if sessions {
-        names.push("sessions");
-    }
-    names.extend([
-        "first",
-        "last",
-        "input",
-        "output",
-        "cache_read",
-        "cache_creation",
-    ]);
-    let kept: Vec<bool> = names
-        .iter()
-        .map(|name| {
-            fields.keeps(match *name {
-                "input" | "output" | "cache_read" | "cache_creation" => "usage",
-                key => key,
-            })
-        })
-        .collect();
-    let keep = |index: usize| kept.get(index).copied().unwrap_or_default();
-    names = names
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, name)| keep(index).then_some(name))
-        .collect();
-    let mut out = words::stats_head(lang, groups.len());
-    if names.is_empty() {
-        return Ok(out);
-    }
-    out.push_str("\n|");
-    for name in &names {
-        out.extend([" ", &words::stats_column(lang, name), " |"]);
-    }
-    out.push_str("\n|");
-    for name in &names {
-        out.push_str(
-            if columns.contains(name) || matches!(*name, "first" | "last") {
-                " --- |"
-            } else {
-                " ---: |"
-            },
-        );
-    }
-    out.push('\n');
-    for group in groups {
-        let mut cells: Vec<String> = columns
-            .iter()
-            .map(|name| {
-                let value = group.keys.get(*name).and_then(Value::as_str);
-                if *name == "session_title" {
-                    return words::title(lang, value.unwrap_or_default());
-                }
-                value.map_or_else(String::new, |text| escape_pipes(&code_span(text)))
-            })
-            .collect();
-        cells.push(group.count.to_string());
-        if empty {
-            cells.push(group.empty.unwrap_or_default().to_string());
-        }
-        cells.push(group.chars.to_string());
-        if sessions {
-            cells.push(group.sessions.unwrap_or_default().to_string());
-        }
-        cells.extend([
-            group.first.minute_label(zone)?,
-            group.last.minute_label(zone)?,
-        ]);
-        match group.usage {
-            Some(tokens) => cells.extend(
-                [
-                    tokens.input,
-                    tokens.output,
-                    tokens.cache_read,
-                    tokens.cache_creation,
-                ]
-                .map(|count| count.to_string()),
-            ),
-            None => cells.extend([const { String::new() }; 4]),
-        }
-        out.push('|');
-        for (_, cell) in cells.iter().enumerate().filter(|&(index, _)| keep(index)) {
-            out.extend([" ", cell, " |"]);
-        }
-        out.push('\n');
-    }
+    let shown = table::stats(groups, columns, fields, lang);
+    let mut out = words::stats_head(lang, shown.groups);
+    write_table(&mut out, &shown.table, zone, lang)?;
     Ok(out)
+}
+
+/// `table` after a blank line, with numbers aligned right and times in
+/// `zone`; nothing when it has no columns.
+fn write_table(
+    out: &mut String,
+    table: &Table<'_>,
+    zone: &TimeZone,
+    lang: Lang,
+) -> Result<(), Failure> {
+    if table.columns.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<&str> = table
+        .columns
+        .iter()
+        .map(|column| column.text.as_str())
+        .collect();
+    let aligns: Vec<&str> = table
+        .columns
+        .iter()
+        .map(|column| if column.number { "---:" } else { "---" })
+        .collect();
+    out.extend([
+        "\n| ",
+        &names.join(" | "),
+        " |\n| ",
+        &aligns.join(" | "),
+        " |\n",
+    ]);
+    for row in &table.rows {
+        let cells = row
+            .iter()
+            .map(|&value| cell(value, zone, lang))
+            .collect::<Result<Vec<_>, _>>()?;
+        out.extend(["| ", &cells.join(" | "), " |\n"]);
+    }
+    Ok(())
+}
+
+/// `value` as a table cell, with a time in `zone`.
+fn cell(value: Cell<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Failure> {
+    Ok(match value {
+        Cell::Code(text) => escape_pipes(&code_span(text)),
+        Cell::Count(count) => count.to_string(),
+        Cell::Empty => String::new(),
+        Cell::Text(text) => escape_inline(&one_line(text)),
+        Cell::Time(stamp) => stamp.minute_label(zone)?,
+        Cell::Title(title) => words::title(lang, title),
+        Cell::Tokens(count) => count.to_string(),
+    })
 }
 
 /// A tool result's body: the calling tool's name, whether it failed, why

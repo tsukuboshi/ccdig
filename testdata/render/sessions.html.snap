@@ -1,0 +1,36 @@
+---
+source: src/testing.rs
+assertion_line: 114
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>Sessions</h1>
+<p class="count">Sessions: 2</p>
+<p class="count">Matches: 2 (reply 2)</p>
+<p class="masking">Masked nothing</p>
+</header>
+<div class="table">
+<table>
+<thead>
+<tr><th>Started</th><th>Session</th><th>Project</th><th>Cwd</th><th class="number">Prompts</th><th class="number">Matches</th><th>First match</th><th>Title</th></tr>
+</thead>
+<tbody>
+<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class="number">2</td><td class="number">0</td><td></td><td>Weekly report | draft</td></tr>
+<tr><td><time datetime="2026-10-13T01:23:45.678Z">2026-10-13 10:23 JST</time></td><td><code>11111111-1111-4111-8111-111111111111</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class="number">2</td><td class="number">2</td><td>use &lt;b&gt;bold&lt;/b&gt; second line</td><td>&lt;script&gt;x&lt;/script&gt;</td></tr>
+</tbody>
+</table>
+</div>
+</body>
+</html>

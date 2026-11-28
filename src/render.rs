@@ -6,6 +6,7 @@ pub mod digest;
 pub mod html;
 pub mod json;
 pub mod markdown;
+mod table;
 mod view;
 mod words;
 

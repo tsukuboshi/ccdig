@@ -5,13 +5,17 @@ use core::error::Error;
 use serde_json::json;
 
 use super::{
-    AGENT_FILE, BLOG_FILE, bare_prompt, blog_head, call_at, every_part, fields, found, outcome,
-    reply_at, result_at, tokyo,
+    AGENT_FILE, BLOG_FILE, BLOG_SESSION, bare_prompt, blog_head, call_at, every_part, fields,
+    found, outcome, reply_at, result_at, sample_groups, sample_session, tokyo,
 };
-use crate::record::{Head, Prompt, Reply, Search, Spawned, Summary, ToolCall, ToolResult, Turn};
+use crate::record::{
+    FirstMatch, Group, Head, Prompt, Reply, Search, Session, Spawned, Summary, ToolCall,
+    ToolResult, Turn,
+};
 use crate::redact::Counts;
-use crate::render::html::{Masking, records};
+use crate::render::html::{Masking, records, sessions, stats};
 use crate::render::json::Fields;
+use crate::stats::{By, columns};
 use crate::testing::{TestResult, check_eq, snapshot, without_style};
 use crate::text::Lang;
 
@@ -607,4 +611,291 @@ fn a_call_shown_by_its_matched_lines_has_no_gist() -> TestResult {
     check_eq(&out.contains("class=\"gist\""), &false, &out)?;
     check_eq(&out.contains("secret first line"), &false, &out)?;
     Ok(())
+}
+
+#[test]
+fn sessions_show_as_one_table_without_the_match_columns_when_nothing_was_searched() -> TestResult {
+    let out = sessions(
+        &[sample_session()?],
+        &tokyo()?,
+        false,
+        &Fields::default(),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    let head = "<thead>\n<tr><th>Started</th><th>Session</th><th>Project</th><th>Cwd</th><th class=\"number\">Prompts</th><th>Title</th></tr>\n</thead>";
+    let row = format!(
+        "<tr><td><time datetime=\"2026-10-13T01:23:45.678Z\">2026-10-13 10:23 JST</time></td><td><code>{BLOG_SESSION}</code></td><td><code>-Users-alice-blog</code></td><td><code>/Users/alice/blog</code></td><td class=\"number\">2</td><td>Weekly report | draft</td></tr>"
+    );
+    // (what, the markup)
+    for (what, markup) in [
+        ("the title", "<title>Sessions</title>"),
+        ("the heading", "<h1>Sessions</h1>"),
+        ("the count", "<p class=\"count\">Sessions: 1</p>"),
+        (
+            "the masking",
+            "<p class=\"masking\">Not masked (--no-mask)</p>",
+        ),
+        ("the head of the table", head),
+        ("the row", row.as_str()),
+    ] {
+        check_eq(&out.contains(markup), &true, &format!("{what}:\n{out}"))?;
+    }
+    check_eq(
+        &out.matches("<div class=\"table\">\n<table>").count(),
+        &1,
+        &out,
+    )?;
+    check_eq(&out.contains("Matches"), &false, &out)?;
+    check_eq(
+        &out.ends_with("</table>\n</div>\n</body>\n</html>\n"),
+        &true,
+        &out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn stats_show_as_one_table_with_the_numbers_on_the_right_and_empty_cells_left_empty() -> TestResult
+{
+    let out = stats(
+        &sample_groups()?,
+        &columns(&[By::Session]),
+        &tokyo()?,
+        &Fields::default(),
+        Lang::En,
+        &Masking::On(vec![("aws-credential".to_owned(), 2)]),
+    )?;
+    let head = "<thead>\n<tr><th>Session</th><th>Session title</th><th>Project</th><th>File</th><th class=\"number\">Count</th><th class=\"number\">Chars</th><th>First</th><th>Last</th><th class=\"number\">Input</th><th class=\"number\">Output</th><th class=\"number\">Cache read</th><th class=\"number\">Cache creation</th></tr>\n</thead>";
+    let untitled = "<tr><td><code>22222222-2222-4222-8222-222222222222</code></td><td>(untitled)</td><td><code>-Users-alice-blog</code></td><td><code>/home/alice/.claude/projects/-Users-alice-blog/22222222-2222-4222-8222-222222222222.jsonl</code></td><td class=\"number\">1</td><td class=\"number\">0</td><td><time datetime=\"2026-10-14T00:05:00Z\">2026-10-14 09:05 JST</time></td><td><time datetime=\"2026-10-14T00:05:00Z\">2026-10-14 09:05 JST</time></td><td class=\"number\"></td><td class=\"number\"></td><td class=\"number\"></td><td class=\"number\"></td></tr>";
+    // (what, the markup)
+    for (what, markup) in [
+        ("the title", "<title>Stats</title>"),
+        ("the count", "<p class=\"count\">Groups: 2</p>"),
+        (
+            "the masking",
+            "<p class=\"masking\">Masked 2 by aws-credential</p>",
+        ),
+        ("the head of the table", head),
+        ("the tokens", "<td class=\"number\">30000</td>"),
+        ("the row without a title or tokens", untitled),
+    ] {
+        check_eq(&out.contains(markup), &true, &format!("{what}:\n{out}"))?;
+    }
+    check_eq(
+        &out.matches("<div class=\"table\">\n<table>").count(),
+        &1,
+        &out,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn stats_by_a_key_without_a_value_leave_its_cell_empty() -> TestResult {
+    let group = Group {
+        keys: serde_json::from_value(json!({"tool": null}))?,
+        sessions: Some(2),
+        ..sample_groups()?.swap_remove(1)
+    };
+    let out = stats(
+        &[group],
+        &columns(&[By::Tool]),
+        &tokyo()?,
+        &Fields::default(),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    check_eq(
+        &out.contains("<tr><td></td><td class=\"number\">1</td><td class=\"number\">0</td><td class=\"number\">2</td>"),
+        &true,
+        &out,
+    )?;
+    Ok(())
+}
+
+/// The sample session, as a search found it: two matches, the first a
+/// reply with markup in it.
+fn searched_session() -> Result<Session, Box<dyn Error>> {
+    let first = sample_session()?;
+    Ok(Session {
+        match_count: Some(2),
+        matched_types: vec!["reply", "reply"],
+        first_match: Some(FirstMatch {
+            kind: "reply",
+            timestamp: first.started_at,
+            line: Some(3),
+            text: "use <b>bold</b>\nsecond line".to_owned(),
+        }),
+        title: "<script>x</script>".to_owned(),
+        ..first
+    })
+}
+
+#[test]
+fn a_search_adds_the_match_columns_and_counts_the_matches() -> TestResult {
+    let out = sessions(
+        &[searched_session()?],
+        &tokyo()?,
+        true,
+        &Fields::default(),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    // (what, the markup)
+    for (what, markup) in [
+        (
+            "the counts",
+            "<p class=\"count\">Sessions: 1</p>\n<p class=\"count\">Matches: 2 (reply 2)</p>",
+        ),
+        (
+            "the match columns",
+            "<th class=\"number\">Prompts</th><th class=\"number\">Matches</th><th>First match</th><th>Title</th>",
+        ),
+        (
+            "the first match on one line, escaped",
+            "<td class=\"number\">2</td><td>use &lt;b&gt;bold&lt;/b&gt; second line</td>",
+        ),
+        (
+            "the title escaped",
+            "<td>&lt;script&gt;x&lt;/script&gt;</td>",
+        ),
+    ] {
+        check_eq(&out.contains(markup), &true, &format!("{what}:\n{out}"))?;
+    }
+    check_eq(&out.contains("<script"), &false, &out)?;
+    Ok(())
+}
+
+#[test]
+fn fields_keep_only_the_columns_they_name() -> TestResult {
+    let zone = tokyo()?;
+    let shown = sessions(
+        &[searched_session()?],
+        &zone,
+        true,
+        &fields(&["session_id", "match_count"], &[]),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    check_eq(
+        &shown.contains("<tr><th>Session</th><th class=\"number\">Matches</th></tr>"),
+        &true,
+        &shown,
+    )?;
+    let without = stats(
+        &sample_groups()?,
+        &columns(&[By::Session]),
+        &zone,
+        &fields(&[], &["usage", "file", "session_title"]),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    check_eq(
+        &without.contains("<tr><th>Session</th><th>Project</th><th class=\"number\">Count</th><th class=\"number\">Chars</th><th>First</th><th>Last</th></tr>"),
+        &true,
+        &without,
+    )?;
+    let none = sessions(
+        &[sample_session()?],
+        &zone,
+        false,
+        &fields(&["match_count"], &[]),
+        Lang::En,
+        &Masking::Off,
+    )?;
+    check_eq(&none.contains("<table"), &false, &none)?;
+    check_eq(
+        &none.contains("<p class=\"count\">Sessions: 1</p>"),
+        &true,
+        &none,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn the_tables_in_japanese() -> TestResult {
+    let zone = tokyo()?;
+    let listed = sessions(
+        &[sample_session()?],
+        &zone,
+        false,
+        &Fields::default(),
+        Lang::Ja,
+        &Masking::On(Vec::new()),
+    )?;
+    let counted = stats(
+        &sample_groups()?,
+        &columns(&[By::Session]),
+        &zone,
+        &Fields::default(),
+        Lang::Ja,
+        &Masking::On(Vec::new()),
+    )?;
+    // (what, the page, the markup): the language; the title セッション;
+    // セッション: 1; the heading プロンプト数; the title 集計; グループ: 2;
+    // the heading キャッシュ読み取り; and (無題) for a session without a title.
+    for (what, out, markup) in [
+        ("the language", &listed, "<html lang=\"ja\">"),
+        (
+            "the sessions title",
+            &listed,
+            "<title>\u{30bb}\u{30c3}\u{30b7}\u{30e7}\u{30f3}</title>",
+        ),
+        (
+            "the sessions count",
+            &listed,
+            "<p class=\"count\">\u{30bb}\u{30c3}\u{30b7}\u{30e7}\u{30f3}: 1</p>",
+        ),
+        (
+            "a sessions heading",
+            &listed,
+            "<th class=\"number\">\u{30d7}\u{30ed}\u{30f3}\u{30d7}\u{30c8}\u{6570}</th>",
+        ),
+        ("the stats title", &counted, "<h1>\u{96c6}\u{8a08}</h1>"),
+        (
+            "the stats count",
+            &counted,
+            "<p class=\"count\">\u{30b0}\u{30eb}\u{30fc}\u{30d7}: 2</p>",
+        ),
+        (
+            "a stats heading",
+            &counted,
+            "<th class=\"number\">\u{30ad}\u{30e3}\u{30c3}\u{30b7}\u{30e5}\u{8aad}\u{307f}\u{53d6}\u{308a}</th>",
+        ),
+        (
+            "an untitled session",
+            &counted,
+            "<td>(\u{7121}\u{984c})</td>",
+        ),
+    ] {
+        check_eq(&out.contains(markup), &true, &format!("{what}:\n{out}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn the_tables_as_snapshots() -> TestResult {
+    let zone = tokyo()?;
+    snapshot(
+        "render/sessions.html",
+        &without_style(&sessions(
+            &[sample_session()?, searched_session()?],
+            &zone,
+            true,
+            &Fields::default(),
+            Lang::En,
+            &Masking::On(Vec::new()),
+        )?)?,
+    )?;
+    snapshot(
+        "render/stats.html",
+        &without_style(&stats(
+            &sample_groups()?,
+            &columns(&[By::Session]),
+            &zone,
+            &Fields::default(),
+            Lang::En,
+            &Masking::On(Vec::new()),
+        )?)?,
+    )
 }
