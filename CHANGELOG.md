@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-11-28
+
 ### Added
 
 - Every record of `records` has a new `turn` key, how many prompts of
@@ -357,7 +359,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Slack workflow and trigger webhook URLs longer than 56 characters are
   masked to the end.
 
-[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/tsukuboshi/ccdig/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/tsukuboshi/ccdig/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/tsukuboshi/ccdig/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/tsukuboshi/ccdig/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/tsukuboshi/ccdig/compare/v0.0.2...v0.0.3
