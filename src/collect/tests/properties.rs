@@ -1,5 +1,8 @@
 //! Properties of collecting records that hold for any masked values.
 
+use core::error::Error;
+
+use jiff::tz::TimeZone;
 use proptest::bool::ANY;
 use proptest::collection::vec;
 use proptest::sample::select;
@@ -7,9 +10,12 @@ use serde_json::{Value, json};
 
 use super::{ALL, Root, masking};
 use crate::collect::kinds::{Prompts, Records, Types};
-use crate::collect::{Reading, collect};
+use crate::collect::mask::Mask;
+use crate::collect::{Corpus, Reading, collect};
 use crate::filter::{Query, patterns};
 use crate::record::{Record as _, Session, Turn};
+use crate::render::html::{self, Masking};
+use crate::render::json::Fields;
 use crate::testing::{TestResult, check_eq, for_all_cases, hostile_text};
 use crate::text::Lang;
 
@@ -82,8 +88,30 @@ fn subagent_files(value: &str, noise: &str) -> (String, String) {
     (reply.to_string(), meta.to_string())
 }
 
+/// What `found` prints as JSON Lines, the sessions, and the page. The page
+/// indents the JSON a tool wrote, as Markdown does, with `mask` masking the
+/// strings it decodes again.
+fn printed(found: &Corpus<Turn>, mask: &Mask) -> Result<String, Box<dyn Error>> {
+    let mut shown = found.records.clone();
+    for record in &mut shown {
+        mask.indent_json(record);
+    }
+    let page = html::records(
+        &shown,
+        &TimeZone::UTC,
+        &Fields::default(),
+        Lang::En,
+        &Masking::On(Vec::new()),
+    )?;
+    Ok(format!(
+        "{}\n{}\n{page}",
+        serde_json::to_string(&found.records)?,
+        serde_json::to_string(&found.sessions)?
+    ))
+}
+
 #[test]
-fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult {
+fn a_masked_value_reaches_no_record_nor_the_page_and_a_resumed_copy_adds_none() -> TestResult {
     let value_lists = vec("[A-Z]{3}[0-9]{3}[a-z]{2}", 1..3);
     for_all_cases(
         FILE_CASES,
@@ -143,11 +171,7 @@ fn a_masked_value_reaches_no_record_and_a_resumed_copy_adds_none() -> TestResult
                     &mask,
                     || Records::new(ALL),
                 )?;
-                let printed = format!(
-                    "{}\n{}",
-                    serde_json::to_string(&found.records)?,
-                    serde_json::to_string(&found.sessions)?
-                );
+                let printed = printed(&found, &mask)?;
                 for value in &values {
                     check_eq(
                         &printed.contains(value.as_str()),

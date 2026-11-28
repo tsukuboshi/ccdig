@@ -24,7 +24,7 @@ those before it.
 | Module | Role |
 | --- | --- |
 | `failure` | The one error type, `Failure`. |
-| `text` | Sanitizing text for the terminal and Markdown. |
+| `text` | Sanitizing text for the terminal, Markdown, and HTML. |
 | `when` | Timestamps, the ranges of `--since` and `--until`, and named time zones. |
 | `transcript` | Producer: `walk` lists the files and reads each sub-agent's `.meta.json`, which `meta` decodes; `reader` streams their lines, `entry` decodes one line. |
 | `classify` | Whether a user line is something a person typed and a reply one the harness wrote, folding slash commands back, why a tool call did not run, and what the user answered through a dialog. |
@@ -33,7 +33,7 @@ those before it.
 | `stats` | Grouping records into the lines of `ccdig stats`: the keys `--by` takes, and what each group counts and adds up. |
 | `filter` | Tester: the filters, as `Query`. |
 | `collect` | The stages joined: `read` picks one file's records as `Draft`s and filters them, `mask::Mask::seal` masks their metadata, and `gather` joins the files. `kinds` holds one picker per kind of record, and `excerpt` the lines `--context` lists. |
-| `render` | Consumer: JSON Lines, JSON, Markdown, and the digest. `view` decides what the records show and Markdown writes it, in the words `words` holds for each `--lang`. It uses only `record`, `text`, `when`, and `failure`. |
+| `render` | Consumer: JSON Lines, JSON, Markdown, HTML, and the digest. `view` decides what the records show and Markdown and HTML write it, in the words `words` holds for each `--lang`. HTML writes only through `html::markup::Page`, which takes text escaped and markup as `'static` strings, and `html::prose` renders Markdown with raw HTML, links off the web, and images taken out. It uses only `record`, `text`, `when`, and `failure`. |
 | `config` | `Config`, what a run does, as plain data. |
 | `pipeline` | Runs a `Config`: collect, render, and add up what masking counted. |
 | `cli` | The shell: `args` (clap), `environment` (everything read from outside, time zones included), `resolve` (flags and environment into a `Config`), and writing the output and the exit status. |
@@ -75,6 +75,9 @@ files below are the ones there are.
   generates from the conversation, so they are masked as text: the title
   then once each time it changes while the file is read, and the last
   title once the file is read, in `Mask::seal`. No filter reads either.
+  Markdown and HTML mask once more, after the filters: `Mask::indent_json`
+  indents a tool's output that is JSON and masks the strings decoding
+  brings out, which the record's counts add up.
 - **The machine reaches the output only through `cli/environment.rs`.**
   Nothing reads the clock; times come from the transcripts. What the
   machine decides is read there: the system zone when neither `--tz` nor

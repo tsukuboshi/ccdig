@@ -6,7 +6,7 @@ use core::error::Error;
 use serde_json::{Value, json};
 
 use super::{History, fixture_time, json_lines};
-use crate::testing::{TestResult, check_eq, snapshot};
+use crate::testing::{TestResult, check_eq, snapshot, without_style};
 
 /// A history with a session `eeee` that mentions the cloud edition in a
 /// reply of many lines, in a tool call's input, and in a tool result read
@@ -377,4 +377,24 @@ fn a_key_that_could_read_as_a_path_is_quoted_in_the_field() -> TestResult {
         "matches",
     )?;
     Ok(())
+}
+
+#[test]
+fn the_page_marks_the_matched_lines_in_place_of_the_whole_text() -> TestResult {
+    let history = history_with_long_records()?;
+    let ran = history.run_week(&[
+        "records",
+        "--session",
+        "eeee",
+        "--type",
+        "reply,call,result",
+        "--igrep",
+        "cloud edition",
+        "--context",
+        "1",
+        "--format",
+        "html",
+    ]);
+    check_eq(&ran.code, &0, &ran.err)?;
+    snapshot("cli/records-context.html", &without_style(&ran.out)?)
 }

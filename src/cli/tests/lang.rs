@@ -78,7 +78,8 @@ fn lang_words_the_markdown_by_the_flag_then_the_variable() -> TestResult {
 #[test]
 fn lang_is_an_error_for_json_and_the_variable_is_left_unused() -> TestResult {
     let history = History::new("root")?;
-    let needs = "ccdig: --lang needs --format md, as json and jsonl write the records alone\n";
+    let needs =
+        "ccdig: --lang needs --format md or html, as json and jsonl write the records alone\n";
     // (name, environment, args, status, stderr)
     for (name, environment, args, code, err) in [
         (

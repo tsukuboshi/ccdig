@@ -41,6 +41,7 @@ fn source(session: &str, subagent: &str) -> Source {
         format!("/p/{session}/subagents/{subagent}.jsonl")
     };
     Source {
+        block: 0,
         file,
         line: 1,
         uuid: String::new(),

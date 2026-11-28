@@ -58,6 +58,10 @@ pub enum Failure {
     /// `--root` is not given and there is no home directory to default to.
     #[error("find the default --root: HOME is not set")]
     Home,
+    /// `sessions` or `stats` is asked for HTML, which only `records`
+    /// writes.
+    #[error("--format html is for records, as sessions and stats write tables")]
+    HtmlNeedsRecords,
     /// A record cannot be encoded as JSON.
     #[error("write json: {0}")]
     Json(#[source] serde_json::Error),
@@ -72,8 +76,8 @@ pub enum Failure {
     },
     /// `--lang` is given for a format that writes no words of ccdig's
     /// own around the records.
-    #[error("--lang needs --format md, as json and jsonl write the records alone")]
-    LangNeedsMarkdown,
+    #[error("--lang needs --format md or html, as json and jsonl write the records alone")]
+    LangNeedsWords,
     /// The history root cannot be listed.
     #[error("list projects: {0}")]
     ListProjects(#[source] io::Error),

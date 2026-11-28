@@ -31,7 +31,7 @@ pub enum Config {
         /// The keys to write.
         fields: Fields,
         /// The output format.
-        format: Format,
+        format: RecordsFormat,
         /// The kinds of record to pick.
         kinds: Types,
         /// What to read and how to report it.
@@ -80,6 +80,25 @@ pub enum Format {
     Markdown,
 }
 
+/// The output formats of `records`: those it shares with `sessions` and
+/// `stats`, and HTML, which only it writes, as a page has no tables.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecordsFormat {
+    /// One page to read and to pass on.
+    Html,
+    /// A format `sessions` and `stats` take too.
+    Shared(Format),
+}
+
+impl RecordsFormat {
+    /// Whether a person reads the format, as Markdown and HTML, rather than
+    /// a program: it then takes `--lang`, lists matched lines only when
+    /// asked, and indents the JSON a tool wrote.
+    pub const fn is_read(self) -> bool {
+        matches!(self, Self::Html | Self::Shared(Format::Markdown))
+    }
+}
+
 /// The order `sessions --sort` asks for.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SessionSort {
@@ -112,8 +131,8 @@ pub enum OnSkip {
 /// What the subcommands that read transcripts share: where to read, what
 /// to keep, how to mask it, and how to report the run.
 pub struct Shared {
-    /// The language of the words around the records, in Markdown and the
-    /// digest.
+    /// The language of the words around the records, in Markdown, HTML,
+    /// and the digest.
     pub lang: Lang,
     /// How many records to print at most, or `None` for all of them.
     pub limit: Option<usize>,
@@ -131,7 +150,7 @@ pub struct Shared {
     pub root: PathBuf,
     /// The flags that decide what the records hold, for the JSON envelope.
     pub run: Run,
-    /// The zone for days and Markdown times.
+    /// The zone for days and the times of Markdown and HTML.
     pub zone: TimeZone,
 }
 

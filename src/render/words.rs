@@ -1,4 +1,4 @@
-//! The words Markdown and the digest write around the records, in each
+//! The words Markdown, HTML, and the digest write around the records, in each
 //! language `--lang` takes. Every `match` names each language, and each
 //! kind of thing it words, so a new one does not build until it has its
 //! words. The headings of the `stats` columns are looked up by key
@@ -71,6 +71,19 @@ pub struct Column {
     pub number: bool,
 }
 
+/// How a tool call ended, as the badge in its fold says it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Badge {
+    /// The user, a hook, or a setting turned it down.
+    Denied,
+    /// The tool reported a failure.
+    Error,
+    /// Its file has no result for it.
+    Missing,
+    /// It ran, and the tool reported no failure.
+    Ok,
+}
+
 /// A list item of a tool call or a tool result.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Item {
@@ -118,9 +131,15 @@ impl Column {
 /// one line, with inline Markdown and HTML escaped; or the words for a
 /// session without one, so it is never empty.
 pub fn title(lang: Lang, title: &str) -> String {
+    escape_inline(&plain_title(lang, title))
+}
+
+/// `title` on one line, or the words for a session without one, so it is
+/// never empty; for a format that escapes it its own way.
+pub fn plain_title(lang: Lang, title: &str) -> String {
     let line = one_line(title);
     if !line.is_empty() {
-        return escape_inline(&line);
+        return line;
     }
     match lang {
         Lang::En => "(untitled)",
@@ -188,7 +207,7 @@ fn column_label(key: &str) -> String {
     })
 }
 
-/// The title of the Markdown of `records`.
+/// The title of the Markdown and the page of `records`.
 pub const fn records_title(lang: Lang) -> &'static str {
     match lang {
         Lang::En => "Records",
@@ -196,12 +215,14 @@ pub const fn records_title(lang: Lang) -> &'static str {
     }
 }
 
-/// The count line of `records`: how many records a search matched, with
-/// `by_type` after the number, and how many `--around` added as context.
-pub fn record_count(lang: Lang, matched: usize, by_type: &str, context: usize) -> String {
+/// The count of `records`: how many records a search matched, with how
+/// many are each of `types` after the number, and how many `--around`
+/// added as context.
+pub fn record_count(lang: Lang, matched: usize, types: &[(&str, usize)], context: usize) -> String {
+    let by_type = by_type(types);
     let mut out = match lang {
-        Lang::En => format!("- Records: {matched}{by_type}"),
-        Lang::Ja => format!("- 記録: {matched}{by_type}"),
+        Lang::En => format!("Records: {matched}{by_type}"),
+        Lang::Ja => format!("記録: {matched}{by_type}"),
     };
     if context > 0 {
         let count = context.to_string();
@@ -211,6 +232,50 @@ pub fn record_count(lang: Lang, matched: usize, by_type: &str, context: usize) -
         });
     }
     out
+}
+
+/// `types` and how many of each there are, as ` (prompt 2, call 1)`;
+/// empty when there are none. The type names stay as `--type` takes them.
+pub fn by_type(types: &[(&str, usize)]) -> String {
+    if types.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = types
+        .iter()
+        .map(|&(name, count)| format!("{name} {count}"))
+        .collect();
+    format!(" ({})", parts.join(", "))
+}
+
+/// What masking did, as the top of the page says it: how many times each
+/// of `counts` masked something, most first, or that nothing was masked.
+pub fn masked(lang: Lang, counts: &[(String, usize)]) -> String {
+    if counts.is_empty() {
+        return match lang {
+            Lang::En => "Masked nothing",
+            Lang::Ja => "マスクしたものはありません",
+        }
+        .to_owned();
+    }
+    let parts: Vec<String> = counts
+        .iter()
+        .map(|&(ref rule, count)| match lang {
+            Lang::En => format!("{count} by {rule}"),
+            Lang::Ja => format!("{rule} {count} 件"),
+        })
+        .collect();
+    match lang {
+        Lang::En => format!("Masked {}", parts.join(", ")),
+        Lang::Ja => format!("マスク: {}", parts.join("、")),
+    }
+}
+
+/// What the top of the page says when `--no-mask` turned masking off.
+pub const fn not_masked(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Not masked (--no-mask)",
+        Lang::Ja => "マスクしていません (--no-mask)",
+    }
 }
 
 /// The name of the list item that says `fact` under a section's heading.
@@ -226,6 +291,25 @@ pub const fn fact(lang: Lang, fact: Fact<'_>) -> &'static str {
         (Lang::Ja, Fact::Subagent(_)) => "サブエージェント",
         (Lang::Ja, Fact::SubagentType(_)) => "サブエージェントの種類",
         (Lang::Ja, Fact::Description(_)) => "説明",
+    }
+}
+
+/// The name of the fact under a section's heading that says the git
+/// branch.
+pub const fn branch(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Branch",
+        Lang::Ja => "ブランチ",
+    }
+}
+
+/// The name of the fact under a section's heading that says when the
+/// earliest and the latest record shown were written, which the filters
+/// may make later and earlier than the session's start and end.
+pub const fn span(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Records shown",
+        Lang::Ja => "表示している記録の期間",
     }
 }
 
@@ -260,6 +344,15 @@ pub const fn label(lang: Lang, label: Label) -> &'static str {
         (Lang::Ja, Label::Summary) => "要約",
         (Lang::Ja, Label::Thinking) => "思考",
         (Lang::Ja, Label::TypedAnswer) => "自由記述の回答",
+    }
+}
+
+/// What follows the heading of a summary, which Claude Code wrote when it
+/// compacted the context.
+pub const fn compacted(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "The context was compacted here",
+        Lang::Ja => "ここで文脈を圧縮しました",
     }
 }
 
@@ -308,6 +401,20 @@ pub const fn ending(lang: Lang, failed: Option<bool>) -> &'static str {
     }
 }
 
+/// The words of `badge`.
+pub const fn badge(lang: Lang, badge: Badge) -> &'static str {
+    match (lang, badge) {
+        (Lang::En, Badge::Denied) => "denied",
+        (Lang::En, Badge::Error) => "error",
+        (Lang::En, Badge::Missing) => "no result",
+        (Lang::En, Badge::Ok) => "ok",
+        (Lang::Ja, Badge::Denied) => "却下",
+        (Lang::Ja, Badge::Error) => "エラー",
+        (Lang::Ja, Badge::Missing) => "結果なし",
+        (Lang::Ja, Badge::Ok) => "成功",
+    }
+}
+
 /// What stands for the name of a tool whose call was not found.
 pub const fn unknown_tool(lang: Lang) -> &'static str {
     match lang {
@@ -316,8 +423,8 @@ pub const fn unknown_tool(lang: Lang) -> &'static str {
     }
 }
 
-/// The list item that names lines `first` to `last` of `field`, written as
-/// a code span, or of the record's text when `None`, and when `hits` is
+/// What names lines `first` to `last` of `field`, written as the format
+/// writes a key, or of the record's text when `None`, and when `hits` is
 /// not empty, the lines among them a search matched.
 pub fn lines(
     lang: Lang,
@@ -332,12 +439,12 @@ pub fn lines(
         format!("{first}-{last}")
     };
     let mut out = match (lang, field) {
-        (Lang::En, None) if first == last => format!("- Line {span}"),
-        (Lang::En, None) => format!("- Lines {span}"),
-        (Lang::En, Some(name)) if first == last => format!("- {name} line {span}"),
-        (Lang::En, Some(name)) => format!("- {name} lines {span}"),
-        (Lang::Ja, None) => format!("- {span} 行目"),
-        (Lang::Ja, Some(name)) => format!("- {name} {span} 行目"),
+        (Lang::En, None) if first == last => format!("Line {span}"),
+        (Lang::En, None) => format!("Lines {span}"),
+        (Lang::En, Some(name)) if first == last => format!("{name} line {span}"),
+        (Lang::En, Some(name)) => format!("{name} lines {span}"),
+        (Lang::Ja, None) => format!("{span} 行目"),
+        (Lang::Ja, Some(name)) => format!("{name} {span} 行目"),
     };
     if !hits.is_empty() {
         out.push_str(match lang {

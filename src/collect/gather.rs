@@ -86,10 +86,11 @@ where
             .into_iter()
             .zip(fresh.iter().zip(near))
             .filter(|&(ref pair, (&is_fresh, is_near))| is_fresh && (pair.1.matched() || is_near))
-            .map(|((block, record), _)| {
-                let uuid = &record.source().uuid;
-                if !uuid.is_empty() {
-                    seen.insert((uuid.clone(), block));
+            .map(|((block, mut record), _)| {
+                let source = record.source_mut();
+                source.block = block;
+                if !source.uuid.is_empty() {
+                    seen.insert((source.uuid.clone(), block));
                 }
                 record
             })

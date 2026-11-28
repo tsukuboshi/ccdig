@@ -7,13 +7,16 @@ use core::cmp::Reverse;
 use serde::Serialize;
 
 use crate::classify::human::FILTER_VERSION;
-use crate::collect::kinds::{Prompts, Records};
+use crate::collect::kinds::{Prompts, Records, Types};
 use crate::collect::{Corpus, Pick, Select as _, collect};
-use crate::config::{Config, Format, MaskReport, OnSkip, SessionSort, Shared, VersionFormat};
+use crate::config::{
+    Config, Format, MaskReport, OnSkip, RecordsFormat, SessionSort, Shared, VersionFormat,
+};
 use crate::failure::Failure;
-use crate::record::Record;
+use crate::record::{Cuts, Record};
 use crate::redact::Counts;
 use crate::render::digest::digest;
+use crate::render::html::{self, Masking};
 use crate::render::json::{Fields, Run, document, lines, version};
 use crate::render::markdown;
 use crate::stats::{columns, tally};
@@ -55,25 +58,7 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             format,
             kinds,
             shared,
-        } => {
-            let mut corpus = gather(&shared, SessionSort::Time, || Records::with_results(kinds))?;
-            for record in &mut corpus.records {
-                // Before the cut, which would leave the JSON unreadable.
-                if format == Format::Markdown {
-                    shared.mask.indent_json(record);
-                }
-                record.cut(cuts, shared.lang);
-            }
-            let out = write(format, &fields, &corpus.records, &shared.run, |records| {
-                markdown::records(records, &shared.zone, &fields, shared.lang)
-            })?;
-            printed(
-                &shared,
-                out,
-                corpus.warnings,
-                corpus.records.iter().map(Record::masked),
-            )
-        }
+        } => records(cuts, &fields, format, kinds, &shared),
         Config::Sessions {
             fields,
             format,
@@ -129,6 +114,46 @@ pub fn execute(config: Config) -> Result<Printed, Failure> {
             warnings: Vec::new(),
         }),
     }
+}
+
+/// Runs `records`: picks the records of `kinds`, cuts their texts to
+/// `cuts`, and writes the parts `fields` keeps in `format`.
+fn records(
+    cuts: Cuts,
+    fields: &Fields,
+    format: RecordsFormat,
+    kinds: Types,
+    shared: &Shared,
+) -> Result<Printed, Failure> {
+    let mut corpus = gather(shared, SessionSort::Time, || Records::with_results(kinds))?;
+    for record in &mut corpus.records {
+        // Before the cut, which would leave the JSON unreadable.
+        if format.is_read() {
+            shared.mask.indent_json(record);
+        }
+        record.cut(cuts, shared.lang);
+    }
+    let out = match format {
+        RecordsFormat::Html => {
+            let masking = if shared.run.no_mask {
+                Masking::Off
+            } else {
+                Masking::On(total(corpus.records.iter().map(Record::masked)).ranked())
+            };
+            html::records(&corpus.records, &shared.zone, fields, shared.lang, &masking)?
+        }
+        RecordsFormat::Shared(listed) => {
+            write(listed, fields, &corpus.records, &shared.run, |records| {
+                markdown::records(records, &shared.zone, fields, shared.lang)
+            })?
+        }
+    };
+    printed(
+        shared,
+        out,
+        corpus.warnings,
+        corpus.records.iter().map(Record::masked),
+    )
 }
 
 /// Reads every transcript into records of the kind `new_picker` picks, with
@@ -240,6 +265,15 @@ fn mask_report(format: MaskReport, total: &Counts) -> Result<String, Failure> {
     }
 }
 
+/// What masking counted in all of `masked`, added up.
+fn total(masked: impl Iterator<Item = Counts>) -> Counts {
+    let mut total = Counts::default();
+    for counts in masked {
+        total.merge(&counts);
+    }
+    total
+}
+
 /// What a command printed: `out`, the `warnings`, and with
 /// `--mask-report`, the sum of what masking counted in each record.
 fn printed(
@@ -249,13 +283,7 @@ fn printed(
     masked: impl Iterator<Item = Counts>,
 ) -> Result<Printed, Failure> {
     let report = match shared.mask_report {
-        Some(format) => {
-            let mut total = Counts::default();
-            for counts in masked {
-                total.merge(&counts);
-            }
-            Some(mask_report(format, &total)?)
-        }
+        Some(format) => Some(mask_report(format, &total(masked))?),
         None => None,
     };
     Ok(Printed {

@@ -1,0 +1,117 @@
+---
+source: src/testing.rs
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records</title>
+<style>
+/* style.css */
+</style>
+</head>
+<body>
+<header>
+<h1>Records</h1>
+<p class="count">Records: 7 (prompt 1, reply 4, call 2)</p>
+<p class="masking">Masked nothing</p>
+</header>
+<section>
+<h2>Cart total</h2>
+<dl class="facts">
+<dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
+<dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Branch</dt><dd><code>main</code></dd>
+<dt>Records shown</dt><dd><time datetime="2026-10-13T12:00:00+09:00">2026-10-13 12:00:00 JST</time> – <time datetime="2026-10-13T12:01:05+09:00">2026-10-13 12:01:05 JST</time></dd>
+</dl>
+<article id="prompt-e-1-0" class="prompt">
+<h3><time datetime="2026-10-13T12:00:00+09:00">2026-10-13 12:00:00 JST</time> - turn 1 - Prompt <a class="anchor" href="#prompt-e-1-0">#</a></h3>
+<pre>
+where is the cart total computed?</pre>
+</article>
+<article id="call-e-2-0" class="call">
+<details>
+<summary><time datetime="2026-10-13T12:00:05+09:00">2026-10-13 12:00:05 JST</time> - turn 1 - Tool call <code class="tool">Agent</code> <span class="gist">Find the cart total</span> <span class="badge ok">ok</span> <a class="anchor" href="#call-e-2-0">#</a></summary>
+<pre class="json">
+{
+  &quot;description&quot;: &quot;Find the cart total&quot;,
+  &quot;prompt&quot;: &quot;Find where the cart total is computed.&quot;,
+  &quot;subagent_type&quot;: &quot;Explore&quot;
+}</pre>
+<details class="output">
+<summary>Result</summary>
+<pre>
+In src/cart.rs.</pre>
+</details>
+<section class="subagent">
+<h2>Cart total</h2>
+<dl class="facts">
+<dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
+<dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Subagent</dt><dd><code>agent-a1</code></dd>
+<dt>Subagent type</dt><dd><code>Explore</code></dd>
+<dt>Description</dt><dd>Find the cart total</dd>
+<dt>Branch</dt><dd><code>main</code></dd>
+<dt>Records shown</dt><dd><time datetime="2026-10-13T12:00:10+09:00">2026-10-13 12:00:10 JST</time> – <time datetime="2026-10-13T12:00:45+09:00">2026-10-13 12:00:45 JST</time></dd>
+</dl>
+<article id="reply-a1-2-0" class="reply">
+<h3><time datetime="2026-10-13T12:00:10+09:00">2026-10-13 12:00:10 JST</time> - Reply - <code>agent-a1</code> <a class="anchor" href="#reply-a1-2-0">#</a></h3>
+<div class="prose">
+<p>Searching src.</p>
+</div>
+</article>
+<article id="call-a1-2-1" class="call">
+<details>
+<summary><time datetime="2026-10-13T12:00:10+09:00">2026-10-13 12:00:10 JST</time> - Tool call - <code>agent-a1</code> <code class="tool">Agent</code> <span class="gist">Look in src</span> <span class="badge ok">ok</span> <a class="anchor" href="#call-a1-2-1">#</a></summary>
+<pre class="json">
+{
+  &quot;description&quot;: &quot;Look in src&quot;,
+  &quot;prompt&quot;: &quot;Look for the total in src.&quot;,
+  &quot;subagent_type&quot;: &quot;general-purpose&quot;
+}</pre>
+<details class="output">
+<summary>Result</summary>
+<pre>
+src/cart.rs</pre>
+</details>
+<section class="subagent">
+<h2>Cart total</h2>
+<dl class="facts">
+<dt>Project</dt><dd><code>-Users-alice-shop</code></dd>
+<dt>Session</dt><dd><code>eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee</code></dd>
+<dt>Subagent</dt><dd><code>agent-a2</code></dd>
+<dt>Subagent type</dt><dd><code>general-purpose</code></dd>
+<dt>Description</dt><dd>Look in *src* and # lib</dd>
+<dt>Branch</dt><dd><code>main</code></dd>
+<dt>Records shown</dt><dd><time datetime="2026-10-13T12:00:30+09:00">2026-10-13 12:00:30 JST</time></dd>
+</dl>
+<article id="reply-a2-2-0" class="reply">
+<h3><time datetime="2026-10-13T12:00:30+09:00">2026-10-13 12:00:30 JST</time> - Reply - <code>agent-a2</code> <a class="anchor" href="#reply-a2-2-0">#</a></h3>
+<div class="prose">
+<p>Found src/cart.rs.</p>
+</div>
+</article>
+</section>
+</details>
+</article>
+<article id="reply-a1-4-0" class="reply">
+<h3><time datetime="2026-10-13T12:00:45+09:00">2026-10-13 12:00:45 JST</time> - Reply - <code>agent-a1</code> <a class="anchor" href="#reply-a1-4-0">#</a></h3>
+<div class="prose">
+<p>In src/cart.rs.</p>
+</div>
+</article>
+</section>
+</details>
+</article>
+<article id="reply-e-4-0" class="reply">
+<h3><time datetime="2026-10-13T12:01:05+09:00">2026-10-13 12:01:05 JST</time> - turn 1 - Reply <a class="anchor" href="#reply-e-4-0">#</a></h3>
+<div class="prose">
+<p>The total is computed in src/cart.rs.</p>
+</div>
+</article>
+</section>
+</body>
+</html>

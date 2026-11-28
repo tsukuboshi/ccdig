@@ -1,5 +1,6 @@
 //! Tests for the writers, against snapshots.
 
+mod html;
 mod properties;
 mod view;
 
@@ -78,6 +79,7 @@ fn bare_prompt(head: Head, file: &str, text: &str) -> Prompt {
 /// A record's location.
 fn source(file: &str, line: usize, uuid: &str) -> Source {
     Source {
+        block: 0,
         file: file.to_owned(),
         line,
         uuid: uuid.to_owned(),
@@ -539,19 +541,31 @@ fn the_words_no_snapshot_shows_are_in_japanese() -> TestResult {
         (
             "one line of a field",
             words::lines(Lang::Ja, Some("`input.command`"), 3, 3, &[]),
-            // - `input.command` 3 行目
-            "- `input.command` 3 \u{884c}\u{76ee}",
+            // `input.command` 3 行目
+            "`input.command` 3 \u{884c}\u{76ee}",
         ),
         (
             "lines with several matched",
             words::lines(Lang::Ja, None, 3, 6, &["4".to_owned(), "5".to_owned()]),
-            // - 3-6 行目、一致 4、5
-            "- 3-6 \u{884c}\u{76ee}\u{3001}\u{4e00}\u{81f4} 4\u{3001}5",
+            // 3-6 行目、一致 4、5
+            "3-6 \u{884c}\u{76ee}\u{3001}\u{4e00}\u{81f4} 4\u{3001}5",
+        ),
+        (
+            "the masks counted",
+            words::masked(Lang::Ja, &[("email".to_owned(), 2)]),
+            // マスク: email 2 件
+            "\u{30de}\u{30b9}\u{30af}: email 2 \u{4ef6}",
+        ),
+        (
+            "nothing masked",
+            words::masked(Lang::Ja, &[]),
+            // マスクしたものはありません
+            "\u{30de}\u{30b9}\u{30af}\u{3057}\u{305f}\u{3082}\u{306e}\u{306f}\u{3042}\u{308a}\u{307e}\u{305b}\u{3093}",
         ),
         (
             "one line of a field in English",
             words::lines(Lang::En, Some("`input.command`"), 3, 3, &[]),
-            "- `input.command` line 3",
+            "`input.command` line 3",
         ),
     ] {
         check_eq(got.as_str(), want, name)?;

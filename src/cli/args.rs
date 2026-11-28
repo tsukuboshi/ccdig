@@ -27,8 +27,9 @@ const KIND_FLAGS: [&str; 2] = ["--kind", "--kinds"];
                   branch, text, record type, tool, outcome, and skill narrow the history\n\
                   down, and stats counts what they keep. records, sessions, and stats write\n\
                   JSON Lines by default, on a terminal and in a pipe alike; give\n\
-                  --format md for Markdown to read. Harness noise is dropped, slash\n\
-                  commands are folded back, and common secrets are masked by default.\n\
+                  --format md for Markdown to read, or with records, --format html for\n\
+                  one page to pass on. Harness noise is dropped, slash commands are\n\
+                  folded back, and common secrets are masked by default.\n\
                   Your user name and other personal data stay unless you\n\
                   add them, as with --mask user, before you share the logs.",
     after_help = "Examples:\n\
@@ -229,8 +230,8 @@ pub enum Command {
         common: Common,
         /// List the lines --grep or --igrep matched in each record, with
         /// this many lines before and after each, in `matches`; Markdown
-        /// prints those lines in place of the whole text [default: 0 in
-        /// JSON and JSON Lines, none in Markdown].
+        /// and HTML print those lines in place of the whole text [default:
+        /// 0 in JSON and JSON Lines, none in Markdown and HTML].
         #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
         context: Option<usize>,
         /// Keep this many characters of the text of each prompt, reply, and
@@ -506,9 +507,10 @@ pub struct Common {
     /// Print at most this many records, or with stats, groups.
     #[arg(long, value_name = "N", help_heading = "Output", display_order = 61)]
     pub limit: Option<usize>,
-    /// The language of the headings, labels, and notes that md and the
-    /// digest write around the records; the records' text stays as it is,
-    /// and json and jsonl take no --lang [default: en] [env: `CCDIG_LANG`].
+    /// The language of the headings, labels, and notes that md, html, and
+    /// the digest write around the records; the records' text stays as it
+    /// is, and json and jsonl take no --lang [default: en] [env:
+    /// `CCDIG_LANG`].
     #[arg(long, value_name = "LANG", help_heading = "Output", display_order = 66)]
     pub lang: Option<Lang>,
 }
@@ -589,6 +591,8 @@ pub enum Status {
 /// The output formats of `records`, `sessions`, and `stats`.
 #[derive(Clone, Copy, ValueEnum)]
 pub enum Format {
+    /// One HTML page to read and to pass on, for records only.
+    Html,
     /// One indented JSON document.
     Json,
     /// One JSON object per line.
@@ -670,8 +674,8 @@ pub enum VersionFormat {
 #[derive(Args)]
 pub struct Output {
     /// Write only these keys, or with a leading !, leave them out
-    /// (comma-separated, repeatable); in md, the parts and columns they
-    /// name [default: every key].
+    /// (comma-separated, repeatable); in md and html, the parts and
+    /// columns they name [default: every key].
     #[arg(
         long = "fields",
         value_name = "KEY",
@@ -681,7 +685,7 @@ pub struct Output {
     )]
     pub fields: Vec<String>,
     /// Output format: JSON Lines by default, on a terminal and in a pipe
-    /// alike; md to read.
+    /// alike; md to read; html, for records only, for one page to pass on.
     #[arg(
         long,
         default_value = "jsonl",
@@ -746,12 +750,25 @@ impl MaskKind {
     }
 }
 
-impl From<Format> for config::Format {
+impl From<Format> for config::RecordsFormat {
     fn from(format: Format) -> Self {
         match format {
-            Format::Json => Self::Json,
-            Format::Jsonl => Self::Jsonl,
-            Format::Markdown => Self::Markdown,
+            Format::Html => Self::Html,
+            Format::Json => Self::Shared(config::Format::Json),
+            Format::Jsonl => Self::Shared(config::Format::Jsonl),
+            Format::Markdown => Self::Shared(config::Format::Markdown),
+        }
+    }
+}
+
+impl TryFrom<Format> for config::Format {
+    type Error = Failure;
+
+    /// The format of a table, which HTML is not.
+    fn try_from(format: Format) -> Result<Self, Failure> {
+        match config::RecordsFormat::from(format) {
+            config::RecordsFormat::Shared(shared) => Ok(shared),
+            config::RecordsFormat::Html => Err(Failure::HtmlNeedsRecords),
         }
     }
 }

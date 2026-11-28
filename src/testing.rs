@@ -33,11 +33,12 @@ use crate::when::Stamp;
 
 /// Characters that sanitizers and parsers treat specially: line breaks,
 /// terminal controls, bidi overrides, joiners, odd whitespace, inline
-/// Markdown, and the line separators JavaScript does not allow in strings.
+/// Markdown, both quotes an HTML attribute may end at, and the line
+/// separators JavaScript does not allow in strings.
 const HOSTILE: &[char] = &[
     '\r', '\n', '\t', ' ', '\u{1B}', '\u{7}', '\u{9B}', '\u{202E}', '\u{2066}', '\u{200B}',
     '\u{200C}', '\u{200D}', '\u{FEFF}', '\u{A0}', '\u{3000}', '\\', '`', '*', '_', '[', ']', '<',
-    '>', '!', '&', '|', '#', '"', '{', '}', ':', '=', '\u{2028}', '\u{2029}',
+    '>', '!', '&', '|', '#', '"', '\'', '{', '}', ':', '=', '\u{2028}', '\u{2029}',
 ];
 
 /// The error a test returns, so `?` works on any error type.
@@ -112,6 +113,18 @@ pub fn snapshot(name: &str, got: &str) -> TestResult {
     settings.set_omit_expression(true);
     settings.bind(|| insta::assert_snapshot!(file, got));
     Ok(())
+}
+
+/// `page` with what its style element holds put aside, so that a snapshot
+/// of the page stays as it is when only the styles change.
+pub fn without_style(page: &str) -> Result<String, String> {
+    let (before, rest) = page
+        .split_once("<style>\n")
+        .ok_or_else(|| format!("no style:\n{page}"))?;
+    let (_, after) = rest
+        .split_once("</style>")
+        .ok_or_else(|| format!("no end of style:\n{page}"))?;
+    Ok(format!("{before}<style>\n/* style.css */\n</style>{after}"))
 }
 
 /// Runs `property` on values drawn from `strategy`, and on failure returns

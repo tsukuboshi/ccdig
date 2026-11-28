@@ -1,15 +1,16 @@
-//! Sanitizers for transcript text shown on a terminal or in Markdown.
+//! Sanitizers for transcript text shown on a terminal, in Markdown, or in
+//! HTML.
 //!
 //! Fields in a transcript are untrusted text: someone may render a shared
 //! archive they did not write. These helpers keep such text from driving the
-//! terminal or restructuring the Markdown.
+//! terminal or restructuring the Markdown or the HTML.
 
 /// The characters that can start emphasis, code, links, images, raw HTML,
 /// entities, or a table cell in inline Markdown.
 const INLINE_SPECIAL: &str = "\\`*_[]<>!&|";
 
-/// The language of the words ccdig writes around the records in Markdown
-/// and the digest. The records' own text and the JSON stay as they are.
+/// The language of the words ccdig writes around the records in Markdown,
+/// HTML, and the digest. The records' own text and the JSON stay as they are.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Lang {
     /// English.
@@ -124,6 +125,25 @@ pub fn escape_inline(text: &str) -> String {
             escaped.push('\\');
         }
         escaped.push(ch);
+    }
+    escaped
+}
+
+/// Escapes the characters that start a tag or an entity, or end an
+/// attribute value in either quote, so that `text` reads as written in an
+/// element's content or in a quoted attribute value. `text` should be
+/// cleaned first.
+pub fn escape_html(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            other => escaped.push(other),
+        }
     }
     escaped
 }

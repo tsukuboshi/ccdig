@@ -29,3 +29,5 @@ particular interest:
   root, such as through a symlink.
 - Transcript text that reaches the terminal as control sequences, or
   changes the structure of Markdown output.
+- Transcript text that changes the structure of the HTML page, runs a
+  script in it, or makes it load anything.

@@ -13,7 +13,7 @@ use super::values::{self, Values};
 use crate::collect::Reading;
 use crate::collect::kinds::Types;
 use crate::collect::mask::Mask;
-use crate::config::{Config, Format, SessionSort, Shared};
+use crate::config::{Config, Format, RecordsFormat, SessionSort, Shared};
 use crate::failure::Failure;
 use crate::filter::{Filter, Query, names_a_path, patterns};
 use crate::record::{Cuts, Kind, RECORD_KEYS, SESSION_KEYS, STATS_KEYS};
@@ -159,7 +159,7 @@ impl Flags {
         // notes of a cut are written into the records' text before they are
         // rendered, and the JSON values must not change with the language.
         let lang = match (self.common.lang, worded) {
-            (Some(_), false) => return Err(Failure::LangNeedsMarkdown),
+            (Some(_), false) => return Err(Failure::LangNeedsWords),
             (Some(given), true) => given.into(),
             (None, true) => self.lang.unwrap_or_default(),
             (None, false) => Lang::default(),
@@ -676,7 +676,7 @@ pub fn resolve(
                 return Err(Failure::SupersededWithAround);
             }
             let (kinds, picks) = picked(selection, activity, prompted)?;
-            let format = output.format.into();
+            let format: RecordsFormat = output.format.into();
             let fields = fields(output.fields, &RECORD_KEYS)?;
             let cuts = Cuts {
                 message: char_span(message_chars, "--message-chars")?,
@@ -685,7 +685,7 @@ pub fn resolve(
             let narrowing = Narrowing {
                 around,
                 context,
-                context_by_default: (format != Format::Markdown).then_some(0),
+                context_by_default: (!format.is_read()).then_some(0),
                 spawns: true,
                 ..picks
             };
@@ -695,11 +695,7 @@ pub fn resolve(
                 fields,
                 format,
                 kinds,
-                shared: Box::new(flags.shared(
-                    narrowing,
-                    format == Format::Markdown,
-                    environment,
-                )?),
+                shared: Box::new(flags.shared(narrowing, format.is_read(), environment)?),
             })
         }
         Command::Sessions {
@@ -781,7 +777,7 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
         usage: true,
         ..Narrowing::default()
     };
-    let format = given.output.format.into();
+    let format: Format = given.output.format.try_into()?;
     let picked = fields(given.output.fields, &SESSION_KEYS)?;
     let shared = flags.shared(narrowing, format == Format::Markdown, environment)?;
     let counts = shared.reading.mentions.is_some();
@@ -809,7 +805,7 @@ fn sessions_config(given: SessionsFlags, environment: &Environment) -> Result<Co
 fn stats_config(given: StatsFlags, environment: &Environment) -> Result<Config, Failure> {
     let subagents = given.activity.subagents;
     let (kinds, narrowing) = picked(given.selection, given.activity, given.prompted)?;
-    let format = given.output.format.into();
+    let format: Format = given.output.format.try_into()?;
     let picked_fields = fields(given.output.fields, &STATS_KEYS)?;
     let keys = grouping_keys(given.by, given.sort)?;
     // Only a result has a denial and a status, so without one every
