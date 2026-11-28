@@ -296,6 +296,15 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
   `--limit` は並べ替えた後の先頭 N 件を残します。`!` で始まらない
   パターンが必要です。既定の `--sort time` は、選ばれた最初の依頼文の
   時刻順に並べます。
+- `resume` は、そのセッションを transcript が始まったディレクトリで再開する
+  コマンドです。範囲や絞り込みで何が残っても、そのディレクトリを使います。例えば
+  `cd /Users/alice/blog && claude --resume <session id>` の形で、POSIX シェルで
+  クォートが要る部分はクォートします。Claude Code はセッションをそのディレクトリ
+  ごとに保存するため、そこで実行する形にしています。コマンドを
+  作れないときは `resume` が `null` になり、`resume_unavailable` が理由を示します。
+  transcript に `cwd` が無ければ `no-cwd`、マスクで書き換わるなら `cwd-masked`、
+  worktree を消した後のように今はディレクトリが無ければ `cwd-missing` です。
+  Markdown にはどちらも出しません。
 
 レコードは次のキーをこの順に持ちます。
 
@@ -310,6 +319,7 @@ ccdig stats --by skill --type reply,call --since 2026-10-01 --sort output
 | `mtime` | ファイルの最終書き込み時刻 |
 | `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | 上のとおり |
 | `usage` | トークン数。「トークン数」の節を参照 |
+| `resume`, `resume_unavailable` | 上のとおり |
 
 ### stats
 
@@ -392,7 +402,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.5","schema":7,"filter":"strict-v5"}
+{"version":"0.0.5","schema":8,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -638,7 +648,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":7,"filter":"strict-v5","ccdig":"0.0.5",
+{"schema":8,"filter":"strict-v5","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

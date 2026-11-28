@@ -150,6 +150,20 @@ pub fn escape_pipes(text: &str) -> String {
     text.replace('|', "\\|")
 }
 
+/// `text` as one word of a POSIX shell command: as it is when it is made
+/// only of ASCII letters, digits, and `/._-`, and otherwise in single
+/// quotes, with each `'` in it written `'\''`.
+pub fn shell_quote(text: &str) -> String {
+    let plain = !text.is_empty()
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-'));
+    if plain {
+        return text.to_owned();
+    }
+    format!("'{}'", text.replace('\'', r"'\''"))
+}
+
 /// The length of the longest run of backticks in `text`.
 fn longest_backtick_run(text: &str) -> usize {
     let (longest, _) = text.chars().fold((0_usize, 0_usize), |(longest, run), ch| {

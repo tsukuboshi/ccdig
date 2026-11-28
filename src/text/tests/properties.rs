@@ -3,9 +3,14 @@
 use proptest::sample::select;
 use proptest::strategy::Strategy as _;
 
+use proptest::arbitrary::any;
+use proptest::char::range;
+use proptest::collection::vec;
+use proptest::prop_oneof;
+
 use crate::testing::{TestResult, check_eq, drives_the_terminal, for_all, hostile_text};
 use crate::text::{
-    clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line,
+    clean_text, code_span, escape_inline, escape_pipes, fenced, heading_text, one_line, shell_quote,
 };
 
 /// The characters `CommonMark` gives meaning in inline text, written out
@@ -28,6 +33,48 @@ fn unescape(text: &str) -> Option<String> {
         }
     }
     Some(plain)
+}
+
+/// Reads `word` as one word of a POSIX shell, or returns `None` when it is
+/// not one plain word: outside single quotes, only ASCII letters, digits,
+/// `/._-`, and `\'` for a quote, which the shell leaves as they are.
+fn shell_word(word: &str) -> Option<String> {
+    let mut read = String::with_capacity(word.len());
+    let mut chars = word.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' => loop {
+                match chars.next()? {
+                    '\'' => break,
+                    quoted => read.push(quoted),
+                }
+            },
+            '\\' if chars.next()? == '\'' => read.push('\''),
+            plain if plain.is_ascii_alphanumeric() || "/._-".contains(plain) => read.push(plain),
+            _ => return None,
+        }
+    }
+    Some(read)
+}
+
+#[test]
+fn shell_quote_reads_back_as_the_text_in_one_word() -> TestResult {
+    let ch = prop_oneof![
+        2 => select(vec!['\'', '"', ' ', '$', '`', '\\', '\n', ';', '*', '~']),
+        2 => range('a', 'z'),
+        1 => any::<char>(),
+    ];
+    let texts = vec(ch, 0..=32).prop_map(String::from_iter);
+    for_all(&texts, |text| {
+        let quoted = shell_quote(&text);
+        check_eq(&shell_word(&quoted), &Some(text), &quoted)?;
+        check_eq(&quoted.is_empty(), &false, "an empty word would vanish")?;
+        Ok(())
+    })?;
+    for_all(&hostile_text(), |text| {
+        check_eq(&shell_word(&shell_quote(&text)), &Some(text.clone()), &text)?;
+        Ok(())
+    })
 }
 
 #[test]

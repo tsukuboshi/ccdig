@@ -51,7 +51,7 @@ pub const RECORD_KEYS: [&str; 29] = [
 ];
 
 /// The keys of a line of `sessions`, in order, for `--fields`.
-pub const SESSION_KEYS: [&str; 14] = [
+pub const SESSION_KEYS: [&str; 16] = [
     "agent",
     "session_id",
     "title",
@@ -66,6 +66,8 @@ pub const SESSION_KEYS: [&str; 14] = [
     "match_count",
     "first_match",
     "usage",
+    "resume",
+    "resume_unavailable",
 ];
 
 /// The keys a line of `stats` can have, for `--fields`: the `--by` keys,
@@ -348,6 +350,12 @@ pub struct Session {
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
+    /// The shell command that resumes the session in the directory its
+    /// transcript starts in, or `null` when it cannot be built;
+    /// `resume_unavailable` says why.
+    pub resume: Option<String>,
+    /// Why `resume` is `null`, or `null` when it is not.
+    pub resume_unavailable: Option<&'static str>,
     /// What masking these keys counted, for `--mask-report`; not written.
     #[serde(skip)]
     pub masked: Counts,

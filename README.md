@@ -307,6 +307,15 @@ the prompts. `--format` takes `jsonl` (default), `json`, or `md`.
   those with as many in time order; `--limit` then keeps the first N of
   them. It needs a pattern that does not start with `!`. The default,
   `--sort time`, lists them by their first selected prompt.
+- `resume` is the command that resumes the session in the directory its
+  transcript starts in, whatever the range and the filters keep, such as
+  `cd /Users/alice/blog && claude --resume <session id>`, with each part
+  quoted for a POSIX shell when it needs to be. Claude Code keeps a
+  session under that directory, so the command runs there. When there is
+  no such command, `resume` is `null` and `resume_unavailable` says why:
+  `no-cwd` when the transcript has no `cwd`, `cwd-masked` when a mask
+  would change it, and `cwd-missing` when it is not a directory now, as
+  after its worktree was removed. Markdown leaves both out.
 
 A record has these keys, in this order:
 
@@ -321,6 +330,7 @@ A record has these keys, in this order:
 | `mtime` | When the file was last written to |
 | `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | As above |
 | `usage` | The tokens; see Tokens |
+| `resume`, `resume_unavailable` | As above |
 
 ### stats
 
@@ -406,7 +416,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.5","schema":7,"filter":"strict-v5"}
+{"version":"0.0.5","schema":8,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -656,7 +666,7 @@ plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":7,"filter":"strict-v5","ccdig":"0.0.5",
+{"schema":8,"filter":"strict-v5","ccdig":"0.0.5",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

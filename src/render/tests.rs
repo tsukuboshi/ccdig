@@ -128,6 +128,8 @@ fn sample_session() -> Result<Session, String> {
         prompt_count: 2,
         match_count: None,
         first_match: None,
+        resume: Some("cd /Users/alice/blog && claude --resume aaaa".to_owned()),
+        resume_unavailable: None,
         matched_types: Vec::new(),
     })
 }

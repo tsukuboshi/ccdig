@@ -12,7 +12,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Every record of `records` has a new `turn` key, how many prompts of
   kind `text` or `slash` its file has up to it, so a reply tells which
-  prompt it answers. Markdown shows it in the heading. The schema is now 7.
+  prompt it answers. Markdown shows it in the heading.
 - Answers that the user typed in their own words are prompts of the new
   kind `typed-answer`, apart from the options picked, which stay
   `answer`; `digest` marks them `(typed answer)`.
@@ -21,6 +21,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--until` includes the whole minute or second it names.
 - `--fields` works with `--format md`, showing only the parts and the
   columns of the keys it names, where it was an error.
+- A record of `sessions` has two new keys: `resume`, the command that
+  resumes the session in the directory its transcript starts in, and
+  `resume_unavailable`, why it is `null`: `no-cwd`, `cwd-masked`, or
+  `cwd-missing` when the directory is gone. Markdown leaves both out. The
+  schema is now 8.
 
 ### Changed
 
