@@ -1208,3 +1208,24 @@ fn meta_applies_only_the_masks_asked_for() -> TestResult {
     )?;
     Ok(())
 }
+
+#[test]
+fn a_marker_masked_again_by_a_built_in_rule_counts_nothing() -> TestResult {
+    let redactor = Redactor::new()?;
+    let password = fake(12);
+    for text in [
+        format!("mysql -p{MARKER}"),
+        format!("mysql -p{MARKER}\u{FF1A}"),
+        format!("mysqldump -u root -p{password} shop"),
+        format!("curl -H 'Authorization: Bearer {password}' https://api.example.com"),
+        format!("git clone https://alice:{password}@git.example.com/shop.git"),
+    ] {
+        let (masked, _) = redactor.redact_counted(&text, &mut Counts::default());
+        let mut again = Counts::default();
+        let (twice, changed) = redactor.redact_counted(&masked, &mut again);
+        check_eq(&twice, &masked, &format!("twice: {text}"))?;
+        check_eq(&changed, &false, &format!("changed: {text}"))?;
+        check_eq(&again.ranked(), &vec![], &format!("again: {text}"))?;
+    }
+    Ok(())
+}

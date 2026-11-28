@@ -56,6 +56,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Masking a text again no longer counts the AWS profiles it masked the
   first time.
+- Masking a text again no longer counts a password or token that a
+  built-in rule masked the first time, such as `mysql -p***REDACTED***`
+  or a URL whose password is the marker.
 
 ## [0.0.5] - 2026-11-26
 

@@ -573,19 +573,27 @@ impl Redactor {
                     .replace_all(&masked, |captures: &Captures<'_>| {
                         let group = |index| captures.get(index).map_or("", |found| found.as_str());
                         if is_port_then_query(group(2)) {
-                            group(0).to_owned()
-                        } else {
-                            counts.add(rule.name);
-                            format!("{}{MARKER}@", group(1))
+                            return group(0).to_owned();
                         }
+                        let out = format!("{}{MARKER}@", group(1));
+                        // A password that is already the marker stays.
+                        if out != group(0) {
+                            counts.add(rule.name);
+                        }
+                        out
                     })
                     .into_owned(),
                 Replacement::KeepPrefix | Replacement::Marker => rule
                     .pattern
                     .replace_all(&masked, |captures: &Captures<'_>| {
-                        counts.add(rule.name);
                         let mut out = String::new();
                         captures.expand(&rule.replacement, &mut out);
+                        // A match that is already masked, such as
+                        // `mysql -p***REDACTED***`, stays as it is, so it
+                        // counts nothing.
+                        if captures.get(0).is_none_or(|found| found.as_str() != out) {
+                            counts.add(rule.name);
+                        }
                         out
                     })
                     .into_owned(),
