@@ -14,7 +14,8 @@ use crate::when::Stamp;
 /// The `agent` of every record.
 pub const AGENT: &str = "claude-code";
 
-/// How many characters `first_match` keeps of the line.
+/// How many characters `first_match` keeps of the line, and
+/// `first_prompt` of the prompt.
 pub const FIRST_MATCH_CHARS: usize = 200;
 
 /// The keys a line of `records` can have, in the order the kinds write
@@ -56,7 +57,7 @@ pub const RECORD_KEYS: [&str; 33] = [
 ];
 
 /// The keys of a line of `sessions`, in order, for `--fields`.
-pub const SESSION_KEYS: [&str; 16] = [
+pub const SESSION_KEYS: [&str; 18] = [
     "agent",
     "session_id",
     "title",
@@ -68,9 +69,11 @@ pub const SESSION_KEYS: [&str; 16] = [
     "started_at",
     "ended_at",
     "prompt_count",
+    "first_prompt",
     "match_count",
     "first_match",
     "usage",
+    "models",
     "resume",
     "resume_unavailable",
 ];
@@ -356,6 +359,10 @@ pub struct Session {
     pub ended_at: Stamp,
     /// How many prompts were selected.
     pub prompt_count: usize,
+    /// The first selected prompt, masked, on one line and cut to
+    /// `FIRST_MATCH_CHARS` characters, so a session without a title can be
+    /// told apart.
+    pub first_prompt: String,
     /// With `--grep` or `--igrep`, how many of the session's records of
     /// the types `--type` picks they matched; `null` otherwise.
     pub match_count: Option<usize>,
@@ -365,6 +372,10 @@ pub struct Session {
     /// The tokens of the session's responses in the range, each response
     /// once.
     pub usage: Usage,
+    /// The models that wrote the responses `usage` counts, masked as a
+    /// record's `model` is, each once in the order it first wrote one,
+    /// without the replies Claude Code wrote itself.
+    pub models: Vec<String>,
     /// The shell command that resumes the session in the directory its
     /// transcript starts in, or `null` when it cannot be built;
     /// `resume_unavailable` says why.

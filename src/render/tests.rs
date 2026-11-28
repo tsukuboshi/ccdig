@@ -137,8 +137,10 @@ fn sample_session() -> Result<Session, String> {
         started_at: at("2026-10-13T01:23:45.678Z")?,
         ended_at: at("2026-10-13T01:30:00Z")?,
         prompt_count: 2,
+        first_prompt: "Draft the weekly report from these notes".to_owned(),
         match_count: None,
         first_match: None,
+        models: vec!["claude-fable-5-2".to_owned(), "claude-haiku-5-5".to_owned()],
         resume: Some("cd /Users/alice/blog && claude --resume aaaa".to_owned()),
         resume_unavailable: None,
         matched_types: Vec::new(),
@@ -281,6 +283,44 @@ fn sessions_as_a_markdown_table() -> TestResult {
             Lang::En,
         )?,
     )
+}
+
+#[test]
+fn the_sessions_table_shows_when_each_ended_its_branch_models_and_first_prompt() -> TestResult {
+    let table = markdown::sessions(
+        &[sample_session()?],
+        &tokyo()?,
+        false,
+        &Fields::default(),
+        Lang::En,
+    )?;
+    let header = "| Started | Ended | Session | Project | Cwd | Branch | Prompts | Models | First prompt | Title |";
+    check_eq(&table.contains(header), &true, &table)?;
+    let row = "| 2026-10-13 10:23 JST | 2026-10-13 10:30 JST | `11111111-1111-4111-8111-111111111111` | `-Users-alice-blog` | `/Users/alice/blog` | `main` | 2 | `claude-fable-5-2`, `claude-haiku-5-5` | Draft the weekly report from these notes | Weekly report \\| draft |";
+    check_eq(&table.contains(row), &true, &table)?;
+    let mut bare = sample_session()?;
+    bare.models.clear();
+    bare.git_branch.clear();
+    bare.cwd.clear();
+    let narrow = markdown::sessions(
+        &[bare],
+        &tokyo()?,
+        false,
+        &fields(&[], &["first_prompt", "ended_at"]),
+        Lang::En,
+    )?;
+    check_eq(
+        &narrow
+            .contains("| Started | Session | Project | Cwd | Branch | Prompts | Models | Title |"),
+        &true,
+        &format!("--fields leaves the columns out: {narrow}"),
+    )?;
+    check_eq(
+        &narrow.contains("| `-Users-alice-blog` |  |  | 2 |  | Weekly report"),
+        &true,
+        &format!("no cwd, branch, or models leaves the cells empty: {narrow}"),
+    )?;
+    Ok(())
 }
 
 #[test]

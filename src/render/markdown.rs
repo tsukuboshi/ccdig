@@ -72,6 +72,18 @@ fn record_count(count: &Count, lang: Lang) -> String {
     )
 }
 
+/// Each of `values` as inline code, separated by commas.
+fn code_list<T>(values: &[T]) -> String
+where
+    T: AsRef<str>,
+{
+    values
+        .iter()
+        .map(|value| code_span(value.as_ref()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The list item that says `fact` under a section's heading.
 fn fact_line(fact: &Fact<'_>, lang: Lang) -> String {
     let value = match *fact {
@@ -82,11 +94,7 @@ fn fact_line(fact: &Fact<'_>, lang: Lang) -> String {
         Fact::Description(description) => escape_inline(&one_line(description)),
         Fact::AgentVersions(ref values)
         | Fact::Models(ref values)
-        | Fact::PermissionModes(ref values) => values
-            .iter()
-            .map(|value| code_span(value))
-            .collect::<Vec<_>>()
-            .join(", "),
+        | Fact::PermissionModes(ref values) => code_list(values),
     };
     format!("- {}: {value}\n", words::fact(lang, fact))
 }
@@ -220,9 +228,10 @@ fn write_table(
 /// `value` as a table cell, with a time in `zone`.
 fn cell(value: Cell<'_>, zone: &TimeZone, lang: Lang) -> Result<String, Failure> {
     Ok(match value {
+        Cell::Code("") | Cell::Empty => String::new(),
         Cell::Code(text) => escape_pipes(&code_span(text)),
+        Cell::Codes(names) => escape_pipes(&code_list(names)),
         Cell::Count(count) => count.to_string(),
-        Cell::Empty => String::new(),
         Cell::Text(text) => escape_inline(&one_line(text)),
         Cell::Time(stamp) => stamp.minute_label(zone)?,
         Cell::Title(title) => words::title(lang, title),

@@ -239,14 +239,7 @@ impl Writer<'_> {
                 Fact::Description(text) => page.text(&one_line(text)),
                 Fact::AgentVersions(ref values)
                 | Fact::Models(ref values)
-                | Fact::PermissionModes(ref values) => {
-                    for (index, value) in values.iter().enumerate() {
-                        if index > 0 {
-                            page.tag(", ");
-                        }
-                        code(page, value);
-                    }
-                }
+                | Fact::PermissionModes(ref values) => code_list(page, values),
             }
             page.tag("</dd>\n");
         }
@@ -636,9 +629,10 @@ fn write_table(
 /// What a table cell holds, with a time in `zone` as a time element.
 fn cell(page: &mut Page, value: Cell<'_>, zone: &TimeZone, lang: Lang) -> Result<(), Failure> {
     match value {
+        Cell::Code("") | Cell::Empty => {}
         Cell::Code(text) => code(page, text),
+        Cell::Codes(names) => code_list(page, names),
         Cell::Count(count) => page.text(&count.to_string()),
-        Cell::Empty => {}
         Cell::Text(text) => page.text(&one_line(text)),
         Cell::Time(stamp) => {
             page.tag("<time datetime=\"");
@@ -780,6 +774,19 @@ fn code(page: &mut Page, text: &str) {
     page.tag("<code>");
     page.text(text);
     page.tag("</code>");
+}
+
+/// Each of `values` as code, separated by commas.
+fn code_list<T>(page: &mut Page, values: &[T])
+where
+    T: AsRef<str>,
+{
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            page.tag(", ");
+        }
+        code(page, value.as_ref());
+    }
 }
 
 /// The name of `tool`, or the words for one whose call was not found.

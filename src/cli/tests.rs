@@ -13,6 +13,7 @@ mod html;
 mod kinds;
 mod lang;
 mod mentions;
+mod overview;
 mod properties;
 mod responses;
 mod resume;
@@ -146,6 +147,18 @@ fn json_lines(ran: Ran) -> Result<Vec<Value>, Box<dyn Error>> {
         .lines()
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?)
+}
+
+/// The one session `sessions --session <id>` lists, run with `extra`
+/// flags.
+fn the_session(history: &History, id: &str, extra: &[&str]) -> Result<Value, Box<dyn Error>> {
+    let mut args = vec!["sessions", "--session", id];
+    args.extend_from_slice(extra);
+    let sessions = json_lines(history.run_week(&args))?;
+    let [ref session] = sessions[..] else {
+        return Err(format!("want one session, got {}", sessions.len()).into());
+    };
+    Ok(session.clone())
 }
 
 /// The string at `key` of each record, or `<missing>`.
@@ -721,7 +734,7 @@ fn version_and_help() -> TestResult {
     check_eq(&json.code, &0, &json.err)?;
     check_eq(
         &json.out,
-        &format!("{{\"version\":\"{VERSION}\",\"schema\":10,\"filter\":\"strict-v5\"}}\n"),
+        &format!("{{\"version\":\"{VERSION}\",\"schema\":11,\"filter\":\"strict-v5\"}}\n"),
         "version --format json",
     )?;
     for args in [&[][..], &["--help"][..], &["records", "--help"][..]] {
@@ -2042,8 +2055,8 @@ fn mask_report_counts_what_was_masked_in_the_printed_records_by_rule() -> TestRe
     ]);
     check_eq(
         sessions.err.as_str(),
-        "ccdig: masked 2 by values/place\n",
-        "sessions count their own fields: here the project and the file",
+        "ccdig: masked 2 by values/place, 1 by credential-assignment\n",
+        "sessions count their own fields: here the project and the file, and the first prompt",
     )?;
     Ok(())
 }
@@ -2118,7 +2131,7 @@ fn the_json_envelope_records_how_the_output_was_made() -> TestResult {
     )?;
     check_eq(
         &document.get("schema"),
-        &Some(&serde_json::json!(10_i32)),
+        &Some(&serde_json::json!(11_i32)),
         "schema",
     )?;
     check_eq(
@@ -2220,7 +2233,7 @@ fn usage_is_on_the_first_record_of_each_response_and_summed_per_session() -> Tes
     let sessions = history.run_week(&["sessions", "--session", "uuuu"]);
     check_eq(
         &sessions.out.contains(
-            r#""prompt_count":1,"match_count":null,"first_match":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24}"#,
+            r#""prompt_count":1,"first_prompt":"count the posts","match_count":null,"first_match":null,"usage":{"input":11,"output":7,"cache_read":103,"cache_creation":24},"models":[]"#,
         ),
         &true,
         &sessions.out,

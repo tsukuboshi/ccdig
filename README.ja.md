@@ -306,6 +306,19 @@ Claude Code は多くの思考ブロックで署名だけを残し、本文を�
   ツール結果の時刻なので、依頼文が 1 件のセッションでも作業の終わりが分かります。
   ツールの呼び出しを却下したときに打ったコメントも、依頼文として数えます。
   質問への回答と、承認・却下したプランも同じです。
+- `first_prompt` は、選ばれた最初の依頼文です。`first_match` の `text` と
+  同じく、マスク後、1 行にまとめて 200 文字で切ります。タイトルの無い
+  セッションも見分けられます。
+- `models` は、`usage` が合計する応答を書いたモデルを、`records` の
+  `model` と同じくマスクし、最初に書いた順に 1 回ずつ並べます。
+  リクエストが失敗したときのように Claude Code 自身が書いた返答は
+  `<synthetic>` を名乗るので、除きます。応答が無ければ、`models` は
+  `[]` です。
+- Markdown と HTML は、`started_at`・`ended_at`・`session_id`・
+  `project`・`cwd`・`git_branch`・`prompt_count`・`models`・
+  `first_prompt`・`title` をこの順に表にします。一致があれば
+  `match_count` と `first_match` を `prompt_count` の後に加えます。
+  `--fields` で除いたキーの列は出しません。
 - `first_match` は、そのセッションで検索が最初に一致したレコードです。
   レコードを読まずにセッションを見極められます。中身は `type`・`timestamp`・
   本文でパターンが一致した行番号 `line`・その行（マスク後、1 行にまとめて
@@ -338,8 +351,9 @@ Claude Code は多くの思考ブロックで署名だけを残し、本文を�
 | `cwd`, `git_branch` | 選ばれた最初の依頼文のもの |
 | `file` | transcript のファイル |
 | `mtime` | ファイルの最終書き込み時刻 |
-| `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | 上のとおり |
+| `started_at`, `ended_at`, `prompt_count`, `first_prompt`, `match_count`, `first_match` | 上のとおり |
 | `usage` | トークン数。「トークン数」の節を参照 |
+| `models` | 上のとおり |
 | `resume`, `resume_unavailable` | 上のとおり |
 
 ### stats
@@ -424,7 +438,7 @@ ccdig stats --by week --type result --tool ExitPlanMode --status error
 この 2 つの意味は「JSON の包み」の節にあります。
 
 ```json
-{"version":"0.0.6","schema":10,"filter":"strict-v5"}
+{"version":"0.0.6","schema":11,"filter":"strict-v5"}
 ```
 
 ## 共通オプション
@@ -693,7 +707,7 @@ JSON と JSON Lines はレコードだけを書くので、`--lang` を付ける
 `--format json` は、レコードをバージョンと実行時のフラグで包みます。
 
 ```json
-{"schema":10,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":11,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},

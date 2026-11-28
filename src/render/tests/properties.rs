@@ -415,11 +415,14 @@ fn matched_lines_add_no_heading() -> TestResult {
 }
 
 #[test]
-fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
+fn every_session_row_has_ten_cells_or_twelve_with_matches() -> TestResult {
     for_all(
         &(
             vec(
                 (
+                    hostile_text(),
+                    hostile_text(),
+                    hostile_text(),
                     hostile_text(),
                     hostile_text(),
                     hostile_text(),
@@ -439,6 +442,9 @@ fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
                         project: row.1.clone(),
                         id: row.3.clone(),
                         cwd: row.4.clone(),
+                        first_prompt: row.5.clone(),
+                        git_branch: row.6.clone(),
+                        models: vec![row.7.clone()],
                         first_match: Some(FirstMatch {
                             kind: "reply",
                             timestamp: session.started_at,
@@ -455,7 +461,7 @@ fn every_session_row_has_six_cells_or_eight_with_matches() -> TestResult {
             check_eq(&table.len(), &rows.len().saturating_add(2), &out)?;
             for row in table {
                 let cells = row.replace("\\|", "").matches('|').count();
-                check_eq(&cells, &(if matches { 9 } else { 7 }), row)?;
+                check_eq(&cells, &(if matches { 13 } else { 11 }), row)?;
             }
             Ok(())
         },

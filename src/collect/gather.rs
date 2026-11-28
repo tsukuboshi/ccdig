@@ -7,12 +7,13 @@ use std::path::PathBuf;
 use super::mask::Mask;
 use regex::Regex;
 
-use super::read::Mention;
+use super::read::{Mention, Spent};
 use super::{Corpus, Select};
+use crate::classify::human::HARNESS_MODEL;
 use crate::filter::Filter;
-use crate::record::{AGENT, Record, Session};
+use crate::record::{AGENT, FIRST_MATCH_CHARS, Record, Session};
 use crate::redact::Counts;
-use crate::text::{Lang, shell_quote};
+use crate::text::{Lang, cut_text, one_line, shell_quote};
 use crate::transcript::entry::Usage;
 use crate::transcript::walk::{SessionFile, is_dir};
 use crate::when::Stamp;
@@ -32,8 +33,8 @@ pub struct FileRecords<'file, T> {
     pub modified: Stamp,
     /// The records, each with its block's index in the line.
     pub records: Vec<(usize, T)>,
-    /// The tokens of the file's responses in the range, by response ID.
-    pub usage: Vec<(String, Usage)>,
+    /// What the file's responses in the range spent, by response ID.
+    pub usage: Vec<Spent>,
 }
 
 /// Keeps each record once across sessions, in session order, and builds
@@ -113,8 +114,8 @@ where
                     // A resumed copy repeats these responses, and must not
                     // count them as its own.
                     for response in &session.usage {
-                        if !response.0.is_empty() {
-                            priced.insert(response.0.clone());
+                        if !response.id.is_empty() {
+                            priced.insert(response.id.clone());
                         }
                     }
                     continue;
@@ -123,15 +124,14 @@ where
             }
             None => (None, None),
         };
-        let usage = unpriced(session.usage, &mut priced);
+        let mut models_masked = Counts::default();
+        let (usage, models) = unpriced(session.usage, &mut priced, mask, &mut models_masked);
         let head = first.head();
         let last_kept = last.head().timestamp;
-        let mut masked = head.masked.clone();
-        // The first match prints the text of a prompt or reply.
-        if let Some(ref earliest) = first_match {
-            masked.merge(earliest.masked());
-        }
-        let shown_file = mask.meta(&session.file.path.to_string_lossy(), &mut masked);
+        let mut masked = printed(first, first_match.as_ref());
+        masked.merge(&models_masked);
+        // `printed` counted the path with the first record.
+        let shown_file = mask.meta(&session.file.path.to_string_lossy(), &mut Counts::default());
         let (resume, resume_unavailable) = resume(&head.session_id, &session.cwd, mask, &mut dirs);
         corpus.sessions.push(Session {
             agent: AGENT,
@@ -151,9 +151,11 @@ where
                 }
             }),
             prompt_count: kept.len(),
+            first_prompt: cut_text(&one_line(&first.grep_text()), FIRST_MATCH_CHARS, lang),
             match_count,
             first_match: first_match.map(|earliest| earliest.first_match(grep, lang)),
             usage,
+            models,
             resume,
             resume_unavailable,
             masked,
@@ -238,6 +240,23 @@ pub fn inherit_title<T>(
     }
 }
 
+/// What masking counted in what a session's record prints: the shared
+/// keys and the text of `first`, its first record, and `earliest`, its
+/// first match. The own counts of `first` hold those of its file's path
+/// too, and a session's records all come from its file, so they count the
+/// session's `file`.
+fn printed<T>(first: &T, earliest: Option<&Mention>) -> Counts
+where
+    T: Select,
+{
+    let mut masked = first.head().masked.clone();
+    if let Some(found) = earliest {
+        masked.merge(found.masked());
+    }
+    masked.merge(first.own_masked());
+    masked
+}
+
 /// The command that resumes session `id` in `cwd`, the unmasked
 /// directory its transcript starts in, or why there is none: `no-cwd` when
 /// the transcript gave none, `cwd-masked` when `mask` changes it, so the
@@ -278,13 +297,33 @@ fn resume(
 }
 
 /// The sum of the tokens of `responses` not in `priced`, each then added
-/// to it; a response without an ID is always counted.
-fn unpriced(responses: Vec<(String, Usage)>, priced: &mut HashSet<String>) -> Usage {
+/// to it, and the models that wrote them, masked as a record's `model` is,
+/// each once in the order it first wrote one, Claude Code itself left out;
+/// a response without an ID is always counted. What masking the models
+/// counted, once per model shown, goes in `masked`.
+fn unpriced(
+    responses: Vec<Spent>,
+    priced: &mut HashSet<String>,
+    mask: &Mask,
+    masked: &mut Counts,
+) -> (Usage, Vec<String>) {
     let mut usage = Usage::default();
-    for (id, tokens) in responses {
-        if id.is_empty() || priced.insert(id) {
-            usage.add(tokens);
+    let mut models: Vec<String> = Vec::new();
+    for response in responses {
+        if response.id.is_empty() || priced.insert(response.id) {
+            usage.add(response.tokens);
+            // Claude Code names itself on a reply it wrote, as when a
+            // request failed; no model wrote that.
+            if response.model.is_empty() || response.model == HARNESS_MODEL {
+                continue;
+            }
+            let mut counts = Counts::default();
+            let shown = mask.meta(&response.model, &mut counts);
+            if !models.contains(&shown) {
+                models.push(shown);
+                masked.merge(&counts);
+            }
         }
     }
-    usage
+    (usage, models)
 }

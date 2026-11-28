@@ -32,6 +32,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Every record of `records` has a new `agent_version` key, the version of
   Claude Code that wrote its line, or empty in older transcripts. The
   schema is now 10.
+- Every record of `sessions` has two new keys: `first_prompt`, the first
+  selected prompt, masked, on one line and cut to 200 characters, and
+  `models`, the models that wrote the responses `usage` adds up, masked
+  as the `model` of `records` is, each once in the order it first wrote
+  one, without `<synthetic>`. Markdown and HTML show them in
+  the table, with `ended_at` and `git_branch`. The schema is now 11.
 - Markdown and HTML list under each transcript file's heading the models,
   the permission modes, and the Claude Code versions of the records
   shown, each once in the order it first appears, when `--fields` keeps

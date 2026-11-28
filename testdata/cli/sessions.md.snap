@@ -5,7 +5,7 @@ source: src/testing.rs
 
 - Sessions: 2
 
-| Started | Session | Project | Cwd | Prompts | Title |
-| --- | --- | --- | --- | ---: | --- |
-| 2026-10-13 10:00 JST | `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` | `-Users-alice-blog` | `/Users/alice/blog` | 2 | Weekly report draft |
-| 2026-10-14 09:05 JST | `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb` | `-Users-alice-work-notes` | `/Users/alice/work/notes` | 1 | Reader buffer size |
+| Started | Ended | Session | Project | Cwd | Branch | Prompts | Models | First prompt | Title |
+| --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- |
+| 2026-10-13 10:00 JST | 2026-10-13 10:30 JST | `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` | `-Users-alice-blog` | `/Users/alice/blog` | `main` | 2 |  | /weekly-report last week | Weekly report draft |
+| 2026-10-14 09:05 JST | 2026-10-14 09:05 JST | `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb` | `-Users-alice-work-notes` | `/Users/alice/work/notes` | `feat/reader` | 1 |  | why does the reader stop at 64 KiB? | Reader buffer size |

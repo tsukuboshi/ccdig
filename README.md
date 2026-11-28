@@ -322,6 +322,19 @@ the prompts. `--format` takes `jsonl` (default), `json`, `md`, or `html`.
   work ended even when a session has one prompt. A comment the user typed
   when they turned a tool call down counts as a prompt, and so do the
   answers to a question and a plan approved or turned down.
+- `first_prompt` is the first selected prompt, masked, on one line and
+  cut to 200 characters, as the `text` of `first_match` is, so a session
+  without a title can be told apart.
+- `models` lists the models that wrote the responses `usage` adds up,
+  masked as the `model` of `records` is, each once in the order it first
+  wrote one. A reply Claude Code wrote itself, as when a request failed,
+  names `<synthetic>` and is left out. Without a response, `models` is
+  `[]`.
+- Markdown and HTML show `started_at`, `ended_at`, `session_id`,
+  `project`, `cwd`, `git_branch`, `prompt_count`, `models`,
+  `first_prompt`, and `title` as a table in this order, with
+  `match_count` and `first_match` after `prompt_count` when there are
+  matches. `--fields` leaves out the columns of the keys it leaves out.
 - `first_match` holds the first record a search matched in the
   session, so it can be judged without reading its records: its `type`,
   `timestamp`, the `line` a pattern matched in its text, and that line,
@@ -354,8 +367,9 @@ A record has these keys, in this order:
 | `cwd`, `git_branch` | Those of the first selected prompt |
 | `file` | The transcript file |
 | `mtime` | When the file was last written to |
-| `started_at`, `ended_at`, `prompt_count`, `match_count`, `first_match` | As above |
+| `started_at`, `ended_at`, `prompt_count`, `first_prompt`, `match_count`, `first_match` | As above |
 | `usage` | The tokens; see Tokens |
+| `models` | As above |
 | `resume`, `resume_unavailable` | As above |
 
 ### stats
@@ -443,7 +457,7 @@ prints the version together with `schema` and `filter`, described under
 JSON envelope:
 
 ```json
-{"version":"0.0.6","schema":10,"filter":"strict-v5"}
+{"version":"0.0.6","schema":11,"filter":"strict-v5"}
 ```
 
 ## Shared options
@@ -715,7 +729,7 @@ plan approved; the record type is `type`, which `--type` picks.
 run:
 
 ```json
-{"schema":10,"filter":"strict-v5","ccdig":"0.0.6",
+{"schema":11,"filter":"strict-v5","ccdig":"0.0.6",
  "run":{"since":"2026-10-05","until":"2026-10-11","tz":"Asia/Tokyo",
         "mask":["email","user"],"mask_values":["repo","person"],
         "no_mask":false},
